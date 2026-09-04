@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WhatsApp Chat</title>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+        }
+
+        body {
+            background: #e5ddd5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 16px;
+        }
+
+        /* Main chat card – WhatsApp style */
+        .wa-container {
+            max-width: 480px;
+            width: 100%;
+            background: #ffffff;
+            border-radius: 28px 28px 20px 20px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 700px;
+            max-height: 90vh;
+            transition: all 0.2s ease;
+        }
+
+        /* Header – like WhatsApp green bar */
+        .wa-header {
+            background: #075e54;
+            padding: 16px 20px;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        .wa-header i {
+            font-size: 22px;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+        }
+
+        .wa-header .header-text {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+
+        .wa-header .title {
+            font-weight: 600;
+            font-size: 20px;
+            letter-spacing: 0.2px;
+        }
+
+        .wa-header .subtitle {
+            font-size: 13px;
+            opacity: 0.85;
+            font-weight: 400;
+            margin-top: 2px;
+        }
+
+        /* join panel – subtle, clean */
+        .join-panel {
+            background: #f0f2f5;
+            padding: 18px 20px 20px;
+            border-bottom: 1px solid #e9edef;
+            flex-shrink: 0;
+        }
+
+        .join-panel form {
+            display: flex;
+            gap: 8px;
+            background: white;
+            border-radius: 30px;
+            padding: 4px 4px 4px 18px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+            border: 1px solid #e9edef;
+        }
+
+        .join-panel input {
+            border: none;
+            outline: none;
+            background: transparent;
+            padding: 12px 0;
+            font-size: 15px;
+            flex: 1;
+            color: #1f2c34;
+        }
+
+        .join-panel input::placeholder {
+            color: #7a8a96;
+            font-weight: 400;
+        }
+
+        .join-panel button {
+            background: #00a884;
+            border: none;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            letter-spacing: 0.3px;
+        }
+
+        .join-panel button:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .join-panel button:not(:disabled):hover {
+            background: #008f72;
+        }
+
+        /* chat form – WhatsApp style input bar */
+        .chat-input-area {
+            background: #f0f2f5;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-top: 1px solid #e9edef;
+            flex-shrink: 0;
+            display: none;
+            /* hidden until join */
+        }
+
+        .chat-input-area form {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            background: white;
+            border-radius: 30px;
+            padding: 2px 6px 2px 16px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+            border: 1px solid #e9edef;
+        }
+
+        .chat-input-area input {
+            border: none;
+            outline: none;
+            background: transparent;
+            padding: 10px 0;
+            font-size: 15px;
+            flex: 1;
+            color: #1f2c34;
+        }
+
+        .chat-input-area input::placeholder {
+            color: #7a8a96;
+            font-weight: 400;
+        }
+
+        .chat-input-area .recipient-wrap {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: #f0f2f5;
+            padding: 2px 12px 2px 12px;
+            border-radius: 30px;
+            border: 1px solid #e9edef;
+            background: white;
+        }
+
+        .chat-input-area .recipient-wrap i {
+            color: #00a884;
+            font-size: 14px;
+        }
+
+        .chat-input-area #recipientInput {
+            width: 90px;
+            min-width: 70px;
+            padding: 6px 0;
+            font-size: 14px;
+            border: none;
+            outline: none;
+            background: transparent;
+        }
+
+        .chat-input-area button {
+            background: #00a884;
+            border: none;
+            color: white;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: 0.15s;
+            flex-shrink: 0;
+        }
+
+        .chat-input-area button i {
+            font-size: 20px;
+        }
+
+        .chat-input-area button:hover {
+            background: #008f72;
+        }
+
+        /* messages container – WhatsApp bubble style */
+        .messages-wrap {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 16px 8px 16px;
+            background: #e5ddd5;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            scroll-behavior: smooth;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23e5ddd5"/><path d="M10 10 L 20 10 L 20 20 L 10 20 Z" fill="%23d1d8db" opacity="0.15"/><path d="M30 30 L 40 30 L 40 40 L 30 40 Z" fill="%23d1d8db" opacity="0.15"/><path d="M50 10 L 60 10 L 60 20 L 50 20 Z" fill="%23d1d8db" opacity="0.15"/><path d="M70 30 L 80 30 L 80 40 L 70 40 Z" fill="%23d1d8db" opacity="0.15"/><path d="M10 50 L 20 50 L 20 60 L 10 60 Z" fill="%23d1d8db" opacity="0.15"/><path d="M50 50 L 60 50 L 60 60 L 50 60 Z" fill="%23d1d8db" opacity="0.15"/><path d="M30 70 L 40 70 L 40 80 L 30 80 Z" fill="%23d1d8db" opacity="0.15"/><path d="M70 70 L 80 70 L 80 80 L 70 80 Z" fill="%23d1d8db" opacity="0.15"/></svg>');
+            background-repeat: repeat;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 9px 14px;
+            border-radius: 12px;
+            font-size: 14.5px;
+            line-height: 1.4;
+            word-wrap: break-word;
+            position: relative;
+            margin-bottom: 6px;
+            box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+            animation: fadeUp 0.15s ease;
+        }
+
+        @keyframes fadeUp {
+            0% {
+                opacity: 0.5;
+                transform: translateY(6px);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.sent {
+            background: #d9fdd3;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+            color: #1f2c34;
+        }
+
+        .message.received {
+            background: white;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            color: #1f2c34;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+        }
+
+        .message .msg-time {
+            font-size: 11px;
+            opacity: 0.6;
+            margin-left: 10px;
+            display: inline-block;
+            float: right;
+            margin-top: 2px;
+        }
+
+        .message.sent .msg-time::after {
+            content: " ✓✓";
+            opacity: 0.7;
+            font-size: 12px;
+        }
+
+        .status-badge {
+            font-size: 13px;
+            color: #4a5b66;
+            background: #e9edef;
+            padding: 6px 16px;
+            border-radius: 30px;
+            display: inline-block;
+            margin-top: 6px;
+            font-weight: 500;
+        }
+
+        /* empty state */
+        .empty-chat {
+            color: #6b7b85;
+            font-size: 14px;
+            text-align: center;
+            padding: 40px 20px;
+            background: transparent;
+            border-radius: 20px;
+        }
+
+        .empty-chat i {
+            font-size: 48px;
+            color: #b9c4cb;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        /* scrollbar */
+        .messages-wrap::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .messages-wrap::-webkit-scrollbar-track {
+            background: #d1d8db;
+        }
+
+        .messages-wrap::-webkit-scrollbar-thumb {
+            background: #b9c4cb;
+            border-radius: 10px;
+        }
+
+        /* WhatsApp Web layout refinements */
+        body {
+            background: #d1d7db;
+            padding: 20px;
+        }
+
+        .wa-container {
+            max-width: 1180px;
+            height: min(900px, calc(100vh - 40px));
+            max-height: none;
+            min-height: 560px;
+            border-radius: 4px;
+            box-shadow: 0 6px 24px rgba(34, 46, 53, 0.22);
+        }
+
+        .wa-header {
+            background: #008069;
+            padding: 10px 18px;
+        }
+
+        .wa-header .title {
+            font-size: 16px;
+        }
+
+        .join-panel {
+            padding: 12px 18px;
+        }
+
+        .join-panel form,
+        .chat-input-area form {
+            border-radius: 8px;
+        }
+
+        .join-panel button {
+            border-radius: 6px;
+            padding: 8px 16px;
+        }
+
+        .chat-input-area {
+            padding: 8px 12px 10px;
+        }
+
+        .chat-input-area .recipient-wrap {
+            border-radius: 6px;
+            padding: 2px 10px;
+        }
+
+        .chat-input-area #recipientInput {
+            width: 86px;
+            min-width: 58px;
+        }
+
+        .chat-input-area button {
+            width: 42px;
+            height: 42px;
+        }
+
+        .messages-wrap {
+            background-color: #efeae2;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" fill="%23efeae2"/><g fill="none" stroke="%23d9d2c9" stroke-width="2" opacity=".42"><path d="M18 25h18M27 16v18M116 32l10 10m0-10l-10 10M70 125l12 12m0-12l-12 12M132 120h18m-9-9v18M18 102l14-14m0 14L18 88"/></g></svg>');
+        }
+
+        .message {
+            max-width: min(70%, 620px);
+            padding: 7px 9px 7px 12px;
+            border-radius: 7px;
+            margin-bottom: 3px;
+        }
+
+        .message.sent {
+            border-bottom-right-radius: 0;
+        }
+
+        .message.received {
+            border-bottom-left-radius: 0;
+        }
+
+        .status-badge {
+            border-radius: 7px;
+            padding: 5px 12px;
+        }
+
+        @media (min-width: 481px) {
+            body {
+                padding: 20px;
+            }
+
+            .wa-container {
+                max-width: 480px;
+                height: min(700px, calc(100vh - 40px));
+                min-height: 560px;
+                border-radius: 12px;
+            }
+        }
+
+        /* responsive */
+        @media (max-width: 480px) {
+            body {
+                padding: 0;
+            }
+
+            .wa-container {
+                height: 100vh;
+                min-height: 0;
+                max-height: none;
+                border-radius: 0;
+            }
+
+            .join-panel {
+                padding: 14px 12px;
+            }
+
+            .join-panel form {
+                padding: 2px 4px 2px 14px;
+            }
+
+            .chat-input-area form {
+                padding: 2px 4px 2px 12px;
+            }
+
+            .chat-input-area #recipientInput {
+                width: 70px;
+                min-width: 60px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="wa-container">
+        <!-- Header -->
+        <div class="wa-header">
+            <i class="fab fa-whatsapp"></i>
+            <div class="header-text">
+                <span class="title">Chat</span>
+                <span class="subtitle" id="statusDisplay">Enter your ID to connect</span>
+            </div>
+            <i class="fas fa-search" style="opacity:0.7; font-size:18px;"></i>
+        </div>
+
+        <!-- Join panel -->
+        <div class="join-panel" id="joinPanel">
+            <form id="joinForm">
+                <input id="userIdInput" type="text" placeholder="Your user ID" autocomplete="off" required>
+                <button type="submit"><i class="fas fa-sign-in-alt"></i> Join</button>
+            </form>
+            <div
+                style="margin-top: 8px; font-size:13px; color:#4a5b66; display:flex; gap:16px; justify-content:center;">
+                <span><i class="fas fa-circle" style="color:#00a884; font-size:10px;"></i> Online</span>
+                <span><i class="fas fa-lock" style="font-size:11px;"></i> End-to-end encrypted</span>
+            </div>
+        </div>
+
+        <!-- Chat input area (hidden until join) -->
+        <div class="chat-input-area" id="chatInputArea">
+            <form id="chatForm">
+                <div class="recipient-wrap">
+                    <i class="fas fa-at"></i>
+                    <input id="recipientInput" type="text" placeholder="To" autocomplete="off" required>
+                </div>
+                <input id="messageInput" type="text" placeholder="Type a message" autocomplete="off" required>
+                <button type="submit"><i class="fas fa-paper-plane"></i></button>
+            </form>
+        </div>
+
+        <!-- Messages -->
+        <div class="messages-wrap" id="messages">
+            <div class="empty-chat" id="emptyState">
+                <i class="fas fa-comment-dots"></i>
+                <span>No messages yet</span>
+                <div style="font-size:13px; margin-top:6px; opacity:0.7;">Send a message to start chatting</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        (function () {
+            const socket = io();
+
+            // DOM elements
+            const joinForm = document.getElementById('joinForm');
+            const chatForm = document.getElementById('chatForm');
+            const userIdInput = document.getElementById('userIdInput');
+            const recipientInput = document.getElementById('recipientInput');
+            const messageInput = document.getElementById('messageInput');
+            const messagesContainer = document.getElementById('messages');
+            const emptyState = document.getElementById('emptyState');
+            const statusDisplay = document.getElementById('statusDisplay');
+            const joinPanel = document.getElementById('joinPanel');
+            const chatInputArea = document.getElementById('chatInputArea');
+            const joinButton = joinForm.querySelector('button');
+
+            let currentUserId = '';
+
+            function addMessage(text, type) {
+                if (emptyState) emptyState.style.display = 'none';
+
+                const msgDiv = document.createElement('div');
+                msgDiv.className = 'message ' + type;
+
+                const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                msgDiv.innerHTML = `${escapeHtml(text)}<span class="msg-time">${time}</span>`;
+                messagesContainer.appendChild(msgDiv);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+
+            socket.on('connect', () => {
+                if (currentUserId) {
+                    statusDisplay.textContent = 'Connected';
+                } else {
+                    statusDisplay.textContent = 'Enter your ID to connect';
+                }
+            });
+
+            socket.on('joined', (userId) => {
+                currentUserId = userId;
+                userIdInput.disabled = true;
+                joinButton.disabled = true;
+                joinPanel.style.display = 'none';
+                chatInputArea.style.display = 'flex';
+                statusDisplay.textContent = `Chatting as ${userId}`;
+                recipientInput.focus();
+
+                if (messagesContainer.children.length === 0) {
+                    emptyState.style.display = 'block';
+                } else {
+                    emptyState.style.display = 'none';
+                }
+            });
+
+            socket.on('conversation_history', (history) => {
+                messagesContainer.querySelectorAll('.message').forEach((element) => element.remove());
+                history.forEach((message) => {
+                    const isMe = message.from === currentUserId;
+                    addMessage(
+                        isMe ? `You: ${message.text}` : `${message.from}: ${message.text}`,
+                        isMe ? 'sent' : 'received'
+                    );
+                });
+            });
+
+            socket.on('message_received', (data) => {
+                addMessage(`${data.from}: ${data.text}`, 'received');
+            });
+
+            socket.on('message_saved', (data) => {
+                addMessage(`You: ${data.text}`, 'sent');
+            });
+
+            socket.on('disconnect', () => {
+                statusDisplay.textContent = 'Disconnected';
+            });
+            
+
+            joinForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const id = userIdInput.value.trim();
+                if (!id) return;
+                currentUserId = id;
+                socket.emit('join', id);
+            });
+
+            chatForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const recipientId = recipientInput.value.trim();
+                const text = messageInput.value.trim();
+                if (!currentUserId || !recipientId || !text) return;
+
+                socket.emit('message', { to: recipientId, text });
+                messageInput.value = '';
+                messageInput.focus();
+            });
+
+            recipientInput.addEventListener('change', () => {
+                const recipientId = recipientInput.value.trim();
+                if (recipientId) {
+                    socket.emit('loadConversation', recipientId);
+                }
+            });
+
+            function escapeHtml(value) {
+                const element = document.createElement('div');
+                element.textContent = value;
+                return element.innerHTML;
+            }
+
+
+            recipientInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    messageInput.focus();
+                }
+            });
+
+
+            if (emptyState) {
+                emptyState.addEventListener('click', () => {
+                    if (chatInputArea.style.display === 'flex') {
+                        messageInput.focus();
+                    }
+                });
+            }
+
+            chatInputArea.style.display = 'none';
+
+            joinPanel.style.display = 'block';
+
+
+            if (socket.connected) {
+                statusDisplay.textContent = 'Enter your ID to connect';
+            } else {
+                statusDisplay.textContent = 'Connecting...';
+            }
+        })();
+    </script>
+</body>
+
+</html>
