@@ -38,7 +38,7 @@ chatSocket(io);
 // Start Server
 // =========================
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
 initializeDatabase().then(() => server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
