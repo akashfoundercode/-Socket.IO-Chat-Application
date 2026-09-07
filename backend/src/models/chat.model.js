@@ -428,22 +428,57 @@ const updateMessage = async (id, userId, text) => {
 };
 
 const deleteMessage = async (id, userId, everyone = false) => {
+    const pool = getPool();
+    const cleanId = Number(id);
+    if (!cleanId) return null;
+
+    const userVars = getPhoneVariants(userId);
+    const placeholders = userVars.map(() => "?").join(",");
+
     if (everyone) {
-        const [result] = await getPool().execute("UPDATE messages SET text = '', type = 'deleted', media_url = NULL WHERE id = ? AND sender_id = ?", [id, userId]);
-        return result.affectedRows > 0;
+        // Only sender can delete for everyone
+        const [result] = await pool.execute(
+            `UPDATE messages 
+             SET text = 'This message was deleted', type = 'deleted', media_url = NULL 
+             WHERE id = ? AND sender_id IN (${placeholders})`,
+            [cleanId, ...userVars]
+        );
+
+        if (result.affectedRows === 0) return null;
+
+        const [rows] = await pool.execute("SELECT * FROM messages WHERE id = ?", [cleanId]);
+        return rows[0] ? mapMessage(rows[0]) : null;
     }
-    await getPool().execute("INSERT IGNORE INTO message_deletions (message_id, user_id) VALUES (?, ?)", [id, userId]);
-    return true;
+
+    // Delete for me: record deletion for all phone variations of current user
+    for (const u of userVars) {
+        await pool.execute(
+            "INSERT IGNORE INTO message_deletions (message_id, user_id) VALUES (?, ?)",
+            [cleanId, u]
+        );
+    }
+    return { id: String(cleanId), deletedForMe: true };
 };
 
 const getConversation = async (userId, otherUserId) => {
-    const [rows] = await getPool().execute(
+    const pool = getPool();
+    const userVars = getPhoneVariants(userId);
+    const otherVars = getPhoneVariants(otherUserId);
+    if (!userVars.length || !otherVars.length) return [];
+
+    const uPlaceholders = userVars.map(() => "?").join(",");
+    const oPlaceholders = otherVars.map(() => "?").join(",");
+
+    const [rows] = await pool.execute(
         `SELECT m.* FROM messages m
-            WHERE ((sender_id = ? AND recipient_id = ?) 
-                OR (sender_id = ? AND recipient_id = ?))
-            AND NOT EXISTS (SELECT 1 FROM message_deletions d WHERE d.message_id = m.id AND d.user_id = ?)
-         ORDER BY id ASC`,
-        [userId, otherUserId, otherUserId, userId, userId]
+         WHERE ((sender_id IN (${uPlaceholders}) AND recipient_id IN (${oPlaceholders})) 
+             OR (sender_id IN (${oPlaceholders}) AND recipient_id IN (${uPlaceholders})))
+           AND NOT EXISTS (
+               SELECT 1 FROM message_deletions d 
+               WHERE d.message_id = m.id AND d.user_id IN (${uPlaceholders})
+           )
+         ORDER BY m.id ASC`,
+        [...userVars, ...otherVars, ...otherVars, ...userVars, ...userVars]
     );
     return rows.map(mapMessage);
 };

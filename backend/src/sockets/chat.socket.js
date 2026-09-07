@@ -206,7 +206,54 @@ module.exports = (io) => {
             }
         });
 
-        // 7. Typing Indicators
+        // 7. Delete Message (Delete for Me vs Delete for Everyone)
+        socket.on("delete_message", async ({ messageId, deleteFor, to }) => {
+            const userId = socket.data.userId;
+            if (!userId || !messageId) return;
+
+            const isEveryone = deleteFor === "everyone";
+            try {
+                const result = await chatModel.deleteMessage(messageId, userId, isEveryone);
+                if (!result) return;
+
+                if (isEveryone) {
+                    // Notify sender
+                    socket.emit("message_deleted", {
+                        messageId: String(messageId),
+                        deleteFor: "everyone",
+                        message: result
+                    });
+
+                    // Notify recipient
+                    if (to) {
+                        const cleanTo = String(to).trim();
+                        const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+                        io.to(cleanTo).emit("message_deleted", {
+                            messageId: String(messageId),
+                            deleteFor: "everyone",
+                            message: result
+                        });
+                        io.to(altTo).emit("message_deleted", {
+                            messageId: String(messageId),
+                            deleteFor: "everyone",
+                            message: result
+                        });
+                    }
+                } else {
+                    // Delete for Me: Only notify sender's own devices/sockets
+                    socket.emit("message_deleted", {
+                        messageId: String(messageId),
+                        deleteFor: "me",
+                        messageId: String(messageId)
+                    });
+                }
+            } catch (err) {
+                console.error("delete_message error:", err.message);
+                socket.emit("message_error", { message: err.message });
+            }
+        });
+
+        // 8. Typing Indicators
         socket.on("typing", async ({ to, isTyping }) => {
             const from = socket.data.userId;
             if (!from || !to) return;

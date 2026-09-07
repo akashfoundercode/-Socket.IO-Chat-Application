@@ -486,13 +486,16 @@ export default function ChatList({
             conversations.map((item) => {
               const phoneDisplay = item.fullPhone || item.phone || item.id;
               const displayName = item.name || phoneDisplay;
-              const isLocationMsg = item.lastMessageType === 'location';
-              const isImageMsg = item.lastMessageType === 'image';
-              const lastMsg = isLocationMsg
-                ? '📍 Location'
-                : isImageMsg
-                  ? '📷 Photo'
-                  : item.lastMessage || 'Tap to chat';
+              const isDeletedMsg = item.lastMessageType === 'deleted';
+              const isLocationMsg = !isDeletedMsg && item.lastMessageType === 'location';
+              const isImageMsg = !isDeletedMsg && item.lastMessageType === 'image';
+              const lastMsg = isDeletedMsg
+                ? '🚫 This message was deleted'
+                : isLocationMsg
+                  ? '📍 Location'
+                  : isImageMsg
+                    ? '📷 Photo'
+                    : item.lastMessage || 'Tap to chat';
               const online = isUserOnline(phoneDisplay);
               const isActive = activeChat && (
                 activeChat === phoneDisplay ||

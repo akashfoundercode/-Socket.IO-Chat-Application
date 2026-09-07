@@ -191,6 +191,23 @@ export default function App() {
       );
     }
 
+    // Real-time Message Deleted Handler (Delete for everyone / Delete for me)
+    function onMessageDeleted({ messageId, deleteFor, message }) {
+      if (deleteFor === 'everyone') {
+        setMessages((prev) =>
+          prev.map((m) =>
+            String(m.id) === String(messageId)
+              ? { ...m, type: 'deleted', text: 'This message was deleted', mediaUrl: null }
+              : m
+          )
+        );
+      } else {
+        // Delete for me: remove message from local state
+        setMessages((prev) => prev.filter((m) => String(m.id) !== String(messageId)));
+      }
+      setRecentMessageEvent({ type: 'message_deleted', messageId, timestamp: Date.now() });
+    }
+
     // WebRTC Calling Socket Handlers
     function onIncomingCall({ from, callerName, callerAvatar, callType, offer }) {
       setCallState({
@@ -332,6 +349,7 @@ export default function App() {
     socket.on('message_saved', onMessageSaved);
     socket.on('messages_seen', onMessagesSeen);
     socket.on('messages_delivered', onMessagesDelivered);
+    socket.on('message_deleted', onMessageDeleted);
 
     socket.on('incoming_call', onIncomingCall);
     socket.on('call_accepted', onCallAccepted);
@@ -359,6 +377,7 @@ export default function App() {
       socket.off('message_saved', onMessageSaved);
       socket.off('messages_seen', onMessagesSeen);
       socket.off('messages_delivered', onMessagesDelivered);
+      socket.off('message_deleted', onMessageDeleted);
 
       socket.off('incoming_call', onIncomingCall);
       socket.off('call_accepted', onCallAccepted);
@@ -648,6 +667,19 @@ export default function App() {
     setCurrentView('inbox');
   };
 
+  // Delete Message Handler
+  const handleDeleteMessage = useCallback(
+    (messageId, deleteFor = 'everyone') => {
+      if (!messageId) return;
+      socket.emit('delete_message', {
+        messageId,
+        deleteFor,
+        to: activeChat
+      });
+    },
+    [activeChat]
+  );
+
   // Send Message (Text or Image Media)
   const handleSendMessage = useCallback((to, text, type = 'text', mediaUrl = null) => {
     socket.emit('message', { to, text, type, mediaUrl });
@@ -731,6 +763,7 @@ export default function App() {
                   messages={messages}
                   currentUserId={userId}
                   recipientId={activeChat}
+                  onDeleteMessage={handleDeleteMessage}
                 />
 
                 <MessageInput
