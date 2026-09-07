@@ -16,6 +16,7 @@ const COUNTRY_OPTIONS = [
 
 export default function ChatList({
   userId,
+  currentUser,
   activeChat,
   onlineUsers,
   typingUsers,
@@ -156,10 +157,40 @@ export default function ChatList({
     <div className="wa-inbox-screen">
       {/* WhatsApp Top Header Bar */}
       <div className="wa-inbox-header">
-        <div className="wa-inbox-brand">WhatsApp</div>
+        <div
+          className="wa-header-user-profile"
+          onClick={onOpenProfile}
+          title="My Profile & Settings"
+          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+        >
+          <div className="wa-avatar" style={{ width: '36px', height: '36px', fontSize: '18px' }}>
+            {currentUser?.avatar ? (
+              currentUser.avatar.length <= 4 ? (
+                <span>{currentUser.avatar}</span>
+              ) : (
+                <img
+                  src={currentUser.avatar}
+                  alt="My Avatar"
+                  style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                />
+              )
+            ) : (
+              <i className="fa-solid fa-user"></i>
+            )}
+          </div>
+          <div className="wa-inbox-user-name" style={{ fontWeight: '600', fontSize: '15px', color: '#ffffff' }}>
+            {currentUser?.name || 'WhatsApp'}
+          </div>
+        </div>
+
         <div className="wa-inbox-actions">
-          <button type="button" className="wa-inbox-icon" title="Camera">
-            <i className="fa-solid fa-camera"></i>
+          <button
+            type="button"
+            className="wa-inbox-icon"
+            title="Start New Chat"
+            onClick={() => setShowNewChatModal(true)}
+          >
+            <i className="fa-solid fa-message"></i>
           </button>
           <button
             type="button"

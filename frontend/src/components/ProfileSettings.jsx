@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { profileApi } from '../services/api';
+import { socket } from '../socket/socket';
 
 const PRESET_ABOUTS = [
   'Available',
@@ -93,6 +94,7 @@ export default function ProfileSettings({ userId, onBack, onProfileUpdated }) {
       setProfile(updated);
       setEditingName(false);
       showToast('Name updated successfully!');
+      socket.emit('profile_updated', { userId, ...updated });
       if (onProfileUpdated) onProfileUpdated(updated);
     } catch (err) {
       setErrorMsg('Failed to update name');
@@ -114,6 +116,7 @@ export default function ProfileSettings({ userId, onBack, onProfileUpdated }) {
       setProfile(updated);
       setEditingAbout(false);
       showToast('About status updated!');
+      socket.emit('profile_updated', { userId, ...updated });
       if (onProfileUpdated) onProfileUpdated(updated);
     } catch (err) {
       setErrorMsg('Failed to update about');
@@ -131,7 +134,8 @@ export default function ProfileSettings({ userId, onBack, onProfileUpdated }) {
       const updated = { ...profile, avatar: avatarData };
       await profileApi.updateProfile(userId, updated);
       setProfile(updated);
-      showToast('Profile photo updated!');
+      showToast(avatarData ? 'Profile photo updated!' : 'Profile photo removed');
+      socket.emit('profile_updated', { userId, ...updated });
       if (onProfileUpdated) onProfileUpdated(updated);
     } catch (err) {
       setErrorMsg('Failed to update photo');
@@ -191,6 +195,7 @@ export default function ProfileSettings({ userId, onBack, onProfileUpdated }) {
       setProfile(updated);
       const label = newPrivacy === 'everyone' ? 'Everyone' : newPrivacy === 'contacts' ? 'My Contacts' : 'Nobody (Show to me only)';
       showToast(`Privacy set to: ${label}`);
+      socket.emit('profile_updated', { userId, ...updated });
       if (onProfileUpdated) onProfileUpdated(updated);
     } catch (err) {
       setErrorMsg('Failed to update privacy');

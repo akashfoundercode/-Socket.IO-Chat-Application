@@ -143,8 +143,8 @@ export default function CallModal({
               {callState.isAccepted
                 ? formatDuration(duration)
                 : callState.isIncoming
-                ? 'Connecting...'
-                : 'Calling...'}
+                  ? 'Connecting...'
+                  : 'Calling...'}
             </div>
           </div>
 
@@ -261,3 +261,4 @@ export default function CallModal({
     </div>
   );
 }
+

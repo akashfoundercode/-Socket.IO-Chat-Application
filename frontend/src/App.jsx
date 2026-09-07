@@ -232,12 +232,36 @@ export default function App() {
       }
     }
 
+    // Real-Time Cross-User Profile Update Sync
+    function onUserProfileChanged(updatedUser) {
+      if (!updatedUser?.userId) return;
+      const targetId = String(updatedUser.userId).trim();
+
+      if (
+        activeChat &&
+        (activeChat === targetId ||
+          activeChat === `+${targetId}` ||
+          activeChat === targetId.replace(/^\+/, ''))
+      ) {
+        setRecipientProfile((prev) => ({
+          ...prev,
+          name: updatedUser.name || prev?.name,
+          about: updatedUser.about || prev?.about,
+          avatar: updatedUser.avatar !== undefined ? updatedUser.avatar : prev?.avatar,
+          avatarPrivacy: updatedUser.avatarPrivacy || prev?.avatarPrivacy
+        }));
+      }
+
+      setRecentMessageEvent({ type: 'profile_sync', timestamp: Date.now() });
+    }
+
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('joined', onJoined);
     socket.on('online_users', onOnlineUsers);
     socket.on('user_status', onUserStatus);
     socket.on('typing', onTyping);
+    socket.on('user_profile_changed', onUserProfileChanged);
     socket.on('conversation_history', onConversationHistory);
     socket.on('message_received', onMessageReceived);
     socket.on('message_saved', onMessageSaved);
@@ -261,6 +285,7 @@ export default function App() {
       socket.off('online_users', onOnlineUsers);
       socket.off('user_status', onUserStatus);
       socket.off('typing', onTyping);
+      socket.off('user_profile_changed', onUserProfileChanged);
       socket.off('conversation_history', onConversationHistory);
       socket.off('message_received', onMessageReceived);
       socket.off('message_saved', onMessageSaved);
@@ -546,6 +571,7 @@ export default function App() {
             ) : (
               <ChatList
                 userId={userId}
+                currentUser={currentUser}
                 activeChat={activeChat}
                 onlineUsers={onlineUsers}
                 typingUsers={typingUsers}
