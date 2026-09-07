@@ -1,0 +1,17 @@
+{
+  "name": "chat-backend",
+  "version": "1.0.0",
+  "description": "Socket.IO Chat Backend (Node.js/Express/MySQL)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.0.0",
+    "mysql2": "^3.24.3",
+    "socket.io": "^4.8.1"
+  }
+}

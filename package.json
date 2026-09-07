@@ -1,16 +1,18 @@
 {
-  "name": "chat-app",
+  "name": "socket-chat-monorepo",
   "version": "1.0.0",
-  "description": "Socket.IO MVC Chat Application",
-  "main": "src/server.js",
+  "private": true,
+  "description": "Socket.IO Chat Application - Node.js Backend & React.js Frontend",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run backend:dev\" \"npm run frontend:dev\"",
+    "backend:dev": "npm --prefix backend run dev",
+    "backend:start": "npm --prefix backend start",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "frontend:preview": "npm --prefix frontend run preview",
+    "install:all": "npm install && npm --prefix backend install && npm --prefix frontend install"
   },
-  "dependencies": {
-    "dotenv": "^17.4.2",
-    "express": "^5.0.0",
-    "mysql2": "^3.24.3",
-    "socket.io": "^4.0.0"
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }
