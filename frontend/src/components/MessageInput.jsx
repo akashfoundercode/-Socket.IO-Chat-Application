@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import EmojiPicker from './EmojiPicker';
 
 export default function MessageInput({ recipientId, onRecipientChange, onSendMessage }) {
   const [text, setText] = useState('');
   const [showRecipientInput, setShowRecipientInput] = useState(!recipientId);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -10,11 +12,24 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
     if (trimmed && recipientId.trim()) {
       onSendMessage(recipientId.trim(), trimmed);
       setText('');
+      setShowEmojiPicker(false);
     }
+  };
+
+  const handleSelectEmoji = (emoji) => {
+    setText((prev) => prev + emoji);
   };
 
   return (
     <div className="wa-bottom-bar">
+      {/* WhatsApp Categorized Full Emoji Picker */}
+      {showEmojiPicker && (
+        <EmojiPicker
+          onSelectEmoji={handleSelectEmoji}
+          onClose={() => setShowEmojiPicker(false)}
+        />
+      )}
+
       {/* Top Recipient Changer Bar */}
       {(!recipientId || showRecipientInput) && (
         <div className="wa-recipient-bar">
@@ -42,8 +57,13 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
       {/* WhatsApp Message Input Row */}
       <form className="wa-input-row" onSubmit={handleSubmit}>
         <div className="wa-input-capsule">
-          <button type="button" className="wa-capsule-icon" title="Emoji">
-            <i className="fa-regular fa-face-smile"></i>
+          <button
+            type="button"
+            className={`wa-capsule-icon ${showEmojiPicker ? 'active' : ''}`}
+            title="Emoji Keyboard"
+            onClick={() => setShowEmojiPicker((prev) => !prev)}
+          >
+            <i className={showEmojiPicker ? 'fa-solid fa-keyboard' : 'fa-regular fa-face-smile'}></i>
           </button>
 
           <input
@@ -85,3 +105,4 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
     </div>
   );
 }
+

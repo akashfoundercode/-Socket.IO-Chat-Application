@@ -1764,3 +1764,143 @@ body {
   margin-top: 2px;
   line-height: 1.3;
 }
+
+/* =========================================================
+   WhatsApp Categorized Emoji Picker / Keyboard
+   ========================================================= */
+.wa-emoji-picker-container {
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  height: 250px;
+  overflow: hidden;
+  animation: slideUp 0.18s ease-out;
+  margin: 0 -10px -8px;
+  padding: 8px 10px 4px;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.wa-emoji-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.wa-emoji-search-box {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f3f4f6;
+  border-radius: 16px;
+  padding: 4px 10px;
+}
+
+.wa-emoji-search-box i {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.wa-emoji-search-box input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 12px;
+  color: #1f2937;
+}
+
+.wa-emoji-clear-btn,
+.wa-emoji-close-btn {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.wa-emoji-tabs-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #f3f4f6;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  overflow-x: auto;
+}
+
+.wa-emoji-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 18px;
+  padding: 3px 6px;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  transition: all 0.15s;
+  opacity: 0.65;
+}
+
+.wa-emoji-tab-btn:hover {
+  opacity: 1;
+  background: #f9fafb;
+}
+
+.wa-emoji-tab-btn.active {
+  opacity: 1;
+  border-bottom-color: #008069;
+  transform: scale(1.1);
+}
+
+.wa-emoji-category-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  padding-left: 2px;
+}
+
+.wa-emoji-grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  padding-right: 2px;
+}
+
+.wa-emoji-item-btn {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  padding: 6px 2px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s, background 0.1s;
+}
+
+.wa-emoji-item-btn:hover {
+  transform: scale(1.25);
+  background: #f3f4f6;
+}
