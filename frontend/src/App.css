@@ -3201,3 +3201,303 @@ body {
   background: #bbf7d0;
   color: #166534;
 }
+
+/* =========================================================
+   WhatsApp Attachment Popup Menu Styling
+   ========================================================= */
+
+.wa-attach-popup-menu {
+  position: absolute;
+  bottom: 70px;
+  right: 58px;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 10px 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  display: flex;
+  gap: 16px;
+  z-index: 100;
+  animation: slideUp 0.15s ease-out;
+  border: 1px solid #e9edef;
+}
+
+.wa-attach-menu-item {
+  background: none;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 4px;
+  transition: transform 0.15s;
+}
+
+.wa-attach-menu-item:hover {
+  transform: translateY(-3px);
+}
+
+.wa-attach-menu-item span {
+  font-size: 11.5px;
+  color: #54656f;
+  font-weight: 500;
+}
+
+.wa-attach-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 20px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.wa-attach-circle.gallery {
+  background: linear-gradient(135deg, #ac44cf 0%, #bf59cf 100%);
+}
+
+.wa-attach-circle.location {
+  background: linear-gradient(135deg, #008069 0%, #25d366 100%);
+}
+
+/* =========================================================
+   Location Share Modal & Map Preview
+   ========================================================= */
+
+.wa-location-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(11, 20, 26, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.wa-location-modal {
+  width: 100%;
+  max-width: 520px;
+  background: #ffffff;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  animation: frameAppear 0.2s ease-out;
+}
+
+.wa-location-modal-header {
+  background: #008069;
+  padding: 14px 18px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wa-location-modal-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.wa-location-close-btn {
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.wa-location-modal-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wa-location-map-container {
+  width: 100%;
+  height: 240px;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid #e9edef;
+}
+
+.wa-location-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.wa-location-marker-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  font-size: 32px;
+  color: #ea4335;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
+  animation: pinBounce 1.2s infinite ease-in-out alternate;
+}
+
+@keyframes pinBounce {
+  from {
+    transform: translate(-50%, -100%);
+  }
+  to {
+    transform: translate(-50%, -115%);
+  }
+}
+
+.wa-location-info-card {
+  background: #f0f2f5;
+  padding: 12px 14px;
+  border-radius: 10px;
+}
+
+.wa-location-info-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wa-loc-icon-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #008069;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.wa-loc-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #111b21;
+}
+
+.wa-loc-subtitle {
+  font-size: 11.5px;
+  color: #667781;
+  margin-top: 2px;
+}
+
+.wa-location-modal-footer {
+  padding: 12px 16px 16px;
+  border-top: 1px solid #f0f2f5;
+}
+
+.wa-send-location-btn {
+  width: 100%;
+  padding: 12px;
+  background: #008069;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: background 0.15s;
+}
+
+.wa-send-location-btn:hover {
+  background: #006b57;
+}
+
+/* =========================================================
+   Location Bubble Message Styling
+   ========================================================= */
+
+.wa-bubble.location-bubble {
+  padding: 4px;
+  max-width: 320px;
+}
+
+.wa-bubble-location-card {
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.wa-location-bubble-map-wrap {
+  position: relative;
+  width: 100%;
+  height: 160px;
+  background: #e5e7eb;
+}
+
+.wa-location-bubble-map {
+  width: 100%;
+  height: 100%;
+  border: none;
+  pointer-events: none;
+}
+
+.wa-location-map-clickable-cover {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.wa-location-pin-icon {
+  font-size: 32px;
+  color: #ea4335;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+.wa-location-bubble-footer {
+  padding: 8px 10px 6px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wa-location-bubble-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111b21;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wa-location-open-link {
+  font-size: 11.5px;
+  color: #008069;
+  font-weight: 600;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wa-location-open-link:hover {
+  text-decoration: underline;
+}

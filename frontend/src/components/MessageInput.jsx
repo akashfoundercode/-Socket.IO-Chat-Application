@@ -13,11 +13,17 @@ export default function MessageInput({
   const [text, setText] = useState('');
   const [showRecipientInput, setShowRecipientInput] = useState(!recipientId);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
 
   // Image sharing states
   const [pendingImage, setPendingImage] = useState(null);
   const [imageCaption, setImageCaption] = useState('');
   const [showImagePreview, setShowImagePreview] = useState(false);
+
+  // Location sharing states
+  const [isLocating, setIsLocating] = useState(false);
+  const [pendingLocation, setPendingLocation] = useState(null);
+  const [showLocationModal, setShowLocationModal] = useState(false);
 
   const fileInputRef = useRef(null);
   const typingTimerRef = useRef(null);
@@ -54,6 +60,7 @@ export default function MessageInput({
       onSendMessage(recipientId.trim(), trimmed, 'text', null);
       setText('');
       setShowEmojiPicker(false);
+      setShowAttachMenu(false);
     }
   };
 
@@ -103,6 +110,7 @@ export default function MessageInput({
         setImageCaption('');
         setShowImagePreview(true);
         setShowEmojiPicker(false);
+        setShowAttachMenu(false);
       };
       img.src = event.target.result;
     };
@@ -121,6 +129,52 @@ export default function MessageInput({
     setShowImagePreview(false);
   };
 
+  // 📍 Fetch Current GPS Location
+  const handleFetchLocation = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
+    }
+
+    setIsLocating(true);
+    setShowAttachMenu(false);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        setPendingLocation({
+          latitude,
+          longitude,
+          accuracy: Math.round(accuracy || 10),
+          title: 'Current Location'
+        });
+        setShowLocationModal(true);
+        setIsLocating(false);
+      },
+      (error) => {
+        setIsLocating(false);
+        console.error('Geolocation error:', error);
+        alert(`Could not get location: ${error.message || 'Permission denied'}. Please allow location access in your browser.`);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  };
+
+  // 📍 Send Location Message
+  const handleSendLocation = () => {
+    if (!pendingLocation || !recipientId.trim() || isBlocked) return;
+    const locationPayload = JSON.stringify({
+      latitude: pendingLocation.latitude,
+      longitude: pendingLocation.longitude,
+      accuracy: pendingLocation.accuracy,
+      title: pendingLocation.title || 'Current Location'
+    });
+
+    onSendMessage(recipientId.trim(), locationPayload, 'location', null);
+    setShowLocationModal(false);
+    setPendingLocation(null);
+  };
+
   return (
     <div className="wa-bottom-bar">
       {/* Hidden File Input for Image Attachment */}
@@ -131,6 +185,69 @@ export default function MessageInput({
         style={{ display: 'none' }}
         onChange={handleImageSelected}
       />
+
+      {/* Location Share Preview Modal */}
+      {showLocationModal && pendingLocation && !isBlocked && (
+        <div className="wa-location-modal-overlay" onClick={() => setShowLocationModal(false)}>
+          <div className="wa-location-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="wa-location-modal-header">
+              <button
+                type="button"
+                className="wa-location-close-btn"
+                onClick={() => {
+                  setShowLocationModal(false);
+                  setPendingLocation(null);
+                }}
+                title="Cancel"
+              >
+                ✕
+              </button>
+              <h3>Share Location</h3>
+              <div style={{ width: '24px' }}></div>
+            </div>
+
+            <div className="wa-location-modal-body">
+              {/* Interactive OpenStreetMap Pin Map */}
+              <div className="wa-location-map-container">
+                <iframe
+                  title="GPS Location Map"
+                  className="wa-location-iframe"
+                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${pendingLocation.longitude - 0.006}%2C${pendingLocation.latitude - 0.004}%2C${pendingLocation.longitude + 0.006}%2C${pendingLocation.latitude + 0.004}&layer=mapnik&marker=${pendingLocation.latitude}%2C${pendingLocation.longitude}`}
+                />
+                <div className="wa-location-marker-pulse">
+                  <i className="fa-solid fa-location-dot"></i>
+                </div>
+              </div>
+
+              {/* Location Details Info */}
+              <div className="wa-location-info-card">
+                <div className="wa-location-info-left">
+                  <div className="wa-loc-icon-circle">
+                    <i className="fa-solid fa-location-crosshairs"></i>
+                  </div>
+                  <div>
+                    <div className="wa-loc-title">Send Your Current Location</div>
+                    <div className="wa-loc-subtitle">
+                      Accurate to {pendingLocation.accuracy} meters • ({pendingLocation.latitude.toFixed(5)}, {pendingLocation.longitude.toFixed(5)})
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="wa-location-modal-footer">
+              <button
+                type="button"
+                className="wa-send-location-btn"
+                onClick={handleSendLocation}
+              >
+                <i className="fa-solid fa-paper-plane"></i>
+                <span>Send Location to {recipientId}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Image Send Preview Modal */}
       {showImagePreview && pendingImage && !isBlocked && (
@@ -184,6 +301,36 @@ export default function MessageInput({
               <i className="fa-solid fa-paper-plane"></i>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* WhatsApp Attachment Menu Popup */}
+      {showAttachMenu && !isBlocked && (
+        <div className="wa-attach-popup-menu">
+          <button
+            type="button"
+            className="wa-attach-menu-item item-gallery"
+            onClick={() => {
+              setShowAttachMenu(false);
+              fileInputRef.current?.click();
+            }}
+          >
+            <div className="wa-attach-circle gallery">
+              <i className="fa-solid fa-image"></i>
+            </div>
+            <span>Photos & Videos</span>
+          </button>
+
+          <button
+            type="button"
+            className="wa-attach-menu-item item-location"
+            onClick={handleFetchLocation}
+          >
+            <div className="wa-attach-circle location">
+              <i className="fa-solid fa-location-dot"></i>
+            </div>
+            <span>Location</span>
+          </button>
         </div>
       )}
 
@@ -247,7 +394,10 @@ export default function MessageInput({
               type="button"
               className={`wa-capsule-icon ${showEmojiPicker ? 'active' : ''}`}
               title="Emoji Keyboard"
-              onClick={() => setShowEmojiPicker((prev) => !prev)}
+              onClick={() => {
+                setShowEmojiPicker((prev) => !prev);
+                setShowAttachMenu(false);
+              }}
             >
               <i className={showEmojiPicker ? 'fa-solid fa-keyboard' : 'fa-regular fa-face-smile'}></i>
             </button>
@@ -263,11 +413,18 @@ export default function MessageInput({
 
             <button
               type="button"
-              className="wa-capsule-icon"
-              title="Attach Photo / Image"
-              onClick={() => fileInputRef.current?.click()}
+              className={`wa-capsule-icon ${showAttachMenu ? 'active' : ''}`}
+              title="Attach File or Location"
+              onClick={() => {
+                setShowAttachMenu((prev) => !prev);
+                setShowEmojiPicker(false);
+              }}
             >
-              <i className="fa-solid fa-paperclip"></i>
+              {isLocating ? (
+                <i className="fa-solid fa-circle-notch fa-spin" style={{ color: '#008069' }}></i>
+              ) : (
+                <i className="fa-solid fa-paperclip"></i>
+              )}
             </button>
 
             <button

@@ -485,8 +485,13 @@ export default function ChatList({
           ) : (
             conversations.map((item) => {
               const phoneDisplay = item.fullPhone || item.phone || item.id;
-              const displayName = item.name || phoneDisplay;
-              const lastMsg = item.lastMessage || 'Tap to chat';
+              const isLocationMsg = item.lastMessageType === 'location';
+              const isImageMsg = item.lastMessageType === 'image';
+              const lastMsg = isLocationMsg
+                ? '📍 Location'
+                : isImageMsg
+                  ? '📷 Photo'
+                  : item.lastMessage || 'Tap to chat';
               const online = isUserOnline(phoneDisplay);
               const isActive = activeChat && (
                 activeChat === phoneDisplay ||
@@ -545,7 +550,11 @@ export default function ChatList({
                           typing<span className="wa-typing-dots"><span className="dot">.</span><span className="dot">.</span><span className="dot">.</span></span>
                         </span>
                       ) : (
-                        <span className="wa-item-msg">{lastMsg}</span>
+                        <span className="wa-item-msg">
+                          {isLocationMsg && <i className="fa-solid fa-location-dot" style={{ color: '#008069', marginRight: '4px' }}></i>}
+                          {isImageMsg && <i className="fa-solid fa-camera" style={{ color: '#8696a0', marginRight: '4px' }}></i>}
+                          {lastMsg}
+                        </span>
                       )}
                     </div>
                   </div>

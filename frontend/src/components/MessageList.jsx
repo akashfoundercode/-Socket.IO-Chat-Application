@@ -85,11 +85,22 @@ export default function MessageList({ messages, currentUserId, recipientId }) {
             : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
           const isImage = msg.type === 'image' || Boolean(msg.mediaUrl);
+          const isLocation = msg.type === 'location';
+
+          let locationData = null;
+          if (isLocation && msg.text) {
+            try {
+              locationData = JSON.parse(msg.text);
+            } catch (e) {
+              // fallback if plain text coords
+              locationData = { latitude: 0, longitude: 0, title: 'Location' };
+            }
+          }
 
           return (
             <div
               key={msg.id || index}
-              className={`wa-bubble ${isSent ? 'sent' : 'received'}`}
+              className={`wa-bubble ${isSent ? 'sent' : 'received'} ${isLocation ? 'location-bubble' : ''}`}
             >
               {/* Photo Attachment */}
               {isImage && msg.mediaUrl && (
@@ -102,8 +113,48 @@ export default function MessageList({ messages, currentUserId, recipientId }) {
                 </div>
               )}
 
+              {/* 📍 GPS Location Card Bubble */}
+              {isLocation && locationData && (
+                <div className="wa-bubble-location-card">
+                  <div className="wa-location-bubble-map-wrap">
+                    <iframe
+                      title="Pinned Location Map"
+                      className="wa-location-bubble-map"
+                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${locationData.longitude - 0.005}%2C${locationData.latitude - 0.003}%2C${locationData.longitude + 0.005}%2C${locationData.latitude + 0.003}&layer=mapnik&marker=${locationData.latitude}%2C${locationData.longitude}`}
+                    />
+                    <a
+                      href={`https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="wa-location-map-clickable-cover"
+                      title="Open full map in Google Maps"
+                    >
+                      <div className="wa-location-pin-icon">
+                        <i className="fa-solid fa-location-dot"></i>
+                      </div>
+                    </a>
+                  </div>
+
+                  <div className="wa-location-bubble-footer">
+                    <div className="wa-location-bubble-title">
+                      <i className="fa-solid fa-location-crosshairs" style={{ color: '#008069' }}></i>
+                      <span>{locationData.title || 'Shared Location'}</span>
+                    </div>
+                    <a
+                      href={`https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="wa-location-open-link"
+                    >
+                      <span>Open in Google Maps</span>
+                      <i className="fa-solid fa-arrow-up-right-from-square"></i>
+                    </a>
+                  </div>
+                </div>
+              )}
+
               {/* Text Message or Caption */}
-              {msg.text && (
+              {!isLocation && msg.text && (
                 <div className={isImage ? 'wa-bubble-caption' : 'wa-bubble-text'}>
                   {msg.text}
                 </div>
