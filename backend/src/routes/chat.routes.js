@@ -29,4 +29,8 @@ router.post("/unblock", chatController.unblockContact);
 router.get("/blocked/:userId", chatController.getBlockedList);
 router.get("/block-status", chatController.checkBlockStatus);
 
+// 7. Unread message notification count
+router.get("/unread/:userId", chatController.getUnreadNotifications);
+router.get("/unread", chatController.getUnreadNotifications);
+
 module.exports = router;

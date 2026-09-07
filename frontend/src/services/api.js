@@ -1,5 +1,4 @@
 /**
- * Centralized API Service Manager for Frontend
  * All REST API endpoints and HTTP network requests are managed here.
  * Any URL or API changes made in this file automatically reflect across all frontend components.
  */
@@ -136,6 +135,14 @@ export const chatApi = {
       otherUserId
     });
     return request(`/api/chat/history?${params.toString()}`);
+  },
+
+  /**
+   * Get total & per-sender unread message notification counts
+   * GET /api/chat/unread/:userId
+   */
+  getUnreadCount: (userId) => {
+    return request(`/api/chat/unread/${encodeURIComponent(userId)}`);
   }
 };
 

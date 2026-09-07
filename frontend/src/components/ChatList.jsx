@@ -272,9 +272,13 @@ export default function ChatList({
           onClick={() => setActiveTab('chats')}
         >
           CHATS
-          {conversations.length > 0 && (
+          {conversations.some((c) => (c.unreadCount || 0) > 0) ? (
+            <span className="wa-tab-badge unread-pill">
+              {conversations.reduce((acc, c) => acc + (Number(c.unreadCount) || 0), 0)}
+            </span>
+          ) : conversations.length > 0 ? (
             <span className="wa-tab-badge">{conversations.length}</span>
-          )}
+          ) : null}
         </button>
         <button
           type="button"
@@ -545,8 +549,12 @@ export default function ChatList({
                   </div>
                   <div className="wa-item-center">
                     <div className="wa-item-top">
-                      <span className="wa-item-name">{displayName}</span>
-                      {time && <span className="wa-item-time">{time}</span>}
+                      <span className={`wa-item-name ${item.unreadCount > 0 ? 'unread' : ''}`}>{displayName}</span>
+                      {time && (
+                        <span className={`wa-item-time ${item.unreadCount > 0 ? 'unread' : ''}`}>
+                          {time}
+                        </span>
+                      )}
                     </div>
                     <div className="wa-item-bottom">
                       {isContactTyping(phoneDisplay) ? (
@@ -554,10 +562,15 @@ export default function ChatList({
                           typing<span className="wa-typing-dots"><span className="dot">.</span><span className="dot">.</span><span className="dot">.</span></span>
                         </span>
                       ) : (
-                        <span className="wa-item-msg">
+                        <span className={`wa-item-msg ${item.unreadCount > 0 ? 'unread' : ''}`}>
                           {isLocationMsg && <i className="fa-solid fa-location-dot" style={{ color: '#008069', marginRight: '4px' }}></i>}
                           {isImageMsg && <i className="fa-solid fa-camera" style={{ color: '#8696a0', marginRight: '4px' }}></i>}
                           {lastMsg}
+                        </span>
+                      )}
+                      {item.unreadCount > 0 && (
+                        <span className="wa-unread-badge" title={`${item.unreadCount} new unread message${item.unreadCount > 1 ? 's' : ''}`}>
+                          {item.unreadCount > 99 ? '99+' : item.unreadCount}
                         </span>
                       )}
                     </div>

@@ -270,7 +270,8 @@ const listConversations = async (userId) => {
             m.status AS lastMessageStatus,
             m.created_at AS lastMessageAt,
             m.sender_id AS lastMessageSender,
-            m.type AS lastMessageType
+            m.type AS lastMessageType,
+            COALESCE(unread.unread_count, 0) AS unreadCount
          FROM (
             SELECT DISTINCT 
                 CASE 
@@ -288,8 +289,18 @@ const listConversations = async (userId) => {
             ORDER BY sub_m.id DESC
             LIMIT 1
          )
+         LEFT JOIN (
+            SELECT 
+                sender_id AS contact_sender_id,
+                COUNT(*) AS unread_count
+            FROM messages
+            WHERE recipient_id IN (${placeholders}) 
+              AND status <> 'seen'
+              AND type <> 'deleted'
+            GROUP BY sender_id
+         ) AS unread ON (unread.contact_sender_id = contact.id OR unread.contact_sender_id = u.full_phone OR unread.contact_sender_id = u.phone)
          ORDER BY m.id DESC`,
-        [...userVars, ...userVars, ...userVars, ...userVars, ...userVars]
+        [...userVars, ...userVars, ...userVars, ...userVars, ...userVars, ...userVars]
     );
 
     const conversations = await Promise.all(
@@ -300,6 +311,7 @@ const listConversations = async (userId) => {
 
             return {
                 ...conv,
+                unreadCount: Number(conv.unreadCount || 0),
                 isBlockedByMe,
                 isBlockedByThem,
                 avatar: isBlockedByMe || isBlockedByThem ? null : conv.avatar,
@@ -515,6 +527,35 @@ const updateLastSeen = async (id) => {
     }
 };
 
+const getUnreadCount = async (userId) => {
+    const pool = getPool();
+    const cleanUserId = String(userId || "").trim();
+    if (!cleanUserId) return { totalUnread: 0, bySender: {} };
+
+    const userVars = getPhoneVariants(cleanUserId);
+    const placeholders = userVars.map(() => "?").join(",");
+
+    const [rows] = await pool.execute(
+        `SELECT sender_id AS senderId, COUNT(*) AS count 
+         FROM messages 
+         WHERE recipient_id IN (${placeholders}) 
+           AND status <> 'seen' 
+           AND type <> 'deleted' 
+         GROUP BY sender_id`,
+        userVars
+    );
+
+    let total = 0;
+    const bySender = {};
+    for (const r of rows) {
+        const c = Number(r.count || 0);
+        total += c;
+        bySender[r.senderId] = c;
+    }
+
+    return { totalUnread: total, bySender };
+};
+
 module.exports = {
     addMessage,
     findOrCreateContact,
@@ -533,5 +574,6 @@ module.exports = {
     blockUser,
     unblockUser,
     getBlockStatus,
-    getBlockedUsers
+    getBlockedUsers,
+    getUnreadCount
 };

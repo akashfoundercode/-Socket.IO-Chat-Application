@@ -245,6 +245,29 @@ const checkBlockStatus = async (req, res) => {
     }
 };
 
+/**
+ * Get total and per-sender unread message notification counts for a user
+ * GET /api/chat/unread/:userId
+ */
+const getUnreadNotifications = async (req, res) => {
+    try {
+        const userId = normalizeId(req.params.userId || req.query.userId);
+        if (!userId) {
+            return res.status(400).json({ success: false, message: "User ID is required" });
+        }
+
+        const unreadData = await chatModel.getUnreadCount(userId);
+        return res.json({
+            success: true,
+            userId,
+            ...unreadData
+        });
+    } catch (error) {
+        console.error("getUnreadNotifications error:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     addContact,
     searchUsers,
@@ -255,5 +278,6 @@ module.exports = {
     blockContact,
     unblockContact,
     getBlockedList,
-    checkBlockStatus
+    checkBlockStatus,
+    getUnreadNotifications
 };
