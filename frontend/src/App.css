@@ -1904,3 +1904,193 @@ body {
   transform: scale(1.25);
   background: #f3f4f6;
 }
+
+/* =========================================================
+   Chat Image Bubble & Lightbox
+   ========================================================= */
+.wa-bubble-image-wrap {
+  margin: -2px -5px 4px -6px;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  background: #000000;
+  max-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wa-bubble-img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  display: block;
+  transition: opacity 0.15s;
+}
+
+.wa-bubble-img:hover {
+  opacity: 0.95;
+}
+
+.wa-bubble-caption {
+  font-size: 13.5px;
+  color: #111b21;
+  word-break: break-word;
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+/* Image Send Preview Modal (Full Screen inside phone frame) */
+.wa-image-preview-modal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #0b141a;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.wa-image-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  color: #ffffff;
+  background: rgba(11, 20, 26, 0.85);
+  z-index: 10;
+}
+
+.wa-image-preview-close {
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.wa-image-preview-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  overflow: hidden;
+}
+
+.wa-preview-display-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.wa-image-preview-footer {
+  padding: 10px 12px 14px;
+  background: rgba(11, 20, 26, 0.95);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wa-caption-input-wrap {
+  flex: 1;
+  background: #1f2c34;
+  border-radius: 20px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wa-caption-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #ffffff;
+  font-size: 13.5px;
+}
+
+.wa-caption-input::placeholder {
+  color: #8696a0;
+}
+
+.wa-preview-send-btn {
+  width: 42px;
+  height: 42px;
+  background: #00a884;
+  color: #ffffff;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.wa-preview-send-btn:hover {
+  background: #008069;
+}
+
+/* Lightbox Fullscreen Viewer */
+.wa-lightbox-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.wa-lightbox-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wa-lightbox-img {
+  max-width: 100%;
+  max-height: 85vh;
+  border-radius: 6px;
+  box-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
+  object-fit: contain;
+}
+
+.wa-lightbox-close {
+  position: absolute;
+  top: -36px;
+  right: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: #ffffff;
+  font-size: 20px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.wa-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.4);
+}

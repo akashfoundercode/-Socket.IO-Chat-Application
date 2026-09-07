@@ -235,9 +235,9 @@ export default function App() {
     setCurrentView('inbox');
   };
 
-  // Send Message
-  const handleSendMessage = useCallback((to, text) => {
-    socket.emit('message', { to, text });
+  // Send Message (Text or Image Media)
+  const handleSendMessage = useCallback((to, text, type = 'text', mediaUrl = null) => {
+    socket.emit('message', { to, text, type, mediaUrl });
   }, []);
 
   return (

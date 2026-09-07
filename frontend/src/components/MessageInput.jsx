@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import EmojiPicker from './EmojiPicker';
 
 export default function MessageInput({ recipientId, onRecipientChange, onSendMessage }) {
@@ -6,11 +6,18 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
   const [showRecipientInput, setShowRecipientInput] = useState(!recipientId);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
+  // Image sharing states
+  const [pendingImage, setPendingImage] = useState(null);
+  const [imageCaption, setImageCaption] = useState('');
+  const [showImagePreview, setShowImagePreview] = useState(false);
+
+  const fileInputRef = useRef(null);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const trimmed = text.trim();
     if (trimmed && recipientId.trim()) {
-      onSendMessage(recipientId.trim(), trimmed);
+      onSendMessage(recipientId.trim(), trimmed, 'text', null);
       setText('');
       setShowEmojiPicker(false);
     }
@@ -20,8 +27,130 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
     setText((prev) => prev + emoji);
   };
 
+  // When image is picked from file dialog
+  const handleImageSelected = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select a valid image file');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        // Optimize & resize for crisp messaging
+        const canvas = document.createElement('canvas');
+        const MAX_DIM = 1200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_DIM || height > MAX_DIM) {
+          if (width > height) {
+            height = Math.round((height * MAX_DIM) / width);
+            width = MAX_DIM;
+          } else {
+            width = Math.round((width * MAX_DIM) / height);
+            height = MAX_DIM;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        setPendingImage(dataUrl);
+        setImageCaption('');
+        setShowImagePreview(true);
+        setShowEmojiPicker(false);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+
+    // Reset input
+    e.target.value = '';
+  };
+
+  // Send Image with optional caption
+  const handleSendImage = () => {
+    if (!pendingImage || !recipientId.trim()) return;
+    onSendMessage(recipientId.trim(), imageCaption.trim(), 'image', pendingImage);
+    setPendingImage(null);
+    setImageCaption('');
+    setShowImagePreview(false);
+  };
+
   return (
     <div className="wa-bottom-bar">
+      {/* Hidden File Input for Image Attachment */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/png, image/jpeg, image/jpg, image/webp, image/gif"
+        style={{ display: 'none' }}
+        onChange={handleImageSelected}
+      />
+
+      {/* Image Send Preview Modal */}
+      {showImagePreview && pendingImage && (
+        <div className="wa-image-preview-modal">
+          <div className="wa-image-preview-header">
+            <button
+              type="button"
+              className="wa-image-preview-close"
+              onClick={() => {
+                setShowImagePreview(false);
+                setPendingImage(null);
+                setImageCaption('');
+              }}
+              title="Cancel"
+            >
+              ✕
+            </button>
+            <span>Send Photo to {recipientId}</span>
+            <div style={{ width: '24px' }}></div>
+          </div>
+
+          <div className="wa-image-preview-body">
+            <img src={pendingImage} alt="Preview" className="wa-preview-display-img" />
+          </div>
+
+          <div className="wa-image-preview-footer">
+            <div className="wa-caption-input-wrap">
+              <i className="fa-regular fa-face-smile" style={{ color: '#8696a0' }}></i>
+              <input
+                type="text"
+                className="wa-caption-input"
+                placeholder="Add a caption..."
+                value={imageCaption}
+                onChange={(e) => setImageCaption(e.target.value)}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSendImage();
+                  }
+                }}
+              />
+            </div>
+
+            <button
+              type="button"
+              className="wa-preview-send-btn"
+              onClick={handleSendImage}
+              title="Send Photo"
+            >
+              <i className="fa-solid fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* WhatsApp Categorized Full Emoji Picker */}
       {showEmojiPicker && (
         <EmojiPicker
@@ -78,14 +207,19 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
           <button
             type="button"
             className="wa-capsule-icon"
+            title="Attach Photo / Image"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <i className="fa-solid fa-paperclip"></i>
+          </button>
+
+          <button
+            type="button"
+            className="wa-capsule-icon"
             title="Change recipient"
             onClick={() => setShowRecipientInput((prev) => !prev)}
           >
             <i className="fa-solid fa-address-book"></i>
-          </button>
-
-          <button type="button" className="wa-capsule-icon" title="Attach">
-            <i className="fa-solid fa-paperclip"></i>
           </button>
         </div>
 
@@ -105,4 +239,5 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
     </div>
   );
 }
+
 
