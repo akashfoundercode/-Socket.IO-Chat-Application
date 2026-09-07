@@ -485,6 +485,7 @@ export default function ChatList({
           ) : (
             conversations.map((item) => {
               const phoneDisplay = item.fullPhone || item.phone || item.id;
+              const displayName = item.name || phoneDisplay;
               const isLocationMsg = item.lastMessageType === 'location';
               const isImageMsg = item.lastMessageType === 'image';
               const lastMsg = isLocationMsg
