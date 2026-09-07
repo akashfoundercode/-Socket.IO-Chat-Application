@@ -163,14 +163,8 @@ export default function JoinModal({ onJoin, isConnected }) {
   };
 
   return (
-    <div className="wa-phone-frame">
-      {/* Speaker / Camera Notch */}
-      <div className="wa-phone-notch">
-        <div className="wa-phone-speaker"></div>
-        <div className="wa-phone-camera"></div>
-      </div>
-
-      <div className="wa-phone-screen">
+    <div className="wa-auth-card">
+      <div className="wa-auth-screen">
         {/* Step 1: Phone Number */}
         {step === 'phone' ? (
           <div className="wa-auth-content">
@@ -348,9 +342,6 @@ export default function JoinModal({ onJoin, isConnected }) {
             </div>
           </div>
         )}
-
-        {/* Bottom Home Indicator Bar */}
-        <div className="wa-phone-home-indicator"></div>
       </div>
     </div>
   );

@@ -16,6 +16,7 @@ const COUNTRY_OPTIONS = [
 
 export default function ChatList({
   userId,
+  activeChat,
   onlineUsers,
   onSelectChat,
   onOpenProfile,
@@ -364,10 +365,16 @@ export default function ChatList({
                   const phoneDisplay = item.fullPhone || item.phone || item.id;
                   const displayName = item.name || phoneDisplay;
                   const online = isUserOnline(phoneDisplay);
+                  const isActive = activeChat && (
+                    activeChat === phoneDisplay ||
+                    activeChat === item.phone ||
+                    activeChat === item.fullPhone ||
+                    activeChat === item.id
+                  );
                   return (
                     <div
                       key={item.id}
-                      className="wa-chat-item-row"
+                      className={`wa-chat-item-row ${isActive ? 'active' : ''}`}
                       onClick={() => onSelectChat(phoneDisplay, item)}
                     >
                       <div className="wa-item-avatar" style={{ position: 'relative' }}>
@@ -440,6 +447,12 @@ export default function ChatList({
               const displayName = item.name || phoneDisplay;
               const lastMsg = item.lastMessage || 'Tap to chat';
               const online = isUserOnline(phoneDisplay);
+              const isActive = activeChat && (
+                activeChat === phoneDisplay ||
+                activeChat === item.phone ||
+                activeChat === item.fullPhone ||
+                activeChat === item.id
+              );
               const time = item.lastMessageAt
                 ? new Date(item.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 : '';
@@ -447,7 +460,7 @@ export default function ChatList({
               return (
                 <div
                   key={item.id}
-                  className="wa-chat-item-row"
+                  className={`wa-chat-item-row ${isActive ? 'active' : ''}`}
                   onClick={() => onSelectChat(phoneDisplay, item)}
                 >
                   <div className="wa-item-avatar" style={{ position: 'relative' }}>

@@ -241,33 +241,49 @@ export default function App() {
   }, []);
 
   return (
-    <div className="wa-app-root">
+    <div className={`wa-app-root ${currentUser ? 'is-logged-in' : 'is-logged-out'}`}>
+      {/* Background Top Strip for Desktop/Web */}
+      <div className="wa-web-top-strip"></div>
+
       {/* 1. SCREEN 1: LOGIN / OTP (If not logged in) */}
       {!currentUser ? (
         <JoinModal onJoin={handleLoginSuccess} isConnected={isConnected} />
       ) : (
-        /* 2. AUTHENTICATED MOBILE SMARTPHONE FRAME */
-        <div className="wa-phone-frame">
-          {/* Top Speaker / Notch */}
-          <div className="wa-phone-notch">
-            <div className="wa-phone-speaker"></div>
-            <div className="wa-phone-camera"></div>
-          </div>
+        /* 2. AUTHENTICATED RESPONSIVE CONTAINER (Desktop / Tablet / Mobile) */
+        <div
+          className={`wa-main-container ${
+            activeChat ? 'has-active-chat' : 'no-active-chat'
+          } ${currentView === 'profile' ? 'is-profile-view' : ''}`}
+        >
+          {/* A. LEFT SIDEBAR PANE (Profile Settings OR Chat List) */}
+          <aside className="wa-sidebar-pane">
+            {currentView === 'profile' ? (
+              <ProfileSettings
+                userId={userId}
+                onBack={handleBackFromProfile}
+                onProfileUpdated={(updated) => {
+                  const merged = { ...currentUser, ...updated };
+                  setCurrentUser(merged);
+                  localStorage.setItem('wa_session', JSON.stringify(merged));
+                }}
+              />
+            ) : (
+              <ChatList
+                userId={userId}
+                activeChat={activeChat}
+                onlineUsers={onlineUsers}
+                onSelectChat={handleSelectChat}
+                onOpenProfile={handleOpenProfile}
+                onLogout={handleLogout}
+                recentMessages={recentMessageEvent}
+              />
+            )}
+          </aside>
 
-          {/* VIEW A: PROFILE / SETTINGS SCREEN */}
-          {currentView === 'profile' ? (
-            <ProfileSettings
-              userId={userId}
-              onBack={handleBackFromProfile}
-              onProfileUpdated={(updated) => {
-                const merged = { ...currentUser, ...updated };
-                setCurrentUser(merged);
-                localStorage.setItem('wa_session', JSON.stringify(merged));
-              }}
-            />
-          ) : /* VIEW B: 1-ON-1 ACTIVE CONVERSATION */
-            activeChat ? (
-              <>
+          {/* B. RIGHT MAIN CHAT PANE (Active Conversation OR WhatsApp Web Welcome) */}
+          <main className="wa-chat-pane">
+            {activeChat ? (
+              <div className="wa-active-chat-wrapper">
                 <ChatHeader
                   userId={userId}
                   recipientId={activeChat}
@@ -290,21 +306,31 @@ export default function App() {
                   onRecipientChange={setActiveChat}
                   onSendMessage={handleSendMessage}
                 />
-              </>
+              </div>
             ) : (
-              /* VIEW C: CHATS LIST INBOX */
-              <ChatList
-                userId={userId}
-                onlineUsers={onlineUsers}
-                onSelectChat={handleSelectChat}
-                onOpenProfile={handleOpenProfile}
-                onLogout={handleLogout}
-                recentMessages={recentMessageEvent}
-              />
+              /* WhatsApp Web Welcome / Empty Screen */
+              <div className="wa-web-welcome-screen">
+                <div className="wa-welcome-content">
+                  <div className="wa-welcome-illustration">
+                    <div className="wa-welcome-icon-circle">
+                      <i className="fa-brands fa-whatsapp"></i>
+                    </div>
+                  </div>
+                  <h2 className="wa-welcome-title">WhatsApp Web</h2>
+                  <p className="wa-welcome-text">
+                    Send and receive messages without keeping your phone online.
+                    <br />
+                    Use WhatsApp on up to 4 linked devices and 1 phone at the same time.
+                  </p>
+                  <div className="wa-welcome-divider"></div>
+                  <div className="wa-welcome-encryption">
+                    <i className="fa-solid fa-lock"></i>
+                    <span>End-to-end encrypted</span>
+                  </div>
+                </div>
+              </div>
             )}
-
-          {/* Bottom Home Indicator Bar */}
-          <div className="wa-phone-home-indicator"></div>
+          </main>
         </div>
       )}
     </div>
