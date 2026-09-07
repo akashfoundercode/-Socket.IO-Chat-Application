@@ -247,8 +247,10 @@ const updateUser = async (id, { name, about, avatar, avatarPrivacy }) => {
 const listConversations = async (userId) => {
     const pool = getPool();
     const cleanUserId = String(userId || "").trim();
-
     if (!cleanUserId) return [];
+
+    const userVars = getPhoneVariants(cleanUserId);
+    const placeholders = userVars.map(() => "?").join(",");
 
     const [rows] = await pool.execute(
         `SELECT 
@@ -271,22 +273,22 @@ const listConversations = async (userId) => {
          FROM (
             SELECT DISTINCT 
                 CASE 
-                    WHEN sender_id = ? THEN recipient_id 
+                    WHEN sender_id IN (${placeholders}) THEN recipient_id 
                     ELSE sender_id 
                 END AS id
             FROM messages
-            WHERE (sender_id = ? OR recipient_id = ?)
+            WHERE (sender_id IN (${placeholders}) OR recipient_id IN (${placeholders}))
          ) AS contact
-         LEFT JOIN users u ON (u.id = contact.id OR u.full_phone = contact.id)
+         LEFT JOIN users u ON (u.id = contact.id OR u.full_phone = contact.id OR u.phone = contact.id)
          LEFT JOIN messages m ON m.id = (
             SELECT sub_m.id FROM messages sub_m
-            WHERE (sub_m.sender_id = ? AND sub_m.recipient_id = contact.id)
-               OR (sub_m.sender_id = contact.id AND sub_m.recipient_id = ?)
+            WHERE ((sub_m.sender_id IN (${placeholders}) AND sub_m.recipient_id = contact.id)
+               OR (sub_m.sender_id = contact.id AND sub_m.recipient_id IN (${placeholders})))
             ORDER BY sub_m.id DESC
             LIMIT 1
          )
          ORDER BY m.id DESC`,
-        [cleanUserId, cleanUserId, cleanUserId, cleanUserId, cleanUserId]
+        [...userVars, ...userVars, ...userVars, ...userVars, ...userVars]
     );
 
     const conversations = await Promise.all(
