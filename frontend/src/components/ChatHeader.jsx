@@ -23,10 +23,10 @@ export default function ChatHeader({
   const statusText = isTyping
     ? 'typing...'
     : !isConnected
-    ? 'connecting...'
-    : isRecipientOnline
-    ? 'online'
-    : 'offline';
+      ? 'connecting...'
+      : isRecipientOnline
+        ? 'online'
+        : 'offline';
 
   return (
     <>

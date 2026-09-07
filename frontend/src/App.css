@@ -1693,29 +1693,36 @@ body {
   font-size: 11px;
 }
 
-/* Avatar Picker Modal */
+/* Avatar Picker Modal (Responsive) */
 .wa-avatar-picker-modal {
-  width: 100%;
-  max-width: 310px;
+  width: 92%;
+  max-width: 420px;
+  max-height: 85vh;
   background: #ffffff;
-  border-radius: 16px;
-  padding: 18px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: frameAppear 0.2s ease-out;
 }
 
 .wa-avatar-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
-  padding: 10px 0;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 8px;
+  padding: 12px 2px;
+  max-height: 260px;
+  overflow-y: auto;
 }
 
 .wa-avatar-choice {
-  font-size: 32px;
+  font-size: 28px;
+  aspect-ratio: 1;
   background: #f3f4f6;
   border: 2px solid transparent;
   border-radius: 12px;
-  padding: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -2359,6 +2366,32 @@ body {
     padding: 12px 14px;
   }
 
+  .wa-profile-screen {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #f0f2f5;
+  }
+
+  .wa-profile-avatar-wrap {
+    padding: 22px 14px 18px;
+  }
+
+  .wa-profile-avatar {
+    width: 110px;
+    height: 110px;
+  }
+
+  .wa-avatar-emoji {
+    font-size: 54px;
+  }
+
+  .wa-profile-card {
+    padding: 14px 16px;
+    margin-top: 8px;
+  }
+
   .wa-auth-card {
     width: 100%;
     max-width: 100%;
@@ -2870,6 +2903,7 @@ body {
   from {
     transform: translateX(100%);
   }
+
   to {
     transform: translateX(0);
   }
