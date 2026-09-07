@@ -3701,3 +3701,228 @@ body {
   background: #f5f6f6;
   color: #111b21;
 }
+
+/* =========================================================
+   WhatsApp Message Edit & History Viewer Styling
+   ========================================================= */
+
+/* Edited Tag Badge in Bubble */
+.wa-edited-badge {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-right: 4px;
+  font-size: 11px;
+  font-style: italic;
+  color: #667781;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: color 0.15s ease;
+}
+
+.wa-bubble.sent .wa-edited-badge {
+  color: #53bdeb;
+}
+
+.wa-edited-badge:hover {
+  text-decoration: underline;
+  color: #008069 !important;
+}
+
+/* Edit Modal Dialog */
+.wa-edit-modal-dialog {
+  width: 100%;
+  max-width: 420px;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  animation: slideUp 0.18s ease-out;
+}
+
+.wa-edit-modal-header,
+.wa-history-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.wa-edit-modal-header h3,
+.wa-history-modal-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111b21;
+  margin: 0;
+  display: flex;
+  align-items: center;
+}
+
+.wa-modal-close-icon {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: #8696a0;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.wa-modal-close-icon:hover {
+  background: #f0f2f5;
+  color: #111b21;
+}
+
+.wa-edit-input-wrap {
+  margin-bottom: 16px;
+}
+
+.wa-edit-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid #d1d7db;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.4;
+  color: #111b21;
+  transition: border-color 0.15s ease;
+}
+
+.wa-edit-textarea:focus {
+  border-color: #008069;
+}
+
+.wa-edit-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.wa-edit-cancel-btn {
+  padding: 9px 16px;
+  border-radius: 8px;
+  background: #f0f2f5;
+  color: #54656f;
+  font-size: 13.5px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.wa-edit-cancel-btn:hover {
+  background: #e4e6eb;
+  color: #111b21;
+}
+
+.wa-edit-save-btn {
+  padding: 9px 18px;
+  border-radius: 8px;
+  background: #008069;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s;
+}
+
+.wa-edit-save-btn:hover:not(:disabled) {
+  background: #006b57;
+}
+
+.wa-edit-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* History Modal Dialog */
+.wa-history-modal-dialog {
+  width: 100%;
+  max-width: 440px;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  animation: slideUp 0.18s ease-out;
+}
+
+.wa-history-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.wa-history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wa-history-label {
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wa-history-item.original .wa-history-label {
+  color: #8696a0;
+}
+
+.wa-history-item.current .wa-history-label {
+  color: #008069;
+}
+
+.wa-history-bubble {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.wa-history-bubble.original-bubble {
+  background: #f0f2f5;
+  color: #54656f;
+  text-decoration: line-through;
+  opacity: 0.85;
+}
+
+.wa-history-bubble.current-bubble {
+  background: #d9fdd3;
+  color: #111b21;
+  font-weight: 500;
+}
+
+.wa-history-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.wa-history-close-btn {
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: #008069;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.wa-history-close-btn:hover {
+  background: #006b57;
+}

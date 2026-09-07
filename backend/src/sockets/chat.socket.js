@@ -253,7 +253,32 @@ module.exports = (io) => {
             }
         });
 
-        // 8. Typing Indicators
+        // 8. Edit Message (Real-Time Edit Synchronization)
+        socket.on("edit_message", async ({ messageId, text, to }) => {
+            const userId = socket.data.userId;
+            if (!userId || !messageId || !text) return;
+
+            try {
+                const updatedMessage = await chatModel.updateMessage(messageId, userId, text);
+                if (!updatedMessage) return;
+
+                // Notify sender
+                socket.emit("message_edited", updatedMessage);
+
+                // Notify recipient
+                if (to) {
+                    const cleanTo = String(to).trim();
+                    const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+                    io.to(cleanTo).emit("message_edited", updatedMessage);
+                    io.to(altTo).emit("message_edited", updatedMessage);
+                }
+            } catch (err) {
+                console.error("edit_message error:", err.message);
+                socket.emit("message_error", { message: err.message });
+            }
+        });
+
+        // 9. Typing Indicators
         socket.on("typing", async ({ to, isTyping }) => {
             const from = socket.data.userId;
             if (!from || !to) return;

@@ -9,6 +9,7 @@ const mapMessage = (row) => ({
     type: row.type || "text",
     status: row.status || "sent",
     mediaUrl: row.media_url || null,
+    originalText: row.original_text || null,
     deliveredAt: row.delivered_at,
     seenAt: row.seen_at,
     editedAt: row.edited_at,
@@ -421,10 +422,27 @@ const markMessagesAsSeen = async (senderId, recipientId) => {
 };
 
 const updateMessage = async (id, userId, text) => {
-    const [result] = await getPool().execute("UPDATE messages SET text = ?, edited_at = CURRENT_TIMESTAMP WHERE id = ? AND sender_id = ?", [text, id, userId]);
+    const pool = getPool();
+    const cleanId = Number(id);
+    const cleanText = String(text || "").trim();
+    if (!cleanId || !cleanText) return null;
+
+    const userVars = getPhoneVariants(userId);
+    const placeholders = userVars.map(() => "?").join(",");
+
+    // Preserve original text on first edit
+    const [result] = await pool.execute(
+        `UPDATE messages 
+         SET original_text = COALESCE(original_text, text),
+             text = ?, 
+             edited_at = NOW() 
+         WHERE id = ? AND sender_id IN (${placeholders}) AND type <> 'deleted'`,
+        [cleanText, cleanId, ...userVars]
+    );
+
     if (!result.affectedRows) return null;
-    const [rows] = await getPool().execute("SELECT * FROM messages WHERE id = ?", [id]);
-    return mapMessage(rows[0]);
+    const [rows] = await pool.execute("SELECT * FROM messages WHERE id = ?", [cleanId]);
+    return rows[0] ? mapMessage(rows[0]) : null;
 };
 
 const deleteMessage = async (id, userId, everyone = false) => {

@@ -208,6 +208,15 @@ export default function App() {
       setRecentMessageEvent({ type: 'message_deleted', messageId, timestamp: Date.now() });
     }
 
+    // Real-time Message Edited Handler
+    function onMessageEdited(updatedMsg) {
+      if (!updatedMsg || !updatedMsg.id) return;
+      setMessages((prev) =>
+        prev.map((m) => (String(m.id) === String(updatedMsg.id) ? { ...m, ...updatedMsg } : m))
+      );
+      setRecentMessageEvent({ type: 'message_edited', message: updatedMsg, timestamp: Date.now() });
+    }
+
     // WebRTC Calling Socket Handlers
     function onIncomingCall({ from, callerName, callerAvatar, callType, offer }) {
       setCallState({
@@ -350,6 +359,7 @@ export default function App() {
     socket.on('messages_seen', onMessagesSeen);
     socket.on('messages_delivered', onMessagesDelivered);
     socket.on('message_deleted', onMessageDeleted);
+    socket.on('message_edited', onMessageEdited);
 
     socket.on('incoming_call', onIncomingCall);
     socket.on('call_accepted', onCallAccepted);
@@ -378,6 +388,7 @@ export default function App() {
       socket.off('messages_seen', onMessagesSeen);
       socket.off('messages_delivered', onMessagesDelivered);
       socket.off('message_deleted', onMessageDeleted);
+      socket.off('message_edited', onMessageEdited);
 
       socket.off('incoming_call', onIncomingCall);
       socket.off('call_accepted', onCallAccepted);
@@ -680,6 +691,19 @@ export default function App() {
     [activeChat]
   );
 
+  // Edit Message Handler
+  const handleEditMessage = useCallback(
+    (messageId, newText) => {
+      if (!messageId || !newText) return;
+      socket.emit('edit_message', {
+        messageId,
+        text: newText,
+        to: activeChat
+      });
+    },
+    [activeChat]
+  );
+
   // Send Message (Text or Image Media)
   const handleSendMessage = useCallback((to, text, type = 'text', mediaUrl = null) => {
     socket.emit('message', { to, text, type, mediaUrl });
@@ -764,6 +788,7 @@ export default function App() {
                   currentUserId={userId}
                   recipientId={activeChat}
                   onDeleteMessage={handleDeleteMessage}
+                  onEditMessage={handleEditMessage}
                 />
 
                 <MessageInput

@@ -1,9 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-export default function MessageList({ messages, currentUserId, recipientId, onDeleteMessage }) {
+export default function MessageList({
+  messages,
+  currentUserId,
+  recipientId,
+  onDeleteMessage,
+  onEditMessage
+}) {
   const bottomRef = useRef(null);
   const [lightboxImage, setLightboxImage] = useState(null);
   const [selectedMessageForDelete, setSelectedMessageForDelete] = useState(null);
+  const [selectedMessageForEdit, setSelectedMessageForEdit] = useState(null);
+  const [selectedMessageForHistory, setSelectedMessageForHistory] = useState(null);
+  const [editText, setEditText] = useState('');
   const [activeMenuMessageId, setActiveMenuMessageId] = useState(null);
 
   useEffect(() => {
@@ -59,6 +68,29 @@ export default function MessageList({ messages, currentUserId, recipientId, onDe
       onDeleteMessage(selectedMessageForDelete.id, deleteFor);
     }
     setSelectedMessageForDelete(null);
+  };
+
+  const handleOpenEditDialog = (msg, e) => {
+    if (e) e.stopPropagation();
+    setActiveMenuMessageId(null);
+    setSelectedMessageForEdit(msg);
+    setEditText(msg.text || '');
+  };
+
+  const handleConfirmEdit = (e) => {
+    if (e) e.preventDefault();
+    if (!selectedMessageForEdit || !editText.trim()) return;
+    if (onEditMessage) {
+      onEditMessage(selectedMessageForEdit.id, editText.trim());
+    }
+    setSelectedMessageForEdit(null);
+    setEditText('');
+  };
+
+  const handleOpenHistoryModal = (msg, e) => {
+    if (e) e.stopPropagation();
+    setActiveMenuMessageId(null);
+    setSelectedMessageForHistory(msg);
   };
 
   return (
@@ -130,6 +162,125 @@ export default function MessageList({ messages, currentUserId, recipientId, onDe
         </div>
       )}
 
+      {/* WhatsApp-Style Edit Message Modal */}
+      {selectedMessageForEdit && (
+        <div
+          className="wa-delete-modal-overlay"
+          onClick={() => setSelectedMessageForEdit(null)}
+        >
+          <div
+            className="wa-edit-modal-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="wa-edit-modal-header">
+              <h3>
+                <i className="fa-solid fa-pen-to-square" style={{ color: '#008069', marginRight: '8px' }}></i>
+                Edit message
+              </h3>
+              <button
+                type="button"
+                className="wa-modal-close-icon"
+                onClick={() => setSelectedMessageForEdit(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmEdit} className="wa-edit-modal-form">
+              <div className="wa-edit-input-wrap">
+                <textarea
+                  className="wa-edit-textarea"
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  rows={3}
+                  placeholder="Edit your message..."
+                  autoFocus
+                />
+              </div>
+
+              <div className="wa-edit-modal-footer">
+                <button
+                  type="button"
+                  className="wa-edit-cancel-btn"
+                  onClick={() => setSelectedMessageForEdit(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="wa-edit-save-btn"
+                  disabled={!editText.trim() || editText.trim() === selectedMessageForEdit.text}
+                >
+                  <i className="fa-solid fa-check"></i>
+                  <span>Save changes</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp-Style Edit History Modal (View Previous & Current text) */}
+      {selectedMessageForHistory && (
+        <div
+          className="wa-delete-modal-overlay"
+          onClick={() => setSelectedMessageForHistory(null)}
+        >
+          <div
+            className="wa-history-modal-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="wa-history-modal-header">
+              <h3>
+                <i className="fa-solid fa-clock-rotate-left" style={{ color: '#008069', marginRight: '8px' }}></i>
+                Edit History
+              </h3>
+              <button
+                type="button"
+                className="wa-modal-close-icon"
+                onClick={() => setSelectedMessageForHistory(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="wa-history-modal-body">
+              {/* Previous / Original Message */}
+              <div className="wa-history-item original">
+                <div className="wa-history-label">
+                  <i className="fa-regular fa-clock"></i>
+                  <span>Original message:</span>
+                </div>
+                <div className="wa-history-bubble original-bubble">
+                  {selectedMessageForHistory.originalText || selectedMessageForHistory.text}
+                </div>
+              </div>
+
+              {/* Current / Edited Message */}
+              <div className="wa-history-item current">
+                <div className="wa-history-label">
+                  <i className="fa-solid fa-pen"></i>
+                  <span>Edited message:</span>
+                </div>
+                <div className="wa-history-bubble current-bubble">
+                  {selectedMessageForHistory.text}
+                </div>
+              </div>
+            </div>
+
+            <div className="wa-history-modal-footer">
+              <button
+                type="button"
+                className="wa-history-close-btn"
+                onClick={() => setSelectedMessageForHistory(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* WhatsApp Encryption Security Notice */}
       <div className="wa-security-notice">
         <i className="fa-solid fa-lock"></i>
@@ -156,6 +307,7 @@ export default function MessageList({ messages, currentUserId, recipientId, onDe
         messages.map((msg, index) => {
           const isSent = msg.from === currentUserId;
           const isDeleted = msg.type === 'deleted';
+          const isEdited = Boolean(msg.editedAt || msg.originalText);
           const time = msg.createdAt
             ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -197,6 +349,30 @@ export default function MessageList({ messages, currentUserId, recipientId, onDe
                       className="wa-bubble-dropdown-menu"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      {/* Edit Option for Sent Text Messages */}
+                      {isSent && !isLocation && !isImage && (
+                        <button
+                          type="button"
+                          className="wa-dropdown-item edit"
+                          onClick={(e) => handleOpenEditDialog(msg, e)}
+                        >
+                          <i className="fa-regular fa-pen-to-square"></i>
+                          <span>Edit message</span>
+                        </button>
+                      )}
+
+                      {/* View History if edited */}
+                      {isEdited && (
+                        <button
+                          type="button"
+                          className="wa-dropdown-item history"
+                          onClick={(e) => handleOpenHistoryModal(msg, e)}
+                        >
+                          <i className="fa-solid fa-clock-rotate-left"></i>
+                          <span>View edit history</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         className="wa-dropdown-item delete"
@@ -278,8 +454,19 @@ export default function MessageList({ messages, currentUserId, recipientId, onDe
                 </>
               )}
 
-              {/* Time & Delivery Ticks */}
+              {/* Time & Delivery Ticks & (Edited) Tag */}
               <div className="wa-bubble-meta">
+                {isEdited && !isDeleted && (
+                  <button
+                    type="button"
+                    className="wa-edited-badge"
+                    onClick={(e) => handleOpenHistoryModal(msg, e)}
+                    title="Click to view original message / edit history"
+                  >
+                    <i className="fa-solid fa-pen-fancy" style={{ fontSize: '9px', marginRight: '2px' }}></i>
+                    <span>Edited</span>
+                  </button>
+                )}
                 <span className="wa-bubble-time">{time}</span>
                 {isSent && !isDeleted && renderMessageTick(msg)}
               </div>

@@ -84,6 +84,7 @@ const initializeDatabase = async () => {
             type VARCHAR(20) NOT NULL DEFAULT 'text',
             status VARCHAR(20) NOT NULL DEFAULT 'sent',
             media_url LONGTEXT NULL,
+            original_text TEXT NULL,
             delivered_at DATETIME NULL,
             seen_at DATETIME NULL,
             edited_at DATETIME NULL,
@@ -96,6 +97,7 @@ const initializeDatabase = async () => {
         "ALTER TABLE messages ADD COLUMN type VARCHAR(20) NOT NULL DEFAULT 'text'",
         "ALTER TABLE messages ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'sent'",
         "ALTER TABLE messages ADD COLUMN media_url LONGTEXT NULL",
+        "ALTER TABLE messages ADD COLUMN original_text TEXT NULL",
         "ALTER TABLE messages ADD COLUMN delivered_at DATETIME NULL",
         "ALTER TABLE messages ADD COLUMN seen_at DATETIME NULL",
         "ALTER TABLE messages ADD COLUMN edited_at DATETIME NULL"
