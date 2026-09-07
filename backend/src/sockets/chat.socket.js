@@ -57,9 +57,21 @@ module.exports = (io) => {
         });
 
         // 2. Check single user online/offline status
-        socket.on("check_user_status", (targetUserId) => {
+        socket.on("check_user_status", async (targetUserId) => {
             const cleanTarget = String(targetUserId || "").trim();
             if (!cleanTarget) return;
+
+            const userId = socket.data.userId;
+            if (userId) {
+                const blockStatus = await chatModel.getBlockStatus(userId, cleanTarget);
+                if (blockStatus.isBlockedByThem || blockStatus.isBlockedByMe) {
+                    socket.emit("user_status", {
+                        userId: cleanTarget,
+                        isOnline: false
+                    });
+                    return;
+                }
+            }
 
             socket.emit("user_status", {
                 userId: cleanTarget,
@@ -75,10 +87,16 @@ module.exports = (io) => {
 
             socket.data.activeWith = otherUserId;
 
+            // Check block status
+            const blockStatus = await chatModel.getBlockStatus(userId, otherUserId);
+            const isOnline = (blockStatus.isBlockedByThem || blockStatus.isBlockedByMe)
+                ? false
+                : isUserOnline(otherUserId);
+
             // Send immediate online/offline status of recipient
             socket.emit("user_status", {
                 userId: otherUserId,
-                isOnline: isUserOnline(otherUserId)
+                isOnline
             });
 
             // Mark all messages from otherUserId to userId as SEEN (Double Blue Tick)
@@ -127,6 +145,17 @@ module.exports = (io) => {
             const text = String(data?.text || "").trim();
             if (!from || !to || (!text && !data?.mediaUrl)) return;
 
+            // Check block status before proceeding
+            const blockStatus = await chatModel.getBlockStatus(from, to);
+            if (blockStatus.isBlockedByMe || blockStatus.isBlockedByThem) {
+                socket.emit("message_error", {
+                    message: blockStatus.isBlockedByThem
+                        ? "You cannot send messages because you have been blocked by this user."
+                        : "You blocked this contact. Unblock to send messages."
+                });
+                return;
+            }
+
             // Determine initial status:
             const isRecipientOnline = isUserOnline(to);
 
@@ -152,44 +181,108 @@ module.exports = (io) => {
                 }
             }
 
-            const message = await chatModel.addMessage({
-                from,
-                to,
-                text,
-                type: data?.type || "text",
-                status: initialStatus,
-                mediaUrl: data?.mediaUrl
-            });
+            try {
+                const message = await chatModel.addMessage({
+                    from,
+                    to,
+                    text,
+                    type: data?.type || "text",
+                    status: initialStatus,
+                    mediaUrl: data?.mediaUrl
+                });
 
-            // Deliver message to recipient if online
-            if (isRecipientOnline) {
-                io.to(to).emit("message_received", message);
-                const altTo = to.startsWith('+') ? to.replace(/^\+/, '') : `+${to}`;
-                io.to(altTo).emit("message_received", message);
+                // Deliver message to recipient if online
+                if (isRecipientOnline) {
+                    io.to(to).emit("message_received", message);
+                    const altTo = to.startsWith('+') ? to.replace(/^\+/, '') : `+${to}`;
+                    io.to(altTo).emit("message_received", message);
+                }
+
+                // Acknowledge sender with saved message containing status
+                socket.emit("message_saved", message);
+            } catch (err) {
+                console.error("Socket message error:", err.message);
+                socket.emit("message_error", { message: err.message });
             }
-
-            // Acknowledge sender with saved message containing status
-            socket.emit("message_saved", message);
         });
 
         // 7. Typing Indicators
-        socket.on("typing", ({ to, isTyping }) => {
+        socket.on("typing", async ({ to, isTyping }) => {
             const from = socket.data.userId;
             if (!from || !to) return;
             const cleanTo = String(to).trim();
             const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+
+            // Do not broadcast typing if blocked
+            const blockStatus = await chatModel.getBlockStatus(from, cleanTo);
+            if (blockStatus.isBlockedByMe || blockStatus.isBlockedByThem) return;
 
             io.to(cleanTo).emit("typing", { from, isTyping: Boolean(isTyping) });
             io.to(altTo).emit("typing", { from, isTyping: Boolean(isTyping) });
         });
 
-        // 8. WebRTC Calling Signaling Events
+        // 8. Block & Unblock Real-Time Synchronization
+        socket.on("block_user", async ({ targetUserId }) => {
+            const userId = socket.data.userId;
+            const targetId = String(targetUserId || "").trim();
+            if (!userId || !targetId) return;
+
+            await chatModel.blockUser(userId, targetId);
+
+            // Notify blocker client
+            socket.emit("user_blocked", { targetUserId: targetId, byMe: true });
+
+            // Notify blocked user client
+            const altTarget = targetId.startsWith('+') ? targetId.replace(/^\+/, '') : `+${targetId}`;
+            io.to(targetId).emit("user_blocked", { targetUserId: userId, byMe: false });
+            io.to(altTarget).emit("user_blocked", { targetUserId: userId, byMe: false });
+
+            // Mask status as offline for blocked user
+            io.to(targetId).emit("user_status", { userId, isOnline: false });
+            io.to(altTarget).emit("user_status", { userId, isOnline: false });
+        });
+
+        socket.on("unblock_user", async ({ targetUserId }) => {
+            const userId = socket.data.userId;
+            const targetId = String(targetUserId || "").trim();
+            if (!userId || !targetId) return;
+
+            await chatModel.unblockUser(userId, targetId);
+
+            // Notify unblocker client
+            socket.emit("user_unblocked", { targetUserId: targetId, byMe: true });
+
+            // Notify unblocked user client
+            const altTarget = targetId.startsWith('+') ? targetId.replace(/^\+/, '') : `+${targetId}`;
+            io.to(targetId).emit("user_unblocked", { targetUserId: userId, byMe: false });
+            io.to(altTarget).emit("user_unblocked", { targetUserId: userId, byMe: false });
+
+            // Emit accurate presence
+            const isMeOnline = isUserOnline(userId);
+            io.to(targetId).emit("user_status", { userId, isOnline: isMeOnline });
+            io.to(altTarget).emit("user_status", { userId, isOnline: isMeOnline });
+
+            const isTargetOnline = isUserOnline(targetId);
+            socket.emit("user_status", { userId: targetId, isOnline: isTargetOnline });
+        });
+
+        // 9. WebRTC Calling Signaling Events
         // A. Initiate Call
-        socket.on("call_user", ({ to, callerName, callerAvatar, callType, offer }) => {
+        socket.on("call_user", async ({ to, callerName, callerAvatar, callType, offer }) => {
             const from = socket.data.userId;
             if (!from || !to) return;
             const cleanTo = String(to).trim();
             const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+
+            // Check if call is between blocked users
+            const blockStatus = await chatModel.getBlockStatus(from, cleanTo);
+            if (blockStatus.isBlockedByMe || blockStatus.isBlockedByThem) {
+                socket.emit("call_rejected", {
+                    from: cleanTo,
+                    reason: blockStatus.isBlockedByThem ? "Cannot call: You are blocked by this user." : "Cannot call: You blocked this contact."
+                });
+                return;
+            }
 
             const payload = {
                 from,

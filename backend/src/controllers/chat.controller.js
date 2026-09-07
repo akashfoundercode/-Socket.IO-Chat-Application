@@ -157,6 +157,86 @@ const profile = async (req, res) => {
         });
     } catch (error) {
         console.error("profile update error:", error);
+/**
+ * Block a contact
+ * POST /api/chat/block
+ * Body: { blockerId: "...", blockedId: "..." }
+ */
+const blockContact = async (req, res) => {
+    try {
+        const blockerId = normalizeId(req.body.blockerId || req.body.userId);
+        const blockedId = normalizeId(req.body.blockedId || req.body.targetUserId);
+
+        if (!blockerId || !blockedId) {
+            return res.status(400).json({ success: false, message: "Both blockerId and blockedId are required" });
+        }
+
+        await chatModel.blockUser(blockerId, blockedId);
+        return res.json({ success: true, message: "User blocked successfully", blockerId, blockedId });
+    } catch (error) {
+        console.error("blockContact error:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * Unblock a contact
+ * POST /api/chat/unblock
+ * Body: { blockerId: "...", blockedId: "..." }
+ */
+const unblockContact = async (req, res) => {
+    try {
+        const blockerId = normalizeId(req.body.blockerId || req.body.userId);
+        const blockedId = normalizeId(req.body.blockedId || req.body.targetUserId);
+
+        if (!blockerId || !blockedId) {
+            return res.status(400).json({ success: false, message: "Both blockerId and blockedId are required" });
+        }
+
+        await chatModel.unblockUser(blockerId, blockedId);
+        return res.json({ success: true, message: "User unblocked successfully", blockerId, blockedId });
+    } catch (error) {
+        console.error("unblockContact error:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * Get list of blocked users for a user
+ * GET /api/chat/blocked/:userId
+ */
+const getBlockedList = async (req, res) => {
+    try {
+        const userId = normalizeId(req.params.userId || req.query.userId);
+        if (!userId) {
+            return res.status(400).json({ success: false, message: "User ID is required" });
+        }
+
+        const blockedList = await chatModel.getBlockedUsers(userId);
+        return res.json({ success: true, userId, blockedUsers: blockedList });
+    } catch (error) {
+        console.error("getBlockedList error:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * Check block status between two users
+ * GET /api/chat/block-status?userId=...&otherUserId=...
+ */
+const checkBlockStatus = async (req, res) => {
+    try {
+        const userId = normalizeId(req.query.userId);
+        const otherUserId = normalizeId(req.query.otherUserId);
+
+        if (!userId || !otherUserId) {
+            return res.status(400).json({ success: false, message: "Both userId and otherUserId are required" });
+        }
+
+        const status = await chatModel.getBlockStatus(userId, otherUserId);
+        return res.json({ success: true, ...status });
+    } catch (error) {
+        console.error("checkBlockStatus error:", error);
         return res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -167,5 +247,9 @@ module.exports = {
     getConversations,
     getChatHistory,
     me,
-    profile
+    profile,
+    blockContact,
+    unblockContact,
+    getBlockedList,
+    checkBlockStatus
 };

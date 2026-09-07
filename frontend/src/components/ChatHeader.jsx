@@ -10,8 +10,12 @@ export default function ChatHeader({
   isRecipientOnline,
   isConnected,
   isTyping,
+  isBlockedByMe,
+  isBlockedByThem,
   onStartCall,
-  onBack
+  onBack,
+  onBlock,
+  onUnblock
 }) {
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -20,13 +24,21 @@ export default function ChatHeader({
   const displayPhone = recipientId || '';
   const showSubtitlePhone = recipientName && recipientName !== recipientId;
 
-  const statusText = isTyping
-    ? 'typing...'
-    : !isConnected
-      ? 'connecting...'
-      : isRecipientOnline
-        ? 'online'
-        : 'offline';
+  const isBlocked = isBlockedByMe || isBlockedByThem;
+  const effectiveAvatar = isBlocked ? null : recipientAvatar;
+  const effectiveOnline = isBlocked ? false : isRecipientOnline;
+
+  const statusText = isBlockedByMe
+    ? 'Blocked'
+    : isBlockedByThem
+      ? 'offline'
+      : isTyping
+        ? 'typing...'
+        : !isConnected
+          ? 'connecting...'
+          : effectiveOnline
+            ? 'online'
+            : 'offline';
 
   return (
     <>
@@ -42,12 +54,12 @@ export default function ChatHeader({
             onClick={() => setShowContactInfo(true)}
             title="View Contact Info"
           >
-            {recipientAvatar ? (
-              recipientAvatar.length <= 4 ? (
-                <span style={{ fontSize: '20px', lineHeight: 1 }}>{recipientAvatar}</span>
+            {effectiveAvatar ? (
+              effectiveAvatar.length <= 4 ? (
+                <span style={{ fontSize: '20px', lineHeight: 1 }}>{effectiveAvatar}</span>
               ) : (
                 <img
-                  src={recipientAvatar}
+                  src={effectiveAvatar}
                   alt="Avatar"
                   style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
                 />
@@ -56,7 +68,7 @@ export default function ChatHeader({
               <i className="fa-solid fa-user"></i>
             )}
             {/* Online Green Dot Badge */}
-            {isRecipientOnline && (
+            {effectiveOnline && (
               <span
                 style={{
                   position: 'absolute',
@@ -86,15 +98,21 @@ export default function ChatHeader({
               {showSubtitlePhone && <span style={{ opacity: 0.85, marginRight: '4px' }}>{displayPhone} •</span>}
               <span
                 style={{
-                  color: isTyping ? '#25d366' : isRecipientOnline ? '#dcfce7' : 'rgba(255,255,255,0.75)',
-                  fontWeight: isTyping ? '700' : 'normal',
-                  fontStyle: isTyping ? 'italic' : 'normal',
+                  color: isBlockedByMe
+                    ? '#f87171'
+                    : isTyping && !isBlocked
+                      ? '#25d366'
+                      : effectiveOnline
+                        ? '#dcfce7'
+                        : 'rgba(255,255,255,0.75)',
+                  fontWeight: isTyping && !isBlocked ? '700' : 'normal',
+                  fontStyle: isTyping && !isBlocked ? 'italic' : 'normal',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '3px'
                 }}
               >
-                {isTyping ? (
+                {isTyping && !isBlocked ? (
                   <>
                     <span>typing</span>
                     <span className="wa-typing-dots">
@@ -112,22 +130,27 @@ export default function ChatHeader({
         </div>
 
         <div className="wa-chat-header-actions">
-          <button
-            type="button"
-            className="wa-action-icon"
-            title="Video Call"
-            onClick={() => onStartCall && onStartCall('video')}
-          >
-            <i className="fa-solid fa-video"></i>
-          </button>
-          <button
-            type="button"
-            className="wa-action-icon"
-            title="Voice Call"
-            onClick={() => onStartCall && onStartCall('voice')}
-          >
-            <i className="fa-solid fa-phone"></i>
-          </button>
+          {!isBlocked && (
+            <>
+              <button
+                type="button"
+                className="wa-action-icon"
+                title="Video Call"
+                onClick={() => onStartCall && onStartCall('video')}
+              >
+                <i className="fa-solid fa-video"></i>
+              </button>
+              <button
+                type="button"
+                className="wa-action-icon"
+                title="Voice Call"
+                onClick={() => onStartCall && onStartCall('voice')}
+              >
+                <i className="fa-solid fa-phone"></i>
+              </button>
+            </>
+          )}
+
           <div className="wa-menu-anchor" style={{ position: 'relative' }}>
             <button
               type="button"
@@ -150,6 +173,35 @@ export default function ChatHeader({
                 >
                   <i className="fa-solid fa-user"></i> Contact info
                 </button>
+
+                {isBlockedByMe ? (
+                  <button
+                    type="button"
+                    className="wa-menu-item"
+                    style={{ color: '#25d366' }}
+                    onClick={() => {
+                      setShowMenu(false);
+                      onUnblock && onUnblock(recipientId);
+                    }}
+                  >
+                    <i className="fa-solid fa-unlock"></i> Unblock contact
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="wa-menu-item"
+                    style={{ color: '#ea4335' }}
+                    onClick={() => {
+                      setShowMenu(false);
+                      if (window.confirm(`Block ${displayName}? Blocked contacts will no longer be able to call you or send you messages.`)) {
+                        onBlock && onBlock(recipientId);
+                      }
+                    }}
+                  >
+                    <i className="fa-solid fa-ban"></i> Block contact
+                  </button>
+                )}
+
                 <button
                   type="button"
                   className="wa-menu-item"
@@ -174,12 +226,16 @@ export default function ChatHeader({
             name: displayName,
             phone: displayPhone,
             fullPhone: displayPhone,
-            avatar: recipientAvatar,
-            about: recipientAbout
+            avatar: effectiveAvatar,
+            about: isBlocked ? '' : recipientAbout
           }}
-          isOnline={isRecipientOnline}
+          isOnline={effectiveOnline}
+          isBlockedByMe={isBlockedByMe}
+          isBlockedByThem={isBlockedByThem}
           onClose={() => setShowContactInfo(false)}
           onStartCall={onStartCall}
+          onBlock={onBlock}
+          onUnblock={onUnblock}
         />
       )}
     </>

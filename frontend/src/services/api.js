@@ -139,8 +139,53 @@ export const chatApi = {
   }
 };
 
+// ============================================
+// 4. Block & Unblock APIs
+// ============================================
+export const blockApi = {
+  /**
+   * Block a user
+   * POST /api/chat/block
+   */
+  blockUser: (blockerId, blockedId) => {
+    return request('/api/chat/block', {
+      method: 'POST',
+      body: JSON.stringify({ blockerId, blockedId })
+    });
+  },
+
+  /**
+   * Unblock a user
+   * POST /api/chat/unblock
+   */
+  unblockUser: (blockerId, blockedId) => {
+    return request('/api/chat/unblock', {
+      method: 'POST',
+      body: JSON.stringify({ blockerId, blockedId })
+    });
+  },
+
+  /**
+   * Get list of blocked user IDs
+   * GET /api/chat/blocked/:userId
+   */
+  getBlockedList: (userId) => {
+    return request(`/api/chat/blocked/${encodeURIComponent(userId)}`);
+  },
+
+  /**
+   * Check block status
+   * GET /api/chat/block-status?userId=...&otherUserId=...
+   */
+  getBlockStatus: (userId, otherUserId) => {
+    const params = new URLSearchParams({ userId, otherUserId });
+    return request(`/api/chat/block-status?${params.toString()}`);
+  }
+};
+
 export default {
   auth: authApi,
   profile: profileApi,
-  chat: chatApi
+  chat: chatApi,
+  block: blockApi
 };

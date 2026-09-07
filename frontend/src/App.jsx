@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { socket } from './socket/socket';
-import { profileApi } from './services/api';
+import { profileApi, blockApi } from './services/api';
 import JoinModal from './components/JoinModal';
 import ChatList from './components/ChatList';
 import ChatHeader from './components/ChatHeader';
@@ -37,6 +37,11 @@ export default function App() {
   const [typingUsers, setTypingUsers] = useState(new Set());
   const [messages, setMessages] = useState([]);
   const [recentMessageEvent, setRecentMessageEvent] = useState(null);
+
+  // Block & Privacy States for active conversation
+  const [isBlockedByMe, setIsBlockedByMe] = useState(false);
+  const [isBlockedByThem, setIsBlockedByThem] = useState(false);
+  const [blockedByMeUsers, setBlockedByMeUsers] = useState(new Set());
 
   // Calling & Media Stream States
   const [callState, setCallState] = useState(null);
@@ -255,6 +260,63 @@ export default function App() {
       setRecentMessageEvent({ type: 'profile_sync', timestamp: Date.now() });
     }
 
+    // Real-time Block / Unblock Synchronization
+    function onUserBlocked({ targetUserId, byMe }) {
+      const clean = String(targetUserId || '').trim();
+      if (byMe) {
+        setBlockedByMeUsers((prev) => new Set(prev).add(clean));
+      }
+      if (
+        activeChat &&
+        (activeChat === clean ||
+          activeChat === `+${clean}` ||
+          activeChat === clean.replace(/^\+/, ''))
+      ) {
+        if (byMe) {
+          setIsBlockedByMe(true);
+        } else {
+          setIsBlockedByThem(true);
+        }
+        setRecipientProfile((prev) => (prev ? { ...prev, avatar: null, about: '' } : prev));
+      }
+      setRecentMessageEvent({ type: 'block_sync', timestamp: Date.now() });
+    }
+
+    function onUserUnblocked({ targetUserId, byMe }) {
+      const clean = String(targetUserId || '').trim();
+      if (byMe) {
+        setBlockedByMeUsers((prev) => {
+          const updated = new Set(prev);
+          updated.delete(clean);
+          updated.delete(clean.startsWith('+') ? clean : `+${clean}`);
+          updated.delete(clean.replace(/^\+/, ''));
+          return updated;
+        });
+      }
+      if (
+        activeChat &&
+        (activeChat === clean ||
+          activeChat === `+${clean}` ||
+          activeChat === clean.replace(/^\+/, ''))
+      ) {
+        if (byMe) {
+          setIsBlockedByMe(false);
+        } else {
+          setIsBlockedByThem(false);
+        }
+        profileApi.getProfile(activeChat, userId).then((data) => {
+          if (data?.success && data?.user) {
+            setRecipientProfile(data.user);
+          }
+        });
+      }
+      setRecentMessageEvent({ type: 'unblock_sync', timestamp: Date.now() });
+    }
+
+    function onMessageError({ message }) {
+      alert(message || 'Failed to send message');
+    }
+
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('joined', onJoined);
@@ -262,6 +324,9 @@ export default function App() {
     socket.on('user_status', onUserStatus);
     socket.on('typing', onTyping);
     socket.on('user_profile_changed', onUserProfileChanged);
+    socket.on('user_blocked', onUserBlocked);
+    socket.on('user_unblocked', onUserUnblocked);
+    socket.on('message_error', onMessageError);
     socket.on('conversation_history', onConversationHistory);
     socket.on('message_received', onMessageReceived);
     socket.on('message_saved', onMessageSaved);
@@ -286,6 +351,9 @@ export default function App() {
       socket.off('user_status', onUserStatus);
       socket.off('typing', onTyping);
       socket.off('user_profile_changed', onUserProfileChanged);
+      socket.off('user_blocked', onUserBlocked);
+      socket.off('user_unblocked', onUserUnblocked);
+      socket.off('message_error', onMessageError);
       socket.off('conversation_history', onConversationHistory);
       socket.off('message_received', onMessageReceived);
       socket.off('message_saved', onMessageSaved);
@@ -300,28 +368,46 @@ export default function App() {
     };
   }, [userId, activeChat, cleanupCall]);
 
-  // Load conversation and fetch recipient profile when activeChat changes
+  // Load conversation and fetch recipient profile & block status when activeChat changes
   useEffect(() => {
     if (activeChat && userId) {
       setMessages([]);
+      setIsBlockedByMe(false);
+      setIsBlockedByThem(false);
       socket.emit('loadConversation', activeChat);
       socket.emit('check_user_status', activeChat);
       setCurrentView('chat');
 
-      // Fetch recipient's latest profile (Name, Avatar, About, Avatar Privacy)
+      // Fetch recipient's latest profile (Name, Avatar, About, Avatar Privacy, Block state)
       profileApi.getProfile(activeChat, userId)
         .then((data) => {
           if (data && data.success && data.user) {
             setRecipientProfile(data.user);
+            setIsBlockedByMe(Boolean(data.user.isBlockedByMe));
+            setIsBlockedByThem(Boolean(data.user.isBlockedByThem));
           }
         })
         .catch((err) => {
           console.error('Failed to load recipient profile:', err);
         });
+
+      // Explicit check block status
+      blockApi.getBlockStatus(userId, activeChat)
+        .then((data) => {
+          if (data && data.success) {
+            setIsBlockedByMe(Boolean(data.isBlockedByMe));
+            setIsBlockedByThem(Boolean(data.isBlockedByThem));
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to get block status:', err);
+        });
     } else if (currentView === 'chat') {
       socket.emit('close_chat');
       setCurrentView('inbox');
       setRecipientProfile(null);
+      setIsBlockedByMe(false);
+      setIsBlockedByThem(false);
     }
   }, [activeChat, userId]);
 
@@ -513,6 +599,43 @@ export default function App() {
     setCurrentView('inbox');
   };
 
+  // Block & Unblock Contact Actions
+  const handleBlockUser = async (targetId) => {
+    const cleanTarget = String(targetId || activeChat || '').trim();
+    if (!cleanTarget || !userId) return;
+
+    try {
+      await blockApi.blockUser(userId, cleanTarget);
+      socket.emit('block_user', { targetUserId: cleanTarget });
+      setIsBlockedByMe(true);
+      setRecipientProfile((prev) => (prev ? { ...prev, avatar: null, about: '' } : prev));
+      setRecentMessageEvent({ type: 'block_sync', timestamp: Date.now() });
+    } catch (err) {
+      console.error('Failed to block user:', err);
+      alert(err.message || 'Failed to block contact');
+    }
+  };
+
+  const handleUnblockUser = async (targetId) => {
+    const cleanTarget = String(targetId || activeChat || '').trim();
+    if (!cleanTarget || !userId) return;
+
+    try {
+      await blockApi.unblockUser(userId, cleanTarget);
+      socket.emit('unblock_user', { targetUserId: cleanTarget });
+      setIsBlockedByMe(false);
+      profileApi.getProfile(cleanTarget, userId).then((data) => {
+        if (data?.success && data?.user) {
+          setRecipientProfile(data.user);
+        }
+      });
+      setRecentMessageEvent({ type: 'unblock_sync', timestamp: Date.now() });
+    } catch (err) {
+      console.error('Failed to unblock user:', err);
+      alert(err.message || 'Failed to unblock contact');
+    }
+  };
+
   // Explicit Logout
   const handleLogout = () => {
     socket.emit('logout');
@@ -596,8 +719,12 @@ export default function App() {
                   isRecipientOnline={isRecipientOnline}
                   isConnected={isConnected}
                   isTyping={isRecipientTyping}
+                  isBlockedByMe={isBlockedByMe}
+                  isBlockedByThem={isBlockedByThem}
                   onStartCall={handleStartCall}
                   onBack={handleBackToChatList}
+                  onBlock={handleBlockUser}
+                  onUnblock={handleUnblockUser}
                 />
 
                 <MessageList
@@ -611,6 +738,9 @@ export default function App() {
                   onRecipientChange={setActiveChat}
                   onSendMessage={handleSendMessage}
                   onTyping={handleTyping}
+                  isBlockedByMe={isBlockedByMe}
+                  isBlockedByThem={isBlockedByThem}
+                  onUnblock={handleUnblockUser}
                 />
               </div>
             ) : (

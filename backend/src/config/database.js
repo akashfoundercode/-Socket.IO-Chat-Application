@@ -121,6 +121,19 @@ const initializeDatabase = async () => {
         )
     `);
 
+    // 5. Blocked Users table
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS blocked_users (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            blocker_id VARCHAR(100) NOT NULL,
+            blocked_id VARCHAR(100) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_blocker_blocked (blocker_id, blocked_id),
+            INDEX idx_blocker (blocker_id),
+            INDEX idx_blocked (blocked_id)
+        )
+    `);
+
     console.log(`MySQL connected & tables initialized: ${databaseName}`);
 };
 

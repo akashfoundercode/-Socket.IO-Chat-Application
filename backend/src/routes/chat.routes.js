@@ -23,4 +23,10 @@ router.get("/profile/:id", chatController.me);
 router.put("/profile/:id", chatController.profile);
 router.patch("/profile/:id", chatController.profile);
 
+// 6. Block & Unblock Contacts
+router.post("/block", chatController.blockContact);
+router.post("/unblock", chatController.unblockContact);
+router.get("/blocked/:userId", chatController.getBlockedList);
+router.get("/block-status", chatController.checkBlockStatus);
+
 module.exports = router;

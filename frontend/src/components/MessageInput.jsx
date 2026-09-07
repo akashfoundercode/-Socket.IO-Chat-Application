@@ -1,7 +1,15 @@
 import React, { useState, useRef } from 'react';
 import EmojiPicker from './EmojiPicker';
 
-export default function MessageInput({ recipientId, onRecipientChange, onSendMessage, onTyping }) {
+export default function MessageInput({
+  recipientId,
+  onRecipientChange,
+  onSendMessage,
+  onTyping,
+  isBlockedByMe,
+  isBlockedByThem,
+  onUnblock
+}) {
   const [text, setText] = useState('');
   const [showRecipientInput, setShowRecipientInput] = useState(!recipientId);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -14,8 +22,11 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
   const fileInputRef = useRef(null);
   const typingTimerRef = useRef(null);
 
+  const isBlocked = isBlockedByMe || isBlockedByThem;
+
   // Debounced Typing emitter
   const handleTextChange = (e) => {
+    if (isBlocked) return;
     const val = e.target.value;
     setText(val);
 
@@ -35,6 +46,7 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (isBlocked) return;
     const trimmed = text.trim();
     if (trimmed && recipientId.trim()) {
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -46,11 +58,13 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
   };
 
   const handleSelectEmoji = (emoji) => {
+    if (isBlocked) return;
     setText((prev) => prev + emoji);
   };
 
   // When image is picked from file dialog
   const handleImageSelected = (e) => {
+    if (isBlocked) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -100,7 +114,7 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
 
   // Send Image with optional caption
   const handleSendImage = () => {
-    if (!pendingImage || !recipientId.trim()) return;
+    if (isBlocked || !pendingImage || !recipientId.trim()) return;
     onSendMessage(recipientId.trim(), imageCaption.trim(), 'image', pendingImage);
     setPendingImage(null);
     setImageCaption('');
@@ -119,7 +133,7 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
       />
 
       {/* Image Send Preview Modal */}
-      {showImagePreview && pendingImage && (
+      {showImagePreview && pendingImage && !isBlocked && (
         <div className="wa-image-preview-modal">
           <div className="wa-image-preview-header">
             <button
@@ -174,7 +188,7 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
       )}
 
       {/* WhatsApp Categorized Full Emoji Picker */}
-      {showEmojiPicker && (
+      {showEmojiPicker && !isBlocked && (
         <EmojiPicker
           onSelectEmoji={handleSelectEmoji}
           onClose={() => setShowEmojiPicker(false)}
@@ -182,7 +196,7 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
       )}
 
       {/* Top Recipient Changer Bar */}
-      {(!recipientId || showRecipientInput) && (
+      {(!recipientId || showRecipientInput) && !isBlocked && (
         <div className="wa-recipient-bar">
           <label htmlFor="recipient">To:</label>
           <input
@@ -205,59 +219,81 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
         </div>
       )}
 
-      {/* WhatsApp Message Input Row */}
-      <form className="wa-input-row" onSubmit={handleSubmit}>
-        <div className="wa-input-capsule">
-          <button
-            type="button"
-            className={`wa-capsule-icon ${showEmojiPicker ? 'active' : ''}`}
-            title="Emoji Keyboard"
-            onClick={() => setShowEmojiPicker((prev) => !prev)}
-          >
-            <i className={showEmojiPicker ? 'fa-solid fa-keyboard' : 'fa-regular fa-face-smile'}></i>
-          </button>
-
-          <input
-            type="text"
-            className="wa-main-input"
-            placeholder={recipientId ? 'Message' : 'Set recipient first'}
-            value={text}
-            onChange={handleTextChange}
-            disabled={!recipientId.trim()}
-          />
-
-          <button
-            type="button"
-            className="wa-capsule-icon"
-            title="Attach Photo / Image"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <i className="fa-solid fa-paperclip"></i>
-          </button>
-
-          <button
-            type="button"
-            className="wa-capsule-icon"
-            title="Change recipient"
-            onClick={() => setShowRecipientInput((prev) => !prev)}
-          >
-            <i className="fa-solid fa-address-book"></i>
-          </button>
-        </div>
-
-        <button
-          type="submit"
-          className="wa-send-mic-btn"
-          disabled={!recipientId.trim() || !text.trim()}
-          title="Send"
-        >
-          {text.trim() ? (
-            <i className="fa-solid fa-paper-plane"></i>
+      {/* If Blocked, Display WhatsApp style Block Notice Bar */}
+      {isBlocked ? (
+        <div className="wa-blocked-bar">
+          {isBlockedByMe ? (
+            <div className="wa-blocked-content">
+              <span>You blocked this contact.</span>
+              <button
+                type="button"
+                className="wa-unblock-link-btn"
+                onClick={() => onUnblock && onUnblock(recipientId)}
+              >
+                Tap to unblock
+              </button>
+            </div>
           ) : (
-            <i className="fa-solid fa-microphone"></i>
+            <div className="wa-blocked-content">
+              <span>You cannot send messages to this contact because you have been blocked.</span>
+            </div>
           )}
-        </button>
-      </form>
+        </div>
+      ) : (
+        /* WhatsApp Message Input Row */
+        <form className="wa-input-row" onSubmit={handleSubmit}>
+          <div className="wa-input-capsule">
+            <button
+              type="button"
+              className={`wa-capsule-icon ${showEmojiPicker ? 'active' : ''}`}
+              title="Emoji Keyboard"
+              onClick={() => setShowEmojiPicker((prev) => !prev)}
+            >
+              <i className={showEmojiPicker ? 'fa-solid fa-keyboard' : 'fa-regular fa-face-smile'}></i>
+            </button>
+
+            <input
+              type="text"
+              className="wa-main-input"
+              placeholder={recipientId ? 'Message' : 'Set recipient first'}
+              value={text}
+              onChange={handleTextChange}
+              disabled={!recipientId.trim()}
+            />
+
+            <button
+              type="button"
+              className="wa-capsule-icon"
+              title="Attach Photo / Image"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <i className="fa-solid fa-paperclip"></i>
+            </button>
+
+            <button
+              type="button"
+              className="wa-capsule-icon"
+              title="Change recipient"
+              onClick={() => setShowRecipientInput((prev) => !prev)}
+            >
+              <i className="fa-solid fa-address-book"></i>
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            className="wa-send-mic-btn"
+            disabled={!recipientId.trim() || !text.trim()}
+            title="Send"
+          >
+            {text.trim() ? (
+              <i className="fa-solid fa-paper-plane"></i>
+            ) : (
+              <i className="fa-solid fa-microphone"></i>
+            )}
+          </button>
+        </form>
+      )}
     </div>
   );
 }

@@ -49,6 +49,89 @@ const findOrCreateContact = async ({ id, fullPhone, phone, countryCode, name }) 
     return newRows[0];
 };
 
+const getPhoneVariants = (id) => {
+    const clean = String(id || "").trim();
+    if (!clean) return [];
+    const withPlus = clean.startsWith("+") ? clean : `+${clean}`;
+    const withoutPlus = clean.replace(/^\+/, "");
+    return Array.from(new Set([clean, withPlus, withoutPlus]));
+};
+
+const blockUser = async (blockerId, blockedId) => {
+    const pool = getPool();
+    const cleanBlocker = String(blockerId || "").trim();
+    const cleanBlocked = String(blockedId || "").trim();
+    if (!cleanBlocker || !cleanBlocked) return false;
+
+    await pool.execute(
+        `INSERT IGNORE INTO blocked_users (blocker_id, blocked_id) VALUES (?, ?)`,
+        [cleanBlocker, cleanBlocked]
+    );
+    return true;
+};
+
+const unblockUser = async (blockerId, blockedId) => {
+    const pool = getPool();
+    const blockerVars = getPhoneVariants(blockerId);
+    const blockedVars = getPhoneVariants(blockedId);
+    if (!blockerVars.length || !blockedVars.length) return false;
+
+    const blockerPlaceholders = blockerVars.map(() => "?").join(",");
+    const blockedPlaceholders = blockedVars.map(() => "?").join(",");
+
+    await pool.execute(
+        `DELETE FROM blocked_users 
+         WHERE blocker_id IN (${blockerPlaceholders}) AND blocked_id IN (${blockedPlaceholders})`,
+        [...blockerVars, ...blockedVars]
+    );
+    return true;
+};
+
+const getBlockStatus = async (userId, otherUserId) => {
+    const pool = getPool();
+    const userVars = getPhoneVariants(userId);
+    const otherVars = getPhoneVariants(otherUserId);
+
+    if (!userVars.length || !otherVars.length) {
+        return { isBlockedByMe: false, isBlockedByThem: false };
+    }
+
+    const uPlaceholders = userVars.map(() => "?").join(",");
+    const oPlaceholders = otherVars.map(() => "?").join(",");
+
+    // 1. Did user block other?
+    const [byMeRows] = await pool.execute(
+        `SELECT id FROM blocked_users WHERE blocker_id IN (${uPlaceholders}) AND blocked_id IN (${oPlaceholders}) LIMIT 1`,
+        [...userVars, ...otherVars]
+    );
+
+    // 2. Did other block user?
+    const [byThemRows] = await pool.execute(
+        `SELECT id FROM blocked_users WHERE blocker_id IN (${oPlaceholders}) AND blocked_id IN (${uPlaceholders}) LIMIT 1`,
+        [...otherVars, ...userVars]
+    );
+
+    return {
+        isBlockedByMe: byMeRows.length > 0,
+        isBlockedByThem: byThemRows.length > 0
+    };
+};
+
+const getBlockedUsers = async (userId) => {
+    const pool = getPool();
+    const userVars = getPhoneVariants(userId);
+    if (!userVars.length) return [];
+
+    const placeholders = userVars.map(() => "?").join(",");
+    const [rows] = await pool.execute(
+        `SELECT DISTINCT blocked_id AS blockedId, created_at AS createdAt 
+         FROM blocked_users 
+         WHERE blocker_id IN (${placeholders})`,
+        userVars
+    );
+    return rows.map((r) => r.blockedId);
+};
+
 const getUser = async (id, viewerId = null) => {
     const cleanId = String(id || "").trim();
     const withPlus = cleanId.startsWith("+") ? cleanId : `+${cleanId}`;
@@ -73,13 +156,24 @@ const getUser = async (id, viewerId = null) => {
 
     const user = rows[0];
     if (!user.avatarPrivacy) user.avatarPrivacy = 'everyone';
+    user.isBlockedByMe = false;
+    user.isBlockedByThem = false;
 
-    // Apply privacy if viewerId is provided and different from user
+    // Apply block checks and privacy if viewerId is provided and different from user
     if (viewerId) {
         const cleanViewer = String(viewerId || "").trim();
         const isSelf = cleanViewer === user.id || cleanViewer === user.fullPhone;
         if (!isSelf) {
-            if (user.avatarPrivacy === 'nobody') {
+            const blockStatus = await getBlockStatus(cleanViewer, user.id);
+            user.isBlockedByMe = blockStatus.isBlockedByMe;
+            user.isBlockedByThem = blockStatus.isBlockedByThem;
+
+            if (blockStatus.isBlockedByThem || blockStatus.isBlockedByMe) {
+                // If blocked, profile photo and about bio are completely hidden!
+                user.avatar = null;
+                user.about = '';
+                user.lastSeen = null;
+            } else if (user.avatarPrivacy === 'nobody') {
                 user.avatar = null;
             } else if (user.avatarPrivacy === 'contacts') {
                 const [chatCount] = await getPool().execute(
@@ -195,7 +289,24 @@ const listConversations = async (userId) => {
         [cleanUserId, cleanUserId, cleanUserId, cleanUserId, cleanUserId]
     );
 
-    return rows;
+    const conversations = await Promise.all(
+        rows.map(async (conv) => {
+            const blockStatus = await getBlockStatus(cleanUserId, conv.id);
+            const isBlockedByMe = blockStatus.isBlockedByMe;
+            const isBlockedByThem = blockStatus.isBlockedByThem;
+
+            return {
+                ...conv,
+                isBlockedByMe,
+                isBlockedByThem,
+                avatar: isBlockedByMe || isBlockedByThem ? null : conv.avatar,
+                about: isBlockedByMe || isBlockedByThem ? '' : conv.about,
+                lastSeen: isBlockedByThem ? null : conv.lastSeen
+            };
+        })
+    );
+
+    return conversations;
 };
 
 /**
@@ -267,6 +378,18 @@ const searchUsersByPhone = async (searchQuery, currentUserId = "") => {
 };
 
 const addMessage = async ({ from, to, text, type = "text", status = "sent", mediaUrl = null }) => {
+    // Check if either user has blocked the other
+    const blockStatus = await getBlockStatus(from, to);
+    if (blockStatus.isBlockedByMe || blockStatus.isBlockedByThem) {
+        const err = new Error(
+            blockStatus.isBlockedByThem
+                ? "You cannot send messages to this contact because you have been blocked."
+                : "You blocked this contact. Unblock to send messages."
+        );
+        err.isBlocked = true;
+        throw err;
+    }
+
     const deliveredAt = status === "delivered" ? new Date() : null;
 
     const [result] = await getPool().execute(
@@ -351,5 +474,9 @@ module.exports = {
     listConversations,
     searchUsersByPhone,
     updateMessage,
-    deleteMessage
+    deleteMessage,
+    blockUser,
+    unblockUser,
+    getBlockStatus,
+    getBlockedUsers
 };

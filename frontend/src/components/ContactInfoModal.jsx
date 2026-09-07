@@ -4,15 +4,20 @@ export default function ContactInfoModal({
   recipientProfile,
   recipientId,
   isOnline,
+  isBlockedByMe,
+  isBlockedByThem,
   onClose,
-  onStartCall
+  onStartCall,
+  onBlock,
+  onUnblock
 }) {
   if (!recipientProfile && !recipientId) return null;
 
   const displayName = recipientProfile?.name || recipientId || 'Contact Info';
   const displayPhone = recipientProfile?.fullPhone || recipientProfile?.phone || recipientId || '';
-  const avatar = recipientProfile?.avatar;
-  const about = recipientProfile?.about || 'Hey there! I am using WhatsApp.';
+  const isBlocked = isBlockedByMe || isBlockedByThem;
+  const avatar = isBlocked ? null : recipientProfile?.avatar;
+  const about = isBlocked ? '' : (recipientProfile?.about || 'Hey there! I am using WhatsApp.');
 
   return (
     <div className="wa-contact-info-overlay" onClick={onClose}>
@@ -45,50 +50,54 @@ export default function ContactInfoModal({
 
             {/* Online Status Badge */}
             <div className="wa-contact-status-badge">
-              <span className={`status-dot ${isOnline ? 'online' : 'offline'}`}></span>
-              <span>{isOnline ? 'Online' : 'Offline'}</span>
+              <span className={`status-dot ${isOnline && !isBlocked ? 'online' : 'offline'}`}></span>
+              <span>{isBlocked ? 'Offline' : isOnline ? 'Online' : 'Offline'}</span>
             </div>
 
             {/* Quick Action Buttons */}
-            <div className="wa-contact-quick-actions">
-              <button
-                type="button"
-                className="wa-contact-action-btn"
-                onClick={() => {
-                  onClose();
-                  onStartCall && onStartCall('voice');
-                }}
-              >
-                <i className="fa-solid fa-phone"></i>
-                <span>Audio</span>
-              </button>
-              <button
-                type="button"
-                className="wa-contact-action-btn"
-                onClick={() => {
-                  onClose();
-                  onStartCall && onStartCall('video');
-                }}
-              >
-                <i className="fa-solid fa-video"></i>
-                <span>Video</span>
-              </button>
-              <button
-                type="button"
-                className="wa-contact-action-btn"
-                onClick={onClose}
-              >
-                <i className="fa-solid fa-message"></i>
-                <span>Message</span>
-              </button>
-            </div>
+            {!isBlocked && (
+              <div className="wa-contact-quick-actions">
+                <button
+                  type="button"
+                  className="wa-contact-action-btn"
+                  onClick={() => {
+                    onClose();
+                    onStartCall && onStartCall('voice');
+                  }}
+                >
+                  <i className="fa-solid fa-phone"></i>
+                  <span>Audio</span>
+                </button>
+                <button
+                  type="button"
+                  className="wa-contact-action-btn"
+                  onClick={() => {
+                    onClose();
+                    onStartCall && onStartCall('video');
+                  }}
+                >
+                  <i className="fa-solid fa-video"></i>
+                  <span>Video</span>
+                </button>
+                <button
+                  type="button"
+                  className="wa-contact-action-btn"
+                  onClick={onClose}
+                >
+                  <i className="fa-solid fa-message"></i>
+                  <span>Message</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* About / Bio Card */}
-          <div className="wa-contact-card">
-            <div className="wa-card-label">About</div>
-            <div className="wa-card-value about-text">{about}</div>
-          </div>
+          {about && (
+            <div className="wa-contact-card">
+              <div className="wa-card-label">About</div>
+              <div className="wa-card-value about-text">{about}</div>
+            </div>
+          )}
 
           {/* Phone Number Card */}
           <div className="wa-contact-card">
@@ -108,6 +117,37 @@ export default function ContactInfoModal({
                 <div className="wa-enc-desc">Messages and calls are end-to-end encrypted. Tap to verify.</div>
               </div>
             </div>
+          </div>
+
+          {/* Block / Unblock Action Card */}
+          <div className="wa-contact-card danger-card">
+            {isBlockedByMe ? (
+              <button
+                type="button"
+                className="wa-contact-danger-btn unblock-btn"
+                onClick={() => {
+                  if (window.confirm(`Unblock ${displayName}?`)) {
+                    onUnblock && onUnblock(recipientId);
+                  }
+                }}
+              >
+                <i className="fa-solid fa-unlock"></i>
+                <span>Unblock {displayName}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="wa-contact-danger-btn block-btn"
+                onClick={() => {
+                  if (window.confirm(`Block ${displayName}? Blocked contacts will no longer be able to call you or send you messages.`)) {
+                    onBlock && onBlock(recipientId);
+                  }
+                }}
+              >
+                <i className="fa-solid fa-ban"></i>
+                <span>Block {displayName}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
