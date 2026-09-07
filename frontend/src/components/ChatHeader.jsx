@@ -8,17 +8,21 @@ export default function ChatHeader({
   recipientAbout,
   isRecipientOnline,
   isConnected,
+  isTyping,
+  onStartCall,
   onBack
 }) {
   const displayName = recipientName || recipientId || 'Select Chat';
   const displayPhone = recipientId || '';
   const showSubtitlePhone = recipientName && recipientName !== recipientId;
 
-  const statusText = !isConnected
+  const statusText = isTyping
+    ? 'typing...'
+    : !isConnected
     ? 'connecting...'
     : isRecipientOnline
-      ? 'online'
-      : 'offline';
+    ? 'online'
+    : 'offline';
 
   return (
     <header className="wa-chat-header">
@@ -65,18 +69,48 @@ export default function ChatHeader({
           </div>
           <div className="wa-chat-status">
             {showSubtitlePhone && <span style={{ opacity: 0.85, marginRight: '4px' }}>{displayPhone} •</span>}
-            <span style={{ color: isRecipientOnline ? '#dcfce7' : 'rgba(255,255,255,0.75)' }}>
-              {statusText}
+            <span
+              style={{
+                color: isTyping ? '#25d366' : isRecipientOnline ? '#dcfce7' : 'rgba(255,255,255,0.75)',
+                fontWeight: isTyping ? '700' : 'normal',
+                fontStyle: isTyping ? 'italic' : 'normal',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px'
+              }}
+            >
+              {isTyping ? (
+                <>
+                  <span>typing</span>
+                  <span className="wa-typing-dots">
+                    <span className="dot">.</span>
+                    <span className="dot">.</span>
+                    <span className="dot">.</span>
+                  </span>
+                </>
+              ) : (
+                statusText
+              )}
             </span>
           </div>
         </div>
       </div>
 
       <div className="wa-chat-header-actions">
-        <button type="button" className="wa-action-icon" title="Video Call">
+        <button
+          type="button"
+          className="wa-action-icon"
+          title="Video Call"
+          onClick={() => onStartCall && onStartCall('video')}
+        >
           <i className="fa-solid fa-video"></i>
         </button>
-        <button type="button" className="wa-action-icon" title="Voice Call">
+        <button
+          type="button"
+          className="wa-action-icon"
+          title="Voice Call"
+          onClick={() => onStartCall && onStartCall('voice')}
+        >
           <i className="fa-solid fa-phone"></i>
         </button>
         <button type="button" className="wa-action-icon" title="More Options">

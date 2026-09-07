@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import EmojiPicker from './EmojiPicker';
 
-export default function MessageInput({ recipientId, onRecipientChange, onSendMessage }) {
+export default function MessageInput({ recipientId, onRecipientChange, onSendMessage, onTyping }) {
   const [text, setText] = useState('');
   const [showRecipientInput, setShowRecipientInput] = useState(!recipientId);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -12,11 +12,33 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
   const [showImagePreview, setShowImagePreview] = useState(false);
 
   const fileInputRef = useRef(null);
+  const typingTimerRef = useRef(null);
+
+  // Debounced Typing emitter
+  const handleTextChange = (e) => {
+    const val = e.target.value;
+    setText(val);
+
+    if (onTyping) {
+      if (val.trim()) {
+        onTyping(true);
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = setTimeout(() => {
+          onTyping(false);
+        }, 2500);
+      } else {
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+        onTyping(false);
+      }
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     const trimmed = text.trim();
     if (trimmed && recipientId.trim()) {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      if (onTyping) onTyping(false);
       onSendMessage(recipientId.trim(), trimmed, 'text', null);
       setText('');
       setShowEmojiPicker(false);
@@ -200,7 +222,7 @@ export default function MessageInput({ recipientId, onRecipientChange, onSendMes
             className="wa-main-input"
             placeholder={recipientId ? 'Message' : 'Set recipient first'}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={handleTextChange}
             disabled={!recipientId.trim()}
           />
 

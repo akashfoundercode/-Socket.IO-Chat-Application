@@ -174,11 +174,77 @@ module.exports = (io) => {
 
         // 7. Typing Indicators
         socket.on("typing", ({ to, isTyping }) => {
-            if (to) {
-                socket.to(String(to)).emit("typing", { from: socket.data.userId, isTyping: Boolean(isTyping) });
-                const altTo = String(to).startsWith('+') ? String(to).replace(/^\+/, '') : `+${to}`;
-                socket.to(altTo).emit("typing", { from: socket.data.userId, isTyping: Boolean(isTyping) });
-            }
+            const from = socket.data.userId;
+            if (!from || !to) return;
+            const cleanTo = String(to).trim();
+            const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+
+            io.to(cleanTo).emit("typing", { from, isTyping: Boolean(isTyping) });
+            io.to(altTo).emit("typing", { from, isTyping: Boolean(isTyping) });
+        });
+
+        // 8. WebRTC Calling Signaling Events
+        // A. Initiate Call
+        socket.on("call_user", ({ to, callerName, callerAvatar, callType, offer }) => {
+            const from = socket.data.userId;
+            if (!from || !to) return;
+            const cleanTo = String(to).trim();
+            const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+
+            const payload = {
+                from,
+                callerName: callerName || from,
+                callerAvatar: callerAvatar || null,
+                callType: callType || 'voice', // 'voice' | 'video'
+                offer: offer || null
+            };
+
+            io.to(cleanTo).emit("incoming_call", payload);
+            io.to(altTo).emit("incoming_call", payload);
+        });
+
+        // B. Answer / Accept Call
+        socket.on("answer_call", ({ to, answer }) => {
+            const from = socket.data.userId;
+            if (!from || !to) return;
+            const cleanTo = String(to).trim();
+            const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+
+            io.to(cleanTo).emit("call_accepted", { from, answer });
+            io.to(altTo).emit("call_accepted", { from, answer });
+        });
+
+        // C. Reject / Decline Call
+        socket.on("reject_call", ({ to, reason }) => {
+            const from = socket.data.userId;
+            if (!from || !to) return;
+            const cleanTo = String(to).trim();
+            const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+
+            io.to(cleanTo).emit("call_rejected", { from, reason: reason || 'Call declined' });
+            io.to(altTo).emit("call_rejected", { from, reason: reason || 'Call declined' });
+        });
+
+        // D. End / Hangup Active Call
+        socket.on("end_call", ({ to }) => {
+            const from = socket.data.userId;
+            if (!from || !to) return;
+            const cleanTo = String(to).trim();
+            const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+
+            io.to(cleanTo).emit("call_ended", { from });
+            io.to(altTo).emit("call_ended", { from });
+        });
+
+        // E. WebRTC ICE Candidates Exchange
+        socket.on("ice_candidate", ({ to, candidate }) => {
+            const from = socket.data.userId;
+            if (!from || !to || !candidate) return;
+            const cleanTo = String(to).trim();
+            const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+
+            io.to(cleanTo).emit("ice_candidate", { from, candidate });
+            io.to(altTo).emit("ice_candidate", { from, candidate });
         });
 
         // 8. Explicit User Logout

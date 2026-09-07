@@ -18,6 +18,7 @@ export default function ChatList({
   userId,
   activeChat,
   onlineUsers,
+  typingUsers,
   onSelectChat,
   onOpenProfile,
   onLogout,
@@ -35,6 +36,15 @@ export default function ChatList({
     const withPlus = clean.startsWith('+') ? clean : `+${clean}`;
     const withoutPlus = clean.replace(/^\+/, '');
     return onlineUsers.has(clean) || onlineUsers.has(withPlus) || onlineUsers.has(withoutPlus);
+  };
+
+  // Helper to check if a contact is typing
+  const isContactTyping = (phoneId) => {
+    if (!typingUsers || !phoneId) return false;
+    const clean = String(phoneId).trim();
+    const withPlus = clean.startsWith('+') ? clean : `+${clean}`;
+    const withoutPlus = clean.replace(/^\+/, '');
+    return typingUsers.has(clean) || typingUsers.has(withPlus) || typingUsers.has(withoutPlus);
   };
 
   // New Chat Form State
@@ -499,7 +509,13 @@ export default function ChatList({
                       {time && <span className="wa-item-time">{time}</span>}
                     </div>
                     <div className="wa-item-bottom">
-                      <span className="wa-item-msg">{lastMsg}</span>
+                      {isContactTyping(phoneDisplay) ? (
+                        <span className="wa-item-typing">
+                          typing<span className="wa-typing-dots"><span className="dot">.</span><span className="dot">.</span><span className="dot">.</span></span>
+                        </span>
+                      ) : (
+                        <span className="wa-item-msg">{lastMsg}</span>
+                      )}
                     </div>
                   </div>
                 </div>

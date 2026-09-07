@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { socket } from './socket/socket';
 import { profileApi } from './services/api';
 import JoinModal from './components/JoinModal';
@@ -7,7 +7,17 @@ import ChatHeader from './components/ChatHeader';
 import MessageList from './components/MessageList';
 import MessageInput from './components/MessageInput';
 import ProfileSettings from './components/ProfileSettings';
+import CallModal from './components/CallModal';
+import { startIncomingRingtone, startOutgoingDialTone, stopCallSounds } from './utils/callSounds';
 import './App.css';
+
+const ICE_SERVERS = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' }
+  ]
+};
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
@@ -24,12 +34,44 @@ export default function App() {
   const [currentView, setCurrentView] = useState('inbox'); // 'inbox' | 'chat' | 'profile'
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
+  const [typingUsers, setTypingUsers] = useState(new Set());
   const [messages, setMessages] = useState([]);
   const [recentMessageEvent, setRecentMessageEvent] = useState(null);
 
+  // Calling & Media Stream States
+  const [callState, setCallState] = useState(null);
+  const [localStream, setLocalStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
+
+  const localStreamRef = useRef(null);
+  const peerConnectionRef = useRef(null);
+
   const userId = currentUser ? (currentUser.fullPhone || currentUser.id) : '';
 
-  // Handle Socket Events & Real-Time Presence & Ticks
+  // Cleanup helper for Calling
+  const cleanupCall = useCallback(() => {
+    stopCallSounds();
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    setLocalStream(null);
+    setRemoteStream(null);
+
+    if (peerConnectionRef.current) {
+      try {
+        peerConnectionRef.current.close();
+      } catch (e) {
+        console.warn('Error closing peer connection:', e);
+      }
+      peerConnectionRef.current = null;
+    }
+
+    setCallState(null);
+  }, []);
+
+  // Handle Socket Events & Real-Time Presence, Ticks, Typing, Calling
   useEffect(() => {
     function onConnect() {
       setIsConnected(true);
@@ -41,6 +83,8 @@ export default function App() {
     function onDisconnect() {
       setIsConnected(false);
       setOnlineUsers(new Set());
+      setTypingUsers(new Set());
+      cleanupCall();
     }
 
     function onJoined(joinedId) {
@@ -74,6 +118,27 @@ export default function App() {
         const withPlus = clean.startsWith('+') ? clean : `+${clean}`;
         const withoutPlus = clean.replace(/^\+/, '');
         if (isOnline) {
+          updated.add(clean);
+          updated.add(withPlus);
+          updated.add(withoutPlus);
+        } else {
+          updated.delete(clean);
+          updated.delete(withPlus);
+          updated.delete(withoutPlus);
+        }
+        return updated;
+      });
+    }
+
+    // Real-Time Typing indicator from peer
+    function onTyping({ from, isTyping }) {
+      if (!from) return;
+      setTypingUsers((prev) => {
+        const updated = new Set(prev);
+        const clean = String(from).trim();
+        const withPlus = clean.startsWith('+') ? clean : `+${clean}`;
+        const withoutPlus = clean.replace(/^\+/, '');
+        if (isTyping) {
           updated.add(clean);
           updated.add(withPlus);
           updated.add(withoutPlus);
@@ -121,16 +186,69 @@ export default function App() {
       );
     }
 
+    // WebRTC Calling Socket Handlers
+    function onIncomingCall({ from, callerName, callerAvatar, callType, offer }) {
+      setCallState({
+        isIncoming: true,
+        isAccepted: false,
+        callType: callType || 'voice',
+        peerId: from,
+        peerName: callerName || from,
+        peerAvatar: callerAvatar || null,
+        offer: offer || null
+      });
+      startIncomingRingtone();
+    }
+
+    async function onCallAccepted({ from, answer }) {
+      stopCallSounds();
+      setCallState((prev) => (prev ? { ...prev, isAccepted: true } : null));
+
+      if (peerConnectionRef.current && answer) {
+        try {
+          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+        } catch (err) {
+          console.warn('Error setting remote description on call_accepted:', err);
+        }
+      }
+    }
+
+    function onCallRejected({ reason }) {
+      alert(`Call ended: ${reason || 'Declined'}`);
+      cleanupCall();
+    }
+
+    function onCallEnded() {
+      cleanupCall();
+    }
+
+    async function onIceCandidate({ candidate }) {
+      if (peerConnectionRef.current && candidate) {
+        try {
+          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (err) {
+          console.warn('Error adding ICE candidate:', err);
+        }
+      }
+    }
+
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('joined', onJoined);
     socket.on('online_users', onOnlineUsers);
     socket.on('user_status', onUserStatus);
+    socket.on('typing', onTyping);
     socket.on('conversation_history', onConversationHistory);
     socket.on('message_received', onMessageReceived);
     socket.on('message_saved', onMessageSaved);
     socket.on('messages_seen', onMessagesSeen);
     socket.on('messages_delivered', onMessagesDelivered);
+
+    socket.on('incoming_call', onIncomingCall);
+    socket.on('call_accepted', onCallAccepted);
+    socket.on('call_rejected', onCallRejected);
+    socket.on('call_ended', onCallEnded);
+    socket.on('ice_candidate', onIceCandidate);
 
     if (socket.connected && userId) {
       socket.emit('join', userId);
@@ -142,13 +260,20 @@ export default function App() {
       socket.off('joined', onJoined);
       socket.off('online_users', onOnlineUsers);
       socket.off('user_status', onUserStatus);
+      socket.off('typing', onTyping);
       socket.off('conversation_history', onConversationHistory);
       socket.off('message_received', onMessageReceived);
       socket.off('message_saved', onMessageSaved);
       socket.off('messages_seen', onMessagesSeen);
       socket.off('messages_delivered', onMessagesDelivered);
+
+      socket.off('incoming_call', onIncomingCall);
+      socket.off('call_accepted', onCallAccepted);
+      socket.off('call_rejected', onCallRejected);
+      socket.off('call_ended', onCallEnded);
+      socket.off('ice_candidate', onIceCandidate);
     };
-  }, [userId, activeChat]);
+  }, [userId, activeChat, cleanupCall]);
 
   // Load conversation and fetch recipient profile when activeChat changes
   useEffect(() => {
@@ -182,6 +307,146 @@ export default function App() {
       onlineUsers.has(activeChat.startsWith('+') ? activeChat : `+${activeChat}`) ||
       onlineUsers.has(activeChat.replace(/^\+/, ''))
     )
+  );
+
+  // Calculate if activeChat recipient is typing
+  const isRecipientTyping = Boolean(
+    activeChat && (
+      typingUsers.has(activeChat) ||
+      typingUsers.has(activeChat.startsWith('+') ? activeChat : `+${activeChat}`) ||
+      typingUsers.has(activeChat.replace(/^\+/, ''))
+    )
+  );
+
+  // 1. Initiate Outgoing Call (Voice / Video)
+  const handleStartCall = async (callType) => {
+    if (!activeChat) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: callType === 'video'
+      });
+
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+
+      const pc = new RTCPeerConnection(ICE_SERVERS);
+      peerConnectionRef.current = pc;
+
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      pc.ontrack = (event) => {
+        if (event.streams && event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+        }
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('ice_candidate', { to: activeChat, candidate: event.candidate });
+        }
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      startOutgoingDialTone();
+
+      socket.emit('call_user', {
+        to: activeChat,
+        callerName: currentUser?.name || userId,
+        callerAvatar: currentUser?.avatar || null,
+        callType,
+        offer
+      });
+
+      setCallState({
+        isIncoming: false,
+        isAccepted: false,
+        callType,
+        peerId: activeChat,
+        peerName: recipientProfile?.name || activeChat,
+        peerAvatar: recipientProfile?.avatar || null
+      });
+    } catch (err) {
+      console.error('Failed to start call:', err);
+      alert('Could not access microphone or camera. Please check browser permissions.');
+      cleanupCall();
+    }
+  };
+
+  // 2. Accept Incoming Call
+  const handleAcceptCall = async () => {
+    if (!callState || !callState.peerId) return;
+    stopCallSounds();
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: callState.callType === 'video'
+      });
+
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+
+      const pc = new RTCPeerConnection(ICE_SERVERS);
+      peerConnectionRef.current = pc;
+
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      pc.ontrack = (event) => {
+        if (event.streams && event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+        }
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('ice_candidate', { to: callState.peerId, candidate: event.candidate });
+        }
+      };
+
+      if (callState.offer) {
+        await pc.setRemoteDescription(new RTCSessionDescription(callState.offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socket.emit('answer_call', { to: callState.peerId, answer });
+      }
+
+      setCallState((prev) => (prev ? { ...prev, isAccepted: true } : null));
+    } catch (err) {
+      console.error('Failed to accept call:', err);
+      alert('Could not access microphone or camera. Call declined.');
+      handleRejectCall();
+    }
+  };
+
+  // 3. Reject Incoming Call
+  const handleRejectCall = () => {
+    if (callState?.peerId) {
+      socket.emit('reject_call', { to: callState.peerId, reason: 'Declined' });
+    }
+    cleanupCall();
+  };
+
+  // 4. End Active Call
+  const handleEndCall = () => {
+    if (callState?.peerId) {
+      socket.emit('end_call', { to: callState.peerId });
+    }
+    cleanupCall();
+  };
+
+  // 5. Emit Typing Indicator
+  const handleTyping = useCallback(
+    (isTyping) => {
+      if (activeChat) {
+        socket.emit('typing', { to: activeChat, isTyping });
+      }
+    },
+    [activeChat]
   );
 
   // Login Success
@@ -245,15 +510,26 @@ export default function App() {
       {/* Background Top Strip for Desktop/Web */}
       <div className="wa-web-top-strip"></div>
 
+      {/* Call Modal / Overlay (Active, Incoming, Video, Voice) */}
+      {callState && (
+        <CallModal
+          callState={callState}
+          onAcceptCall={handleAcceptCall}
+          onRejectCall={handleRejectCall}
+          onEndCall={handleEndCall}
+          localStream={localStream}
+          remoteStream={remoteStream}
+        />
+      )}
+
       {/* 1. SCREEN 1: LOGIN / OTP (If not logged in) */}
       {!currentUser ? (
         <JoinModal onJoin={handleLoginSuccess} isConnected={isConnected} />
       ) : (
         /* 2. AUTHENTICATED RESPONSIVE CONTAINER (Desktop / Tablet / Mobile) */
         <div
-          className={`wa-main-container ${
-            activeChat ? 'has-active-chat' : 'no-active-chat'
-          } ${currentView === 'profile' ? 'is-profile-view' : ''}`}
+          className={`wa-main-container ${activeChat ? 'has-active-chat' : 'no-active-chat'
+            } ${currentView === 'profile' ? 'is-profile-view' : ''}`}
         >
           {/* A. LEFT SIDEBAR PANE (Profile Settings OR Chat List) */}
           <aside className="wa-sidebar-pane">
@@ -272,6 +548,7 @@ export default function App() {
                 userId={userId}
                 activeChat={activeChat}
                 onlineUsers={onlineUsers}
+                typingUsers={typingUsers}
                 onSelectChat={handleSelectChat}
                 onOpenProfile={handleOpenProfile}
                 onLogout={handleLogout}
@@ -292,6 +569,8 @@ export default function App() {
                   recipientAbout={recipientProfile?.about}
                   isRecipientOnline={isRecipientOnline}
                   isConnected={isConnected}
+                  isTyping={isRecipientTyping}
+                  onStartCall={handleStartCall}
                   onBack={handleBackToChatList}
                 />
 
@@ -305,6 +584,7 @@ export default function App() {
                   recipientId={activeChat}
                   onRecipientChange={setActiveChat}
                   onSendMessage={handleSendMessage}
+                  onTyping={handleTyping}
                 />
               </div>
             ) : (
