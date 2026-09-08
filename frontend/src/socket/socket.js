@@ -13,9 +13,11 @@ const getSocketUrl = () => {
 
 export const socket = io(getSocketUrl(), {
   autoConnect: true,
-  transports: ['websocket', 'polling'],
-  secure: false,
-  rejectUnauthorized: false
+  path: '/socket.io',
+  transports: ['polling', 'websocket'],
+  upgrade: true,
+  rememberUpgrade: false,
+  timeout: 20000
 });
 
 // Auto re-join on reconnect using saved session
