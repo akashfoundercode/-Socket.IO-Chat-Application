@@ -119,9 +119,11 @@ export default function VoiceNotePlayer({
       console.warn('Audio playback error:', audio.error?.message || e);
       if (typeof normalizedMediaUrl === 'string' && normalizedMediaUrl.startsWith('/') && !isRetriedRef.current) {
         isRetriedRef.current = true;
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL;
         const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
         // Keep full path including /api/chat prefix
-        const fallbackUrl = `http://${host}:3001${normalizedMediaUrl}`;
+        const fallbackBase = backendUrl || `http://${host}:3001`;
+        const fallbackUrl = `${fallbackBase.replace(/\/$/, '')}${normalizedMediaUrl}`;
         console.log('Retrying audio with fallback:', fallbackUrl);
         audio.src = fallbackUrl;
         audio.load();
