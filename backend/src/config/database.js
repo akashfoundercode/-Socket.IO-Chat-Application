@@ -126,6 +126,7 @@ const initializeDatabase = async () => {
         "ALTER TABLE messages ADD COLUMN reply_to_text TEXT NULL",
         "ALTER TABLE messages ADD COLUMN reply_to_sender VARCHAR(100) NULL",
         "ALTER TABLE messages ADD COLUMN reactions TEXT NULL",
+        "ALTER TABLE messages ADD COLUMN is_pinned TINYINT(1) NOT NULL DEFAULT 0",
         "ALTER TABLE messages ADD COLUMN delivered_at DATETIME NULL",
         "ALTER TABLE messages ADD COLUMN seen_at DATETIME NULL",
         "ALTER TABLE messages ADD COLUMN edited_at DATETIME NULL"
@@ -291,11 +292,18 @@ const initializeDatabase = async () => {
             reply_to_id BIGINT UNSIGNED NULL,
             mentions TEXT NULL,
             reactions TEXT NULL,
+            is_pinned TINYINT(1) NOT NULL DEFAULT 0,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_group_messages (group_id, id),
             INDEX idx_group_sender (sender_id)
         )
     `);
+
+    try {
+        await pool.query("ALTER TABLE group_messages ADD COLUMN is_pinned TINYINT(1) NOT NULL DEFAULT 0");
+    } catch (e) {
+        // column already exists
+    }
 
     const tables = ['users', 'otps', 'messages', 'message_deletions', 'blocked_users', 'contacts', 'user_statuses', 'status_views', 'status_reactions', 'status_replies', 'call_logs', 'chat_groups', 'group_members', 'group_messages'];
     for (const tbl of tables) {

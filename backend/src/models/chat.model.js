@@ -87,6 +87,7 @@ const mapMessage = (row) => ({
     replyToText: row.reply_to_text || null,
     replyToSender: row.reply_to_sender || null,
     reactions: row.reactions ? (typeof row.reactions === 'string' ? JSON.parse(row.reactions) : row.reactions) : {},
+    isPinned: Boolean(row.is_pinned),
     deliveredAt: row.delivered_at,
     seenAt: row.seen_at,
     editedAt: row.edited_at,
@@ -103,6 +104,7 @@ const mapGroupMessage = (row) => ({
     replyToId: row.reply_to_id ? String(row.reply_to_id) : null,
     mentions: row.mentions ? JSON.parse(row.mentions) : [],
     reactions: row.reactions ? JSON.parse(row.reactions) : {},
+    isPinned: Boolean(row.is_pinned),
     createdAt: row.created_at
 });
 
@@ -547,7 +549,7 @@ const listConversations = async (userId) => {
             GROUP BY sender_id
          ) AS unread ON (unread.contact_sender_id = contact.id OR unread.contact_sender_id = u.full_phone OR unread.contact_sender_id = u.phone)
          WHERE m.id IS NOT NULL
-         ORDER BY m.id DESC`,
+         ORDER BY m.created_at DESC, m.id DESC`,
         [
             ...userVars, // 1: scalar subquery name - c.user_id IN
             ...userVars, // 2: scalar subquery customName - c.user_id IN
@@ -786,6 +788,34 @@ const updateMessage = async (id, userId, text) => {
     return rows[0] ? mapMessage(rows[0]) : null;
 };
 
+const updateMessagePin = async (id, userId, pinned, isGroup = false, groupId = null) => {
+    const cleanId = Number(id);
+    if (!cleanId) return null;
+
+    if (isGroup) {
+        const cleanGroupId = Number(String(groupId || '').replace(/^group:/, ''));
+        if (!cleanGroupId || !(await isGroupMember(cleanGroupId, userId))) return null;
+        const [result] = await getPool().execute(
+            "UPDATE group_messages SET is_pinned = ? WHERE id = ? AND group_id = ?",
+            [pinned ? 1 : 0, cleanId, cleanGroupId]
+        );
+        if (!result.affectedRows) return null;
+        const [rows] = await getPool().execute("SELECT * FROM group_messages WHERE id = ? AND group_id = ?", [cleanId, cleanGroupId]);
+        return rows[0] ? mapGroupMessage(rows[0]) : null;
+    }
+
+    const userVars = getPhoneVariants(userId);
+    const placeholders = userVars.map(() => "?").join(",");
+    const [result] = await getPool().execute(
+        `UPDATE messages SET is_pinned = ?
+         WHERE id = ? AND (sender_id IN (${placeholders}) OR recipient_id IN (${placeholders}))`,
+        [pinned ? 1 : 0, cleanId, ...userVars, ...userVars]
+    );
+    if (!result.affectedRows) return null;
+    const [rows] = await getPool().execute("SELECT * FROM messages WHERE id = ?", [cleanId]);
+    return rows[0] ? mapMessage(rows[0]) : null;
+};
+
 const deleteMessage = async (id, userId, everyone = false) => {
     const pool = getPool();
     const cleanId = Number(id);
@@ -871,7 +901,7 @@ const getConversation = async (userId, otherUserId) => {
                SELECT 1 FROM message_deletions d 
                WHERE d.message_id = m.id AND d.user_id IN (${uPlaceholders})
            )
-         ORDER BY m.id ASC`,
+         ORDER BY m.is_pinned DESC, m.id ASC`,
         [...userVars, ...otherVars, ...otherVars, ...userVars, ...userVars]
     );
     return rows.map(mapMessage);
@@ -1098,7 +1128,7 @@ const updateGroupMemberRole = async (groupId, requesterId, memberId, role) => {
 
 const getGroupMessages = async (groupId, userId) => {
     if (!(await isGroupMember(groupId, userId))) return [];
-    const [rows] = await getPool().execute("SELECT * FROM group_messages WHERE group_id = ? ORDER BY id ASC", [Number(groupId)]);
+    const [rows] = await getPool().execute("SELECT * FROM group_messages WHERE group_id = ? ORDER BY is_pinned DESC, id ASC", [Number(groupId)]);
     return rows.map(mapGroupMessage);
 };
 
@@ -1471,6 +1501,7 @@ module.exports = {
     listConversations,
     searchUsersByPhone,
     updateMessage,
+    updateMessagePin,
     deleteMessage,
     blockUser,
     unblockUser,

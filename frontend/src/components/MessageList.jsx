@@ -1,12 +1,39 @@
 import React, { useState, useEffect, useRef } from 'react';
 import VoiceNotePlayer from './VoiceNotePlayer';
 
+function MessageAvatar({ avatar, label }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const avatarValue = String(avatar || '').trim();
+  const isEmojiAvatar = avatarValue && avatarValue.length <= 4 && !avatarValue.startsWith('/') && !avatarValue.startsWith('data:') && !avatarValue.startsWith('http');
+
+  return (
+    <div className="wa-message-avatar" title={label}>
+      {avatarValue && !imageFailed ? (
+        isEmojiAvatar ? (
+          <span className="wa-message-avatar-emoji">{avatarValue}</span>
+        ) : (
+          <img
+            src={avatarValue}
+            alt={label}
+            onError={() => setImageFailed(true)}
+          />
+        )
+      ) : (
+        <i className="fa-brands fa-whatsapp" aria-label="Default avatar"></i>
+      )}
+    </div>
+  );
+}
+
 export default function MessageList({
   messages,
   currentUserId,
+  currentUserAvatar = null,
+  recipientAvatar = null,
   recipientId,
   onDeleteMessage,
   onEditMessage,
+  onPinMessage,
   onReplyMessage,
   onReactMessage,
   isGroup = false,
@@ -113,6 +140,17 @@ export default function MessageList({
     setActiveMenuMessageId(null);
     setSelectedMessageForHistory(msg);
   };
+
+  const handleTogglePin = (msg, e) => {
+    if (e) e.stopPropagation();
+    onPinMessage?.(msg.id, !msg.isPinned);
+    setActiveMenuMessageId(null);
+  };
+
+  const orderedMessages = [...messages].sort((a, b) => {
+    if (Boolean(a.isPinned) !== Boolean(b.isPinned)) return a.isPinned ? -1 : 1;
+    return 0;
+  });
 
   return (
     <div className="wa-messages-container">
@@ -325,7 +363,7 @@ export default function MessageList({
           <p>Send a real-time message or share a photo to start the conversation.</p>
         </div>
       ) : (
-        messages.map((msg, index) => {
+        orderedMessages.map((msg, index) => {
           const fromId = String(msg.from || '').trim();
           const myId = String(currentUserId || '').trim();
           const isSent = fromId === myId ||
@@ -333,6 +371,7 @@ export default function MessageList({
             `+${fromId}` === myId ||
             fromId === `+${myId.replace(/^\+/, '')}`;
           const isDeleted = msg.type === 'deleted';
+          const isCall = !isDeleted && msg.type === 'call';
           const isEdited = Boolean(msg.editedAt || msg.originalText);
           const time = msg.createdAt
             ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -345,6 +384,11 @@ export default function MessageList({
           const isStatusReply = !isDeleted && msg.type === 'status_reply';
           const isStatusTag = isStatusReaction || isStatusReply;
           const hasReplyQuote = Boolean(msg.replyToId || msg.replyToText);
+          const groupSender = isGroup
+            ? groupDetails?.members?.find((member) => String(member.userId) === fromId)
+            : null;
+          const messageAvatar = isSent ? currentUserAvatar : (groupSender?.avatar || recipientAvatar);
+          const messageAvatarLabel = isSent ? 'You' : (groupSender?.name || recipientId);
 
           let reactionsObj = {};
           if (msg.reactions) {
@@ -381,290 +425,352 @@ export default function MessageList({
             }
           }
 
+          let callData = null;
+          if (isCall) {
+            try {
+              callData = typeof msg.text === 'string' ? JSON.parse(msg.text) : msg.text;
+            } catch (e) {
+              callData = { callType: 'voice', status: 'completed', duration: 0 };
+            }
+          }
+
           return (
-            <div key={msg.id || index} className={`wa-bubble-wrap ${isSent ? 'sent' : 'received'}`}>
-              <div
-                id={`msg-${msg.id}`}
-                className={`wa-bubble ${isSent ? 'sent' : 'received'} ${isLocation ? 'location-bubble' : ''} ${isStatusTag ? 'status-tag-bubble' : ''} ${isDeleted ? 'deleted-bubble' : ''}`}
-                onDoubleClick={() => !isDeleted && onReplyMessage?.(msg)}
-              >
-                {isGroup && !isSent && (
-                  <div className="wa-group-sender-name">
-                    {groupDetails?.members?.find((member) => String(member.userId) === fromId)?.name || fromId}
-                  </div>
-                )}
+            <div key={msg.id || index} className={`wa-message-row ${isGroup ? 'group-message-row' : ''} ${isSent ? 'sent' : 'received'}`}>
+              {isGroup && !isSent && (
+                <MessageAvatar avatar={messageAvatar} label={messageAvatarLabel} />
+              )}
 
-                {/* Quick Reaction Bar Popup (Floating Emoji Picker) */}
-                {activeReactionMsgId === msg.id && (
-                  <div className="wa-quick-reaction-bar" onClick={(e) => e.stopPropagation()}>
-                    {QUICK_EMOJIS.map((emoji) => {
-                      const isMyReaction = reactionsObj?.[emoji]?.includes?.(String(currentUserId));
-                      return (
-                        <button
-                          key={emoji}
-                          type="button"
-                          className={`wa-quick-reaction-btn ${isMyReaction ? 'active' : ''}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onReactMessage?.(msg.id, emoji);
-                            setActiveReactionMsgId(null);
-                          }}
-                          title={`React ${emoji}`}
-                        >
-                          {emoji}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Message Action Dropdown Chevron & Hover Quick Actions */}
-                {!isDeleted && (
-                  <div className="wa-bubble-actions">
-                    <button
-                      type="button"
-                      className="wa-bubble-menu-trigger"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveMenuMessageId((prev) => (prev === msg.id ? null : msg.id));
-                        setActiveReactionMsgId(null);
-                      }}
-                      title="Message options"
-                    >
-                      <i className="fa-solid fa-chevron-down"></i>
-                    </button>
-
-                    {activeMenuMessageId === msg.id && (
-                      <div
-                        className="wa-bubble-dropdown-menu"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {/* React Option */}
-                        <button
-                          type="button"
-                          className="wa-dropdown-item"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveReactionMsgId(msg.id);
-                            setActiveMenuMessageId(null);
-                          }}
-                        >
-                          <i className="fa-regular fa-face-smile"></i>
-                          <span>React</span>
-                        </button>
-
-                        {/* Reply Option for All Messages */}
-                        <button
-                          type="button"
-                          className="wa-dropdown-item"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onReplyMessage?.(msg);
-                            setActiveMenuMessageId(null);
-                          }}
-                        >
-                          <i className="fa-solid fa-reply"></i>
-                          <span>Reply</span>
-                        </button>
-
-                        {/* Edit Option for Sent Text Messages */}
-                        {isSent && !isLocation && !isImage && !isStatusReaction && !isStatusReply && (
-                          <button
-                            type="button"
-                            className="wa-dropdown-item edit"
-                            onClick={(e) => handleOpenEditDialog(msg, e)}
-                          >
-                            <i className="fa-regular fa-pen-to-square"></i>
-                            <span>Edit message</span>
-                          </button>
-                        )}
-
-                        {/* View History if edited */}
-                        {isEdited && (
-                          <button
-                            type="button"
-                            className="wa-dropdown-item history"
-                            onClick={(e) => handleOpenHistoryModal(msg, e)}
-                          >
-                            <i className="fa-solid fa-clock-rotate-left"></i>
-                            <span>View edit history</span>
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          className="wa-dropdown-item delete"
-                          onClick={(e) => handleOpenDeleteDialog(msg, e)}
-                        >
-                          <i className="fa-regular fa-trash-can"></i>
-                          <span>Delete message</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Hover Quick Actions Bar */}
-                {!isDeleted && (
-                  <div className="wa-bubble-hover-actions" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      className="wa-hover-action-btn"
-                      title="React"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveReactionMsgId((prev) => (prev === msg.id ? null : msg.id));
-                        setActiveMenuMessageId(null);
-                      }}
-                    >
-                      <i className="fa-regular fa-face-smile"></i>
-                    </button>
-                    <button
-                      type="button"
-                      className="wa-hover-action-btn"
-                      title="Reply"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onReplyMessage?.(msg);
-                      }}
-                    >
-                      <i className="fa-solid fa-reply"></i>
-                    </button>
-                  </div>
-                )}
-
-                {/* Reply Quote Header Banner (WhatsApp style quote snippet) */}
-                {hasReplyQuote && !isDeleted && (
-                  <div
-                    className="wa-message-reply-quote"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleScrollToMessage(msg.replyToId);
-                    }}
-                    title="Click to jump to quoted message"
-                  >
-                    <div className="wa-reply-quote-bar"></div>
-                    <div className="wa-reply-quote-content">
-                      <div className="wa-reply-quote-author">
-                        {msg.replyToSender
-                          ? (String(msg.replyToSender) === String(currentUserId) ? 'You' : msg.replyToSender)
-                          : 'Message'}
-                      </div>
-                      <div className="wa-reply-quote-snippet">
-                        {msg.replyToText || 'Original message'}
-                      </div>
+              <div className={`wa-bubble-wrap ${isSent ? 'sent' : 'received'} ${msg.isPinned ? 'pinned-message-wrap' : ''}`}>
+                <div
+                  id={`msg-${msg.id}`}
+                  className={`wa-bubble ${isSent ? 'sent' : 'received'} ${isLocation ? 'location-bubble' : ''} ${isStatusTag ? 'status-tag-bubble' : ''} ${isDeleted ? 'deleted-bubble' : ''} ${msg.isPinned ? 'pinned-bubble' : ''} ${activeMenuMessageId === msg.id ? 'menu-open' : ''}`}
+                  onDoubleClick={() => !isDeleted && onReplyMessage?.(msg)}
+                >
+                  {isGroup && !isSent && (
+                    <div className="wa-group-sender-name">
+                      {groupSender?.name || fromId}
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Status Tag Card */}
-                {isStatusTag && statusData && (
-                  <div className="wa-status-tag-card">
-                    <div className="wa-status-tag-preview">
-                      <div className="wa-status-tag-header">
-                        <i className="fa-solid fa-circle-notch"></i>
-                        <span>Status update</span>
-                      </div>
-                      {statusData.mediaUrl ? (
-                        <img src={statusData.mediaUrl} alt="Status Thumbnail" className="wa-status-tag-thumb" />
-                      ) : (
+                  {msg.isPinned && (
+                    <div className="wa-pinned-message-label">
+                      <i className="fa-solid fa-thumbtack"></i>
+                      <span>Pinned</span>
+                    </div>
+                  )}
+
+                  {/* Quick Reaction Bar Popup (Floating Emoji Picker) */}
+                  {activeReactionMsgId === msg.id && (
+                    <div className="wa-quick-reaction-bar" onClick={(e) => e.stopPropagation()}>
+                      {QUICK_EMOJIS.map((emoji) => {
+                        const isMyReaction = reactionsObj?.[emoji]?.includes?.(String(currentUserId));
+                        return (
+                          <button
+                            key={emoji}
+                            type="button"
+                            className={`wa-quick-reaction-btn ${isMyReaction ? 'active' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReactMessage?.(msg.id, emoji);
+                              setActiveReactionMsgId(null);
+                            }}
+                            title={`React ${emoji}`}
+                          >
+                            {emoji}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Message Action Dropdown Chevron & Hover Quick Actions */}
+                  {!isDeleted && (
+                    <div className="wa-bubble-actions">
+                      <button
+                        type="button"
+                        className="wa-bubble-menu-trigger"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuMessageId((prev) => (prev === msg.id ? null : msg.id));
+                          setActiveReactionMsgId(null);
+                        }}
+                        title="Message options"
+                      >
+                        <i className="fa-solid fa-chevron-down"></i>
+                      </button>
+
+                      {activeMenuMessageId === msg.id && (
                         <div
-                          className="wa-status-tag-text-bg"
-                          style={{ backgroundColor: statusData.bgColor || '#00a884' }}
+                          className="wa-bubble-dropdown-menu"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <span>{statusData.textSnippet || 'Status'}</span>
+                          {/* React Option */}
+                          <button
+                            type="button"
+                            className="wa-dropdown-item"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveReactionMsgId(msg.id);
+                              setActiveMenuMessageId(null);
+                            }}
+                          >
+                            <i className="fa-regular fa-face-smile"></i>
+                            <span>React</span>
+                          </button>
+
+                          {/* Reply Option for All Messages */}
+                          <button
+                            type="button"
+                            className="wa-dropdown-item"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReplyMessage?.(msg);
+                              setActiveMenuMessageId(null);
+                            }}
+                          >
+                            <i className="fa-solid fa-reply"></i>
+                            <span>Reply</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="wa-dropdown-item"
+                            onClick={(e) => handleTogglePin(msg, e)}
+                          >
+                            <i className="fa-solid fa-thumbtack"></i>
+                            <span>{msg.isPinned ? 'Unpin message' : 'Pin message'}</span>
+                          </button>
+
+                          {/* Edit Option for Sent Text Messages */}
+                          {isSent && !isLocation && !isImage && !isStatusReaction && !isStatusReply && (
+                            <button
+                              type="button"
+                              className="wa-dropdown-item edit"
+                              onClick={(e) => handleOpenEditDialog(msg, e)}
+                            >
+                              <i className="fa-regular fa-pen-to-square"></i>
+                              <span>Edit message</span>
+                            </button>
+                          )}
+
+                          {/* View History if edited */}
+                          {isEdited && (
+                            <button
+                              type="button"
+                              className="wa-dropdown-item history"
+                              onClick={(e) => handleOpenHistoryModal(msg, e)}
+                            >
+                              <i className="fa-solid fa-clock-rotate-left"></i>
+                              <span>View edit history</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            className="wa-dropdown-item delete"
+                            onClick={(e) => handleOpenDeleteDialog(msg, e)}
+                          >
+                            <i className="fa-regular fa-trash-can"></i>
+                            <span>Delete message</span>
+                          </button>
                         </div>
                       )}
                     </div>
-                    {isStatusReaction && (
-                      <div className="wa-status-tag-reaction-badge">
-                        <span>Reacted: {statusData.emoji || '❤️'}</span>
+                  )}
+
+                  {/* Hover Quick Actions Bar */}
+                  {!isDeleted && (
+                    <div className="wa-bubble-hover-actions" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="wa-hover-action-btn"
+                        title="React"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveReactionMsgId((prev) => (prev === msg.id ? null : msg.id));
+                          setActiveMenuMessageId(null);
+                        }}
+                      >
+                        <i className="fa-regular fa-face-smile"></i>
+                      </button>
+                      <button
+                        type="button"
+                        className="wa-hover-action-btn"
+                        title="Reply"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReplyMessage?.(msg);
+                        }}
+                      >
+                        <i className="fa-solid fa-reply"></i>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Reply Quote Header Banner (WhatsApp style quote snippet) */}
+                  {hasReplyQuote && !isDeleted && (
+                    <div
+                      className="wa-message-reply-quote"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleScrollToMessage(msg.replyToId);
+                      }}
+                      title="Click to jump to quoted message"
+                    >
+                      <div className="wa-reply-quote-bar"></div>
+                      <div className="wa-reply-quote-content">
+                        <div className="wa-reply-quote-author">
+                          {msg.replyToSender
+                            ? (String(msg.replyToSender) === String(currentUserId) ? 'You' : msg.replyToSender)
+                            : 'Message'}
+                        </div>
+                        <div className="wa-reply-quote-snippet">
+                          {msg.replyToText || 'Original message'}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
 
-                {/* Image / Media Display */}
-                {isImage && (
-                  <div className="wa-bubble-media" onClick={() => setLightboxImage(msg.mediaUrl)}>
-                    <img src={msg.mediaUrl} alt="Attachment" className="wa-media-img" loading="lazy" />
-                  </div>
-                )}
+                  {/* Status Tag Card */}
+                  {isStatusTag && statusData && (
+                    <div className="wa-status-tag-card">
+                      <div className="wa-status-tag-preview">
+                        <div className="wa-status-tag-header">
+                          <i className="fa-solid fa-circle-notch"></i>
+                          <span>Status update</span>
+                        </div>
+                        {statusData.mediaUrl ? (
+                          <img src={statusData.mediaUrl} alt="Status Thumbnail" className="wa-status-tag-thumb" />
+                        ) : (
+                          <div
+                            className="wa-status-tag-text-bg"
+                            style={{ backgroundColor: statusData.bgColor || '#00a884' }}
+                          >
+                            <span>{statusData.textSnippet || 'Status'}</span>
+                          </div>
+                        )}
+                      </div>
+                      {isStatusReaction && (
+                        <div className="wa-status-tag-reaction-badge">
+                          <span>Reacted: {statusData.emoji || '❤️'}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                {/* Voice Note Player Component */}
-                {isVoice && (
-                  <div className="wa-voice-note-wrapper">
-                    <VoiceNotePlayer mediaUrl={msg.mediaUrl} isSent={isSent} />
-                  </div>
-                )}
+                  {/* Image / Media Display */}
+                  {isImage && (
+                    <div className="wa-bubble-media" onClick={() => setLightboxImage(msg.mediaUrl)}>
+                      <img src={msg.mediaUrl} alt="Attachment" className="wa-media-img" loading="lazy" />
+                    </div>
+                  )}
 
-                {/* Location Map Display */}
-                {isLocation && locationData && (
-                  <div className="wa-location-bubble-content">
-                    <div className="wa-loc-bubble-map">
-                      <iframe
-                        title="Shared Location"
-                        className="wa-loc-mini-map"
-                        src={`https://www.openstreetmap.org/export/embed.html?bbox=${locationData.longitude - 0.005}%2C${locationData.latitude - 0.003}%2C${locationData.longitude + 0.005}%2C${locationData.latitude + 0.003}&layer=mapnik&marker=${locationData.latitude}%2C${locationData.longitude}`}
+                  {/* Voice Note Player Component */}
+                  {isVoice && (
+                    <div className="wa-voice-note-wrapper">
+                      <VoiceNotePlayer
+                        mediaUrl={msg.mediaUrl}
+                        isSent={isSent}
+                        senderAvatar={messageAvatar}
+                        senderName={messageAvatarLabel}
                       />
                     </div>
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${locationData.latitude},${locationData.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="wa-loc-bubble-info"
-                    >
-                      <div className="wa-loc-bubble-icon">
-                        <i className="fa-solid fa-location-dot"></i>
-                      </div>
-                      <div>
-                        <div className="wa-loc-bubble-title">{locationData.title || 'Location'}</div>
-                        <div className="wa-loc-bubble-link">Tap to open in Google Maps</div>
-                      </div>
-                    </a>
-                  </div>
-                )}
+                  )}
 
-                {/* Message Text Content */}
-                {!isVoice && !isLocation && (!isStatusTag || !statusData) && (
-                  <div className={`wa-bubble-text ${isDeleted ? 'deleted-text' : ''}`}>
-                    {isDeleted && <i className="fa-solid fa-ban" style={{ marginRight: '6px', opacity: 0.7 }}></i>}
-                    {msgText}
-                  </div>
-                )}
+                  {isCall && (
+                    <div className={`wa-call-message ${callData?.status === 'missed' ? 'missed' : ''}`}>
+                      <i className={`fa-solid ${callData?.callType === 'video' ? 'fa-video' : 'fa-phone'}`}></i>
+                      <span>
+                        {callData?.status === 'missed'
+                          ? 'Missed call'
+                          : callData?.status === 'declined'
+                            ? 'Call declined'
+                            : `Call ended${callData?.duration ? ` • ${Math.floor(callData.duration / 60)}:${String(callData.duration % 60).padStart(2, '0')}` : ''}`}
+                      </span>
+                    </div>
+                  )}
 
-                {/* Message Footer Meta (Edited label, Timestamp & Ticks) */}
-                <div className="wa-bubble-meta">
-                  {isEdited && !isDeleted && <span className="wa-edited-label">edited</span>}
-                  <span className="wa-msg-time">{time}</span>
-                  {isSent && !isDeleted && renderMessageTick(msg)}
+                  {/* Location Map Display */}
+                  {isLocation && locationData && (
+                    <div className="wa-location-bubble-content">
+                      <div className="wa-loc-bubble-map">
+                        <iframe
+                          title="Shared Location"
+                          className="wa-loc-mini-map"
+                          src={`https://www.openstreetmap.org/export/embed.html?bbox=${locationData.longitude - 0.005}%2C${locationData.latitude - 0.003}%2C${locationData.longitude + 0.005}%2C${locationData.latitude + 0.003}&layer=mapnik&marker=${locationData.latitude}%2C${locationData.longitude}`}
+                        />
+                      </div>
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${locationData.latitude},${locationData.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="wa-loc-bubble-info"
+                      >
+                        <div className="wa-loc-bubble-icon">
+                          <i className="fa-solid fa-location-dot"></i>
+                        </div>
+                        <div>
+                          <div className="wa-loc-bubble-title">{locationData.title || 'Location'}</div>
+                          <div className="wa-loc-bubble-link">Tap to open in Google Maps</div>
+                        </div>
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Message Text Content */}
+                  {!isVoice && !isCall && !isLocation && (!isStatusTag || !statusData) && (
+                    <div className="wa-bubble-inline-text">
+                      <div className={`wa-bubble-text ${isDeleted ? 'deleted-text' : ''}`}>
+                        {isDeleted && <i className="fa-solid fa-ban" style={{ marginRight: '6px', opacity: 0.7 }}></i>}
+                        {msgText}
+                      </div>
+
+                      <div className="wa-bubble-meta">
+                        {isEdited && !isDeleted && <span className="wa-edited-label">edited</span>}
+                        <span className="wa-msg-time">{time}</span>
+                        {isSent && !isDeleted && renderMessageTick(msg)}
+                      </div>
+                    </div>
+                  )}
+
+                  {(!isVoice && !isLocation && (!isStatusTag || !statusData)) || isDeleted ? null : (
+                    <div className="wa-bubble-meta">
+                      {isEdited && !isDeleted && <span className="wa-edited-label">edited</span>}
+                      <span className="wa-msg-time">{time}</span>
+                      {isSent && !isDeleted && renderMessageTick(msg)}
+                    </div>
+                  )}
+
+                  {/* WhatsApp Floating Reaction Pill Badges */}
+                  {hasReactions && (
+                    <div className="wa-bubble-reactions-pill">
+                      {Object.entries(reactionsObj).map(([emoji, reactors]) => {
+                        const count = Array.isArray(reactors) ? reactors.length : 1;
+                        const hasMyReaction = Array.isArray(reactors) && reactors.includes(String(currentUserId));
+                        return (
+                          <button
+                            key={emoji}
+                            type="button"
+                            className={`wa-reaction-item ${hasMyReaction ? 'my-reaction' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReactMessage?.(msg.id, emoji);
+                            }}
+                            title={hasMyReaction ? `You reacted with ${emoji}` : `${count} reaction(s)`}
+                          >
+                            <span className="wa-reaction-emoji">{emoji}</span>
+                            {count > 1 && <span className="wa-reaction-count">{count}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-
-                {/* WhatsApp Floating Reaction Pill Badges */}
-                {hasReactions && (
-                  <div className="wa-bubble-reactions-pill">
-                    {Object.entries(reactionsObj).map(([emoji, reactors]) => {
-                      const count = Array.isArray(reactors) ? reactors.length : 1;
-                      const hasMyReaction = Array.isArray(reactors) && reactors.includes(String(currentUserId));
-                      return (
-                        <button
-                          key={emoji}
-                          type="button"
-                          className={`wa-reaction-item ${hasMyReaction ? 'my-reaction' : ''}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onReactMessage?.(msg.id, emoji);
-                          }}
-                          title={hasMyReaction ? `You reacted with ${emoji}` : `${count} reaction(s)`}
-                        >
-                          <span className="wa-reaction-emoji">{emoji}</span>
-                          {count > 1 && <span className="wa-reaction-count">{count}</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
+
+              {isGroup && isSent && (
+                <MessageAvatar avatar={messageAvatar} label={messageAvatarLabel} />
+              )}
             </div>
           );
         })

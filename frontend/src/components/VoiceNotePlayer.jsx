@@ -225,7 +225,7 @@ export default function VoiceNotePlayer({
               <img src={senderAvatar} alt="Sender" />
             )
           ) : (
-            <i className="fa-solid fa-user"></i>
+            <i className="fa-brands fa-whatsapp" aria-label="Default avatar"></i>
           )}
         </div>
         <div className="wa-vn-mic-badge">

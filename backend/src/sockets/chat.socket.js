@@ -8,6 +8,29 @@ const activeCalls = new Map();
 // Track which user is currently on an active call: userId -> channelName
 const userCallSessions = new Map();
 
+const saveCallChatMessage = async (io, session, status, duration = 0) => {
+    if (!session?.callerId || !session?.receiverId) return;
+
+    const callMessage = await chatModel.addMessage({
+        from: session.callerId,
+        to: session.receiverId,
+        text: JSON.stringify({
+            callType: session.callType || 'voice',
+            status,
+            duration: Number(duration || 0)
+        }),
+        type: 'call',
+        status: 'delivered'
+    });
+
+    chatModel.getPhoneVariants(session.callerId).forEach((variant) => {
+        io.to(variant).emit('message_saved', callMessage);
+    });
+
+    const receiverVariants = chatModel.getPhoneVariants(session.receiverId);
+    receiverVariants.forEach((variant) => io.to(variant).emit('message_received', callMessage));
+};
+
 const isUserOnline = (id) => {
     if (!id) return false;
     const cleanId = String(id).trim();
@@ -443,6 +466,39 @@ module.exports = (io) => {
             }
         });
 
+        socket.on("pin_message", async ({ messageId, pinned, to, groupId }) => {
+            const userId = socket.data.userId;
+            const isGroup = Boolean(groupId || String(to || '').startsWith('group:'));
+            if (!userId || !messageId) return;
+
+            try {
+                const updatedMessage = await chatModel.updateMessagePin(
+                    messageId,
+                    userId,
+                    Boolean(pinned),
+                    isGroup,
+                    groupId || to
+                );
+                if (!updatedMessage) return;
+
+                if (isGroup) {
+                    const cleanGroupId = String(groupId || to).replace(/^group:/, '');
+                    io.to(`group:${cleanGroupId}`).emit("message_pin_updated", updatedMessage);
+                } else {
+                    socket.emit("message_pin_updated", updatedMessage);
+                    if (to) {
+                        const cleanTo = String(to).trim();
+                        const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+                        io.to(cleanTo).emit("message_pin_updated", updatedMessage);
+                        io.to(altTo).emit("message_pin_updated", updatedMessage);
+                    }
+                }
+            } catch (err) {
+                console.error("pin_message error:", err.message);
+                socket.emit("message_error", { message: err.message });
+            }
+        });
+
 
         socket.on("typing", async ({ to, isTyping }) => {
             const from = socket.data.userId;
@@ -633,6 +689,7 @@ module.exports = (io) => {
             if (session && session.callId) {
                 try {
                     await chatModel.updateCallLog(session.callId, { status: 'declined', duration: 0 });
+                    await saveCallChatMessage(io, session, 'declined', 0);
                 } catch (err) {
                     console.error("updateCallLog on reject error:", err.message);
                 }
@@ -669,6 +726,7 @@ module.exports = (io) => {
                             status: session.isAnswered ? 'incoming' : 'missed',
                             duration
                         });
+                        await saveCallChatMessage(io, session, session.isAnswered ? 'completed' : 'missed', duration);
                     } catch (err) {
                         console.error("updateCallLog on end error:", err.message);
                     }

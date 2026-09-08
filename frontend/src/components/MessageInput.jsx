@@ -13,7 +13,9 @@ export default function MessageInput({
   groupMembers = [],
   replyTo = null,
   onClearReply,
-  canSendMessages = true
+  canSendMessages = true,
+  onDraftChange,
+  draftValue = ''
 }) {
   const [text, setText] = useState('');
   const [showRecipientInput, setShowRecipientInput] = useState(!recipientId);
@@ -380,10 +382,15 @@ export default function MessageInput({
   };
 
   // Debounced Typing emitter
+  React.useEffect(() => {
+    setText(draftValue || '');
+  }, [draftValue, recipientId]);
+
   const handleTextChange = (e) => {
     if (isBlocked || !canSendMessages) return;
     const val = e.target.value;
     setText(val);
+    onDraftChange?.(recipientId, val);
 
     if (onTyping) {
       if (val.trim()) {
@@ -422,6 +429,7 @@ export default function MessageInput({
         mentions
       });
       setText('');
+      onDraftChange?.(recipientId, '');
       onClearReply?.();
       setShowEmojiPicker(false);
       setShowAttachMenu(false);

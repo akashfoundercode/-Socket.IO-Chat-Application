@@ -33,6 +33,21 @@ export default function App() {
   const [groupTypingUsers, setGroupTypingUsers] = useState(new Set());
   const [replyingTo, setReplyingTo] = useState(null);
   const [recentMessageEvent, setRecentMessageEvent] = useState(null);
+  const [drafts, setDrafts] = useState({});
+  const [theme, setTheme] = useState(() => localStorage.getItem('wa_theme') || 'orange');
+
+  const themes = {
+    green: { '--wa-green': '#00a884', '--wa-green-dark': '#008f72', '--wa-green-header': '#008f72', '--wa-green-hover': '#06b995', '--wa-online': '#25d366', '--wa-chat-bg': '#efeae2', '--wa-outgoing-bubble': '#d9fdd3' },
+    orange: { '--wa-green': '#f97316', '--wa-green-dark': '#c2410c', '--wa-green-header': '#ea580c', '--wa-green-hover': '#fb923c', '--wa-online': '#f97316', '--wa-chat-bg': '#fff7ed', '--wa-outgoing-bubble': '#ffedd5' },
+    blue: { '--wa-green': '#168aad', '--wa-green-dark': '#126782', '--wa-green-header': '#126782', '--wa-green-hover': '#2aa9cf', '--wa-online': '#168aad', '--wa-chat-bg': '#edf7fa', '--wa-outgoing-bubble': '#d9f1f8' },
+    charcoal: { '--wa-green': '#64748b', '--wa-green-dark': '#334155', '--wa-green-header': '#334155', '--wa-green-hover': '#7c8da3', '--wa-online': '#64748b', '--wa-chat-bg': '#eef1f4', '--wa-outgoing-bubble': '#e2e8f0' }
+  };
+
+  const handleThemeChange = useCallback((nextTheme) => {
+    if (!themes[nextTheme]) return;
+    setTheme(nextTheme);
+    localStorage.setItem('wa_theme', nextTheme);
+  }, []);
 
   // Block & Privacy States for active conversation
   const [isBlockedByMe, setIsBlockedByMe] = useState(false);
@@ -241,6 +256,14 @@ export default function App() {
         prev.map((m) => (String(m.id) === String(updatedMsg.id) ? { ...m, ...updatedMsg } : m))
       );
       setRecentMessageEvent({ type: 'message_edited', message: updatedMsg, timestamp: Date.now() });
+    }
+
+    function onMessagePinUpdated(updatedMsg) {
+      if (!updatedMsg || !updatedMsg.id) return;
+      setMessages((prev) =>
+        prev.map((m) => (String(m.id) === String(updatedMsg.id) ? { ...m, ...updatedMsg } : m))
+      );
+      setRecentMessageEvent({ type: 'message_pin_updated', message: updatedMsg, timestamp: Date.now() });
     }
 
     // Real-time 1-on-1 Message Reaction Handler
@@ -498,6 +521,7 @@ export default function App() {
     socket.on('messages_delivered', onMessagesDelivered);
     socket.on('message_deleted', onMessageDeleted);
     socket.on('message_edited', onMessageEdited);
+    socket.on('message_pin_updated', onMessagePinUpdated);
     socket.on('conversation_deleted', onConversationDeleted);
     socket.on('contact_renamed', onContactRenamed);
 
@@ -543,6 +567,7 @@ export default function App() {
       socket.off('messages_delivered', onMessagesDelivered);
       socket.off('message_deleted', onMessageDeleted);
       socket.off('message_edited', onMessageEdited);
+      socket.off('message_pin_updated', onMessagePinUpdated);
       socket.off('conversation_deleted', onConversationDeleted);
       socket.off('contact_renamed', onContactRenamed);
 
@@ -787,7 +812,11 @@ export default function App() {
       if (callState.groupId) {
         socket.emit('group_call_response', { groupId: callState.groupId, channelName: callState.channelName, accepted: false });
       } else {
-        socket.emit('reject_call', { to: callState.peerId, reason: 'Declined' });
+        socket.emit('reject_call', {
+          to: callState.peerId,
+          channelName: callState.channelName,
+          reason: 'Declined'
+        });
       }
     }
     cleanupCall();
@@ -799,7 +828,10 @@ export default function App() {
       if (callState.groupId) {
         socket.emit('group_call_end', { groupId: callState.groupId, channelName: callState.channelName });
       } else {
-        socket.emit('end_call', { to: callState.peerId });
+        socket.emit('end_call', {
+          to: callState.peerId,
+          channelName: callState.channelName
+        });
       }
     }
     cleanupCall();
@@ -828,6 +860,27 @@ export default function App() {
     },
     [activeChat]
   );
+
+  const normalizeChatKey = (value) => {
+    if (!value) return '';
+    const text = String(value).trim();
+    if (text.startsWith('group:')) return `group:${String(text).replace(/^group:/, '')}`;
+    return String(text).replace(/\D/g, '');
+  };
+
+  const handleDraftChange = useCallback((chatKey, value) => {
+    const key = normalizeChatKey(chatKey);
+    setDrafts((prev) => {
+      const next = { ...prev };
+      const draftValue = String(value || '').trim();
+      if (!draftValue) {
+        delete next[key];
+      } else {
+        next[key] = draftValue;
+      }
+      return next;
+    });
+  }, []);
 
   const getGroupId = (groupId) => String(groupId || '').replace(/^group:/, '');
 
@@ -991,6 +1044,20 @@ export default function App() {
     [activeChat]
   );
 
+  const handlePinMessage = useCallback(
+    (messageId, pinned) => {
+      if (!messageId || !activeChat) return;
+      const isGroup = String(activeChat).startsWith('group:');
+      socket.emit('pin_message', {
+        messageId,
+        pinned,
+        to: isGroup ? null : activeChat,
+        groupId: isGroup ? activeChat : null
+      });
+    },
+    [activeChat]
+  );
+
   // Send Message (Text, Image Media, Voice Note, Location)
   const handleSendMessage = useCallback((to, text, type = 'text', mediaUrl = null, extra = {}) => {
     if (String(to).startsWith('group:')) {
@@ -1026,7 +1093,7 @@ export default function App() {
   }, [activeChat]);
 
   return (
-    <div className={`wa-app-root ${currentUser ? 'is-logged-in' : 'is-logged-out'}`}>
+    <div className={`wa-app-root ${currentUser ? 'is-logged-in' : 'is-logged-out'}`} style={themes[theme]}>
       {/* Background Top Strip for Desktop/Web */}
       <div className="wa-web-top-strip"></div>
 
@@ -1079,6 +1146,9 @@ export default function App() {
                 onStartCall={handleStartCall}
                 callLogsTrigger={callLogsTrigger}
                 recentMessages={recentMessageEvent}
+                drafts={drafts}
+                theme={theme}
+                onThemeChange={handleThemeChange}
               />
             )}
           </aside>
@@ -1115,9 +1185,12 @@ export default function App() {
                 <MessageList
                   messages={messages}
                   currentUserId={userId}
+                  currentUserAvatar={currentUser?.avatar}
+                  recipientAvatar={recipientProfile?.avatar}
                   recipientId={activeChat}
                   onDeleteMessage={handleDeleteMessage}
                   onEditMessage={handleEditMessage}
+                  onPinMessage={handlePinMessage}
                   isGroup={String(activeChat).startsWith('group:')}
                   groupDetails={groupDetails}
                   onReactMessage={handleReactMessage}
@@ -1137,6 +1210,8 @@ export default function App() {
                   canSendMessages={canSendGroupMessages}
                   replyTo={replyingTo}
                   onClearReply={() => setReplyingTo(null)}
+                  onDraftChange={handleDraftChange}
+                  draftValue={drafts[normalizeChatKey(activeChat)] || ''}
                 />
               </div>
             ) : (

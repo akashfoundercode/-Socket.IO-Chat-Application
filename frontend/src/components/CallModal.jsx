@@ -1,5 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+function CallAvatar({ avatar, name }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const value = String(avatar || '').trim();
+  const isEmoji = value && value.length <= 4 && !value.startsWith('/') && !value.startsWith('data:') && !value.startsWith('http');
+
+  if (value && !imageFailed && isEmoji) {
+    return <span className="wa-call-emoji-avatar">{value}</span>;
+  }
+
+  if (value && !imageFailed) {
+    return (
+      <img
+        src={value}
+        alt={name || 'Call participant'}
+        className="wa-call-img-avatar"
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
+
+  return <i className="fa-brands fa-whatsapp wa-call-default-icon" aria-label="Default avatar"></i>;
+}
+
 export default function CallModal({
   callState,
   onAcceptCall,
@@ -97,15 +120,7 @@ export default function CallModal({
           </div>
 
           <div className="wa-incoming-avatar-wrap">
-            {peerAvatar ? (
-              peerAvatar.length <= 4 ? (
-                <span className="wa-call-emoji-avatar">{peerAvatar}</span>
-              ) : (
-                <img src={peerAvatar} alt="Caller Avatar" className="wa-call-img-avatar" />
-              )
-            ) : (
-              <i className="fa-solid fa-user wa-call-default-icon"></i>
-            )}
+            <CallAvatar avatar={peerAvatar} name={peerName} />
             <div className="wa-call-pulse-ring"></div>
           </div>
 
@@ -175,15 +190,7 @@ export default function CallModal({
                 {!remoteVideoTrack && (
                   <div className="wa-video-placeholder">
                     <div className="wa-call-avatar-circle">
-                      {peerAvatar ? (
-                        peerAvatar.length <= 4 ? (
-                          <span>{peerAvatar}</span>
-                        ) : (
-                          <img src={peerAvatar} alt="Peer" />
-                        )
-                      ) : (
-                        <i className="fa-solid fa-user"></i>
-                      )}
+                      <CallAvatar avatar={peerAvatar} name={peerName} />
                     </div>
                     <span>Waiting for video...</span>
                   </div>
@@ -208,15 +215,7 @@ export default function CallModal({
               <div className="wa-voice-call-stage">
                 <div className="wa-voice-avatar-wrap">
                   <div className="wa-voice-avatar-circle">
-                    {peerAvatar ? (
-                      peerAvatar.length <= 4 ? (
-                        <span>{peerAvatar}</span>
-                      ) : (
-                        <img src={peerAvatar} alt="Peer" />
-                      )
-                    ) : (
-                      <i className="fa-solid fa-user"></i>
-                    )}
+                    <CallAvatar avatar={peerAvatar} name={peerName} />
                   </div>
                   {callState.isAccepted && (
                     <>
