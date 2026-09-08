@@ -7,7 +7,7 @@ const getSocketUrl = () => {
   if (typeof window !== 'undefined') {
     return window.location.origin;
   }
-  return 'http://localhost:3001';
+  return 'http://localhost:5000';
 };
 
 export const socket = io(getSocketUrl(), {
@@ -26,5 +26,5 @@ socket.on('connect', () => {
       const userId = user?.fullPhone || user?.id;
       if (userId) socket.emit('join', userId);
     }
-  } catch {}
+  } catch { }
 });

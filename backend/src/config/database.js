@@ -1,11 +1,12 @@
 const mysql = require("mysql2/promise");
 
-const databaseName = process.env.MYSQL_DATABASE || "chat_app";
+// Local MySQL defaults. Production deployments must use environment variables.
+const databaseName = process.env.MYSQL_DATABASE || "whatsapp_clone";
 const connectionOptions = {
     host: process.env.MYSQL_HOST || "127.0.0.1",
     port: Number(process.env.MYSQL_PORT || 3306),
-    user: process.env.MYSQL_USER || "root",
-    password: process.env.MYSQL_PASSWORD || ""
+    user: process.env.MYSQL_USER || "whatsapp_clone",
+    password: process.env.MYSQL_PASSWORD || "whatsapp_clone"
 };
 
 let pool;

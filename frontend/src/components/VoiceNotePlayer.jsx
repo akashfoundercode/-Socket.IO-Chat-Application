@@ -122,7 +122,9 @@ export default function VoiceNotePlayer({
         const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL;
         const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
         // Keep full path including /api/chat prefix
-        const fallbackBase = backendUrl || `http://${host}:3001`;
+        const fallbackBase = backendUrl || (typeof window !== 'undefined' && window.location.port !== '5173'
+          ? window.location.origin
+          : `http://${host}:5000`);
         const fallbackUrl = `${fallbackBase.replace(/\/$/, '')}${normalizedMediaUrl}`;
         console.log('Retrying audio with fallback:', fallbackUrl);
         audio.src = fallbackUrl;

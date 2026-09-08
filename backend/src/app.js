@@ -6,11 +6,13 @@ const agoraRoutes = require("./routes/agora.routes");
 
 const app = express();
 
+// HTTPS is terminated by the reverse proxy in production.
+app.set("trust proxy", 1);
 
 const path = require("path");
 
 app.use(cors({
-    origin: "*",
+    origin: process.env.CLIENT_ORIGIN || "*",
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
 }));
 app.use(express.json({ limit: "50mb" }));

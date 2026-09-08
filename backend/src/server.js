@@ -10,7 +10,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
     cors: {
-        origin: "*",
+        origin: process.env.CLIENT_ORIGIN || "*",
         methods: ["GET", "POST"]
     }
 });
@@ -19,7 +19,7 @@ app.set("io", io);
 chatSocket(io);
 
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 5000;
 
 initializeDatabase()
     .then(() => {

@@ -55,10 +55,11 @@ Create `backend/.env` (from `backend/.env.example`):
 ```env
 MYSQL_HOST=127.0.0.1
 MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=
-MYSQL_DATABASE=chat_app
-PORT=3001
+# Local MySQL credentials
+MYSQL_USER=whatsapp_clone
+MYSQL_PASSWORD=whatsapp_clone
+MYSQL_DATABASE=whatsapp_clone
+PORT=5000
 ```
 
 ### 3. Run Backend & Frontend
@@ -66,7 +67,7 @@ PORT=3001
 **Backend:**
 ```bash
 npm run backend:dev
-# Backend runs on http://localhost:3001
+# Backend runs on http://localhost:5000
 ```
 
 **Frontend:**
@@ -74,3 +75,15 @@ npm run backend:dev
 npm run frontend:dev
 # Frontend runs on http://localhost:5173
 ```
+
+### Production HTTPS
+
+Run the Node backend internally on port `5000` and serve the Vite `frontend/dist` directory through Nginx. The Nginx config at `deploy/nginx/whatsapp.siberiancrane.tech.conf` redirects HTTP to HTTPS and proxies `/api`, `/uploads`, and `/socket.io` to the backend.
+
+Install the TLS certificate with Certbot after DNS points `whatsapp.siberiancrane.tech` to the server:
+
+```bash
+sudo certbot certonly --nginx -d whatsapp.siberiancrane.tech
+```
+
+Do not commit real certificates, private keys, or production `.env` files.
