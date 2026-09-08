@@ -4,6 +4,7 @@
  */
 
 const getApiBaseUrl = () => {
+  const productionBackendUrl = 'https://whatsapp.siberiancrane.tech';
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
@@ -11,9 +12,11 @@ const getApiBaseUrl = () => {
     return '';
   }
   if (typeof window !== 'undefined') {
-    return window.location.origin;
+    return window.location.hostname === 'localhost' || window.location.port === '5173'
+      ? ''
+      : productionBackendUrl;
   }
-  return '';
+  return productionBackendUrl;
 };
 
 const API_BASE_URL = getApiBaseUrl();

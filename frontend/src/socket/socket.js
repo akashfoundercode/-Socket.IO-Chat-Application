@@ -1,13 +1,14 @@
 import { io } from 'socket.io-client';
 
 const getSocketUrl = () => {
+  const productionBackendUrl = 'https://whatsapp.siberiancrane.tech';
   if (import.meta.env.VITE_BACKEND_URL) {
     return import.meta.env.VITE_BACKEND_URL;
   }
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.port === '5173')) {
     return window.location.origin;
   }
-  return 'http://localhost:5000';
+  return productionBackendUrl;
 };
 
 export const socket = io(getSocketUrl(), {
