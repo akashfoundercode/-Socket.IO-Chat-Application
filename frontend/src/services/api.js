@@ -3,7 +3,20 @@
  * Any URL or API changes made in this file automatically reflect across all frontend components.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  if (typeof window !== 'undefined' && window.location.port === '5173') {
+    return '';
+  }
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:3001`;
+  }
+  return '';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 /**
  * Generic request helper with error handling and JSON parsing
@@ -106,6 +119,17 @@ export const chatApi = {
   },
 
   /**
+   * Rename Contact / Save Custom Alias (Only visible to current user)
+   * PUT /api/chat/contacts/rename
+   */
+  renameContact: (userId, contactId, customName) => {
+    return request('/api/chat/contacts/rename', {
+      method: 'PUT',
+      body: JSON.stringify({ userId, contactId, customName })
+    });
+  },
+
+  /**
    * Get active conversations list for a user (Empty [] for new users)
    * GET /api/chat/conversations/:userId
    */
@@ -143,7 +167,60 @@ export const chatApi = {
    */
   getUnreadCount: (userId) => {
     return request(`/api/chat/unread/${encodeURIComponent(userId)}`);
-  }
+  },
+
+  /**
+   * Delete / Clear entire conversation for user (Swipe to delete)
+   * DELETE /api/chat/conversations/:otherUserId?userId=...
+   */
+  deleteConversation: (otherUserId, userId) => {
+    const url = userId
+      ? `/api/chat/conversations/${encodeURIComponent(otherUserId)}?userId=${encodeURIComponent(userId)}`
+      : `/api/chat/conversations/${encodeURIComponent(otherUserId)}`;
+    return request(url, { method: 'DELETE' });
+  },
+
+  /**
+   * Mark unread messages from otherUserId as seen
+   * POST /api/chat/seen
+   */
+  markSeen: (userId, otherUserId) => {
+    return request('/api/chat/seen', {
+      method: 'POST',
+      body: JSON.stringify({ userId, otherUserId })
+    });
+  },
+
+  getGroups: (userId) => request(`/api/chat/groups/${encodeURIComponent(userId)}`),
+
+  createGroup: (creatorId, name, memberIds) => request('/api/chat/groups', {
+    method: 'POST',
+    body: JSON.stringify({ creatorId, name, memberIds })
+  }),
+
+  getGroup: (groupId, userId) => request(`/api/chat/groups/detail/${encodeURIComponent(groupId)}?userId=${encodeURIComponent(userId)}`),
+
+  addGroupMember: (groupId, requesterId, memberId) => request(`/api/chat/groups/${encodeURIComponent(groupId)}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ requesterId, memberId })
+  }),
+
+  updateGroup: (groupId, requesterId, changes) => request(`/api/chat/groups/${encodeURIComponent(groupId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ requesterId, ...changes })
+  }),
+
+  updateGroupMemberRole: (groupId, requesterId, memberId, role) => request(`/api/chat/groups/${encodeURIComponent(groupId)}/members/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ requesterId, memberId, role })
+  }),
+
+  getGroupHistory: (groupId, userId) => request(`/api/chat/groups/${encodeURIComponent(groupId)}/history?userId=${encodeURIComponent(userId)}`),
+
+  markGroupSeen: (groupId, userId) => request(`/api/chat/groups/${encodeURIComponent(groupId)}/seen`, {
+    method: 'POST',
+    body: JSON.stringify({ userId })
+  })
 };
 
 // ============================================
@@ -190,9 +267,99 @@ export const blockApi = {
   }
 };
 
+// ============================================
+// 5. Agora RTC Video & Voice Calling APIs
+// ============================================
+export const agoraApi = {
+  /**
+   * Fetch dynamic Agora RTC token for channel
+   * GET /api/agora/token?channelName=...&uid=...
+   */
+  getToken: (channelName, uid = 0) => {
+    const params = new URLSearchParams({
+      channelName: String(channelName).trim(),
+      uid: String(uid || 0)
+    });
+    return request(`/api/agora/token?${params.toString()}`);
+  }
+};
+
+// ============================================
+// 6. Call Logs & History APIs
+// ============================================
+export const callApi = {
+  /**
+   * Get call history logs for a user
+   * GET /api/chat/calls/:userId
+   */
+  getCallLogs: (userId) => {
+    return request(`/api/chat/calls/${encodeURIComponent(userId)}`);
+  },
+
+  /**
+   * Delete a specific call log entry
+   * DELETE /api/chat/calls/:callId?userId=...
+   */
+  deleteCallLog: (callId, userId) => {
+    return request(`/api/chat/calls/${encodeURIComponent(callId)}?userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE'
+    });
+  },
+
+  /**
+   * Clear all call logs for a user
+   * DELETE /api/chat/calls/clear/:userId
+   */
+  clearCallLogs: (userId) => {
+    return request(`/api/chat/calls/clear/${encodeURIComponent(userId)}`, {
+      method: 'DELETE'
+    });
+  }
+};
+
+// ============================================
+// 7. Status APIs
+// ============================================
+export const statusApi = {
+  getStatuses: (userId) => request(`/api/chat/status/${encodeURIComponent(userId)}`),
+
+  createStatus: ({ userId, type, content, caption, bgColor, fontStyle }) =>
+    request('/api/chat/status', {
+      method: 'POST',
+      body: JSON.stringify({ userId, type, content, caption, bgColor, fontStyle })
+    }),
+
+  deleteStatus: (statusId, userId) =>
+    request(`/api/chat/status/${statusId}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' }),
+
+  viewStatus: (statusId, viewerId) =>
+    request(`/api/chat/status/${statusId}/view`, {
+      method: 'POST',
+      body: JSON.stringify({ viewerId })
+    }),
+
+  getViewers: (statusId, ownerId) =>
+    request(`/api/chat/status/${statusId}/viewers?ownerId=${encodeURIComponent(ownerId)}`),
+
+  reactToStatus: (statusId, reactorId, emoji) =>
+    request(`/api/chat/status/${statusId}/react`, {
+      method: 'POST',
+      body: JSON.stringify({ reactorId, emoji })
+    }),
+
+  replyToStatus: (statusId, senderId, message) =>
+    request(`/api/chat/status/${statusId}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ senderId, message })
+    })
+};
+
 export default {
   auth: authApi,
   profile: profileApi,
   chat: chatApi,
-  block: blockApi
+  block: blockApi,
+  agora: agoraApi,
+  calls: callApi,
+  status: statusApi
 };

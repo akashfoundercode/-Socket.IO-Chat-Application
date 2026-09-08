@@ -96,3 +96,29 @@ export function stopCallSounds() {
   }
 }
 
+// Short incoming message notification chime.
+export function playMessageNotification() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+    [659.25, 783.99].forEach((frequency, index) => {
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const startAt = now + index * 0.08;
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, startAt);
+      gain.gain.setValueAtTime(0.001, startAt);
+      gain.gain.linearRampToValueAtTime(0.09, startAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.28);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + 0.3);
+    });
+  } catch (error) {
+    console.warn('Message notification sound error:', error);
+  }
+}
+

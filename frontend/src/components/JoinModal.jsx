@@ -179,49 +179,51 @@ export default function JoinModal({ onJoin, isConnected }) {
 
             {error && <div className="wa-auth-error">{error}</div>}
 
-            {/* Input Pill Container */}
-            <div className="wa-auth-input-pill">
-              <div className="wa-auth-country-select">
-                <span>{currentCountry.flag}</span>
-                <select
-                  value={countryCode}
-                  onChange={(e) => {
-                    setCountryCode(e.target.value);
-                    setPhone('');
-                    setError('');
-                  }}
-                  className="wa-auth-hidden-select"
-                >
-                  {COUNTRIES.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.flag} {c.code} ({c.name})
-                    </option>
-                  ))}
-                </select>
+            {/* Form Container */}
+            <form onSubmit={handleSendOtp} className="wa-auth-phone-form">
+              {/* Input Pill Container */}
+              <div className="wa-auth-input-pill">
+                <div className="wa-auth-country-select">
+                  <span>{currentCountry.flag}</span>
+                  <select
+                    value={countryCode}
+                    onChange={(e) => {
+                      setCountryCode(e.target.value);
+                      setPhone('');
+                      setError('');
+                    }}
+                    className="wa-auth-hidden-select"
+                  >
+                    {COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.flag} {c.code} ({c.name})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <span className="wa-auth-code-text">{countryCode}</span>
+
+                <input
+                  ref={phoneInputRef}
+                  type="tel"
+                  className="wa-auth-phone-input"
+                  placeholder={Array(currentCountry.digits).fill('—').join(' ')}
+                  value={phone}
+                  onChange={handlePhoneChange}
+                  autoFocus
+                />
               </div>
 
-              <span className="wa-auth-code-text">{countryCode}</span>
-
-              <input
-                ref={phoneInputRef}
-                type="tel"
-                className="wa-auth-phone-input"
-                placeholder={Array(currentCountry.digits).fill('—').join(' ')}
-                value={phone}
-                onChange={handlePhoneChange}
-                autoFocus
-              />
-            </div>
-
-            {/* Send Button */}
-            <button
-              type="button"
-              className="wa-auth-green-btn"
-              onClick={handleSendOtp}
-              disabled={loading || !isConnected || phone.length !== currentCountry.digits}
-            >
-              {loading ? 'Sending...' : 'Send'}
-            </button>
+              {/* Send Button */}
+              <button
+                type="submit"
+                className="wa-auth-green-btn"
+                disabled={loading || phone.length !== currentCountry.digits}
+              >
+                {loading ? 'Sending...' : 'Send'}
+              </button>
+            </form>
 
             {/* Terms & Privacy */}
             <div className="wa-auth-legal">

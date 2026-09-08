@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { chatApi } from '../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { chatApi, callApi } from '../services/api';
+import { socket } from '../socket/socket';
+import StatusTab from './StatusTab';
 
 const COUNTRY_OPTIONS = [
   { code: '+91', name: 'India', flag: '🇮🇳', digits: 10 },
@@ -21,14 +23,46 @@ export default function ChatList({
   onlineUsers,
   typingUsers,
   onSelectChat,
+  onDeleteChat,
   onOpenProfile,
   onLogout,
+  onStartCall,
+  callLogsTrigger,
   recentMessages
 }) {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [groupMemberQuery, setGroupMemberQuery] = useState('');
+  const [selectedGroupMembers, setSelectedGroupMembers] = useState([]);
+  const [groupMemberResults, setGroupMemberResults] = useState([]);
+  const [isSearchingGroupMembers, setIsSearchingGroupMembers] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const conversationsOwnerRef = useRef('');
+  const menuRef = useRef(null);
+
+  // Call Logs state
+  const [callLogs, setCallLogs] = useState([]);
+  const [callLogsLoading, setCallLogsLoading] = useState(false);
+
+  // Swipe-to-Delete state
+  const [swipedId, setSwipedId] = useState(null);
+  const [dragState, setDragState] = useState({
+    id: null,
+    startX: 0,
+    startY: 0,
+    currentOffset: 0,
+    isDragging: false,
+    isHorizontal: false
+  });
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    item: null,
+    isDeleting: false
+  });
 
   // Helper to check if a contact is online
   const isUserOnline = (phoneId) => {
@@ -68,23 +102,321 @@ export default function ChatList({
     if (!userId) return;
     try {
       setLoading(true);
-      const data = await chatApi.getConversations(userId);
+      const [data, groupData] = await Promise.all([
+        chatApi.getConversations(userId),
+        chatApi.getGroups(userId).catch(() => ({ groups: [] }))
+      ]);
       if (data && data.success && Array.isArray(data.conversations)) {
-        setConversations(data.conversations);
+        const seen = new Set();
+        const unique = [];
+        const activeKey = activeChat ? String(activeChat).replace(/\D/g, '') : '';
+        data.conversations.forEach((c) => {
+          const key = (c.fullPhone || c.phone || c.id || '').replace(/\D/g, '');
+          if (!seen.has(key)) {
+            seen.add(key);
+            if (activeKey && key === activeKey) {
+              unique.push({ ...c, unreadCount: 0 });
+            } else {
+              unique.push(c);
+            }
+          }
+        });
+        const groups = Array.isArray(groupData?.groups) ? groupData.groups : [];
+        const latestConversations = [...groups, ...unique];
+        setConversations((previous) => {
+          if (conversationsOwnerRef.current !== userId) {
+            conversationsOwnerRef.current = userId;
+            return latestConversations;
+          }
+
+          const latestKeys = new Set(latestConversations.map((conversation) => {
+            if (conversation.isGroup) return String(conversation.id);
+            return String(conversation.fullPhone || conversation.phone || conversation.id || '').replace(/\D/g, '');
+          }));
+          const previouslyVisible = previous.filter((conversation) => {
+            const key = conversation.isGroup
+              ? String(conversation.id)
+              : String(conversation.fullPhone || conversation.phone || conversation.id || '').replace(/\D/g, '');
+            return key && !latestKeys.has(key);
+          });
+          return [...latestConversations, ...previouslyVisible];
+        });
       } else {
-        setConversations([]);
+        setConversations((previous) => previous);
       }
     } catch (err) {
       console.error('Failed to load conversations:', err);
-      setConversations([]);
+      setConversations((previous) => previous);
     } finally {
       setLoading(false);
     }
   };
 
+  // Helper to open chat and immediately clear unread badge
+  const handleSelectUser = (phoneDisplay, item = null) => {
+    if (!phoneDisplay) return;
+    const isGroup = Boolean(item?.isGroup || String(phoneDisplay).startsWith('group:'));
+    if (isGroup) {
+      const cleanGroupId = String(phoneDisplay).replace(/^group:/, '');
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.isGroup && (String(c.id) === String(phoneDisplay) || String(c.groupId) === cleanGroupId)) {
+            return { ...c, unreadCount: 0 };
+          }
+          return c;
+        })
+      );
+      if (userId) {
+        chatApi.markGroupSeen(cleanGroupId, userId).catch(() => { });
+        socket.emit('mark_group_seen', { groupId: cleanGroupId });
+      }
+      onSelectChat?.(phoneDisplay, item);
+      return;
+    }
+    const cleanTarget = String(phoneDisplay).replace(/\D/g, '');
+
+    // 1. Optimistically clear unread count immediately from conversation list
+    setConversations((prev) =>
+      prev.map((c) => {
+        const cKey = (c.fullPhone || c.phone || c.id || '').replace(/\D/g, '');
+        if (
+          (cKey && cleanTarget && cKey === cleanTarget) ||
+          c.id === item?.id ||
+          c.fullPhone === phoneDisplay ||
+          c.phone === phoneDisplay
+        ) {
+          return { ...c, unreadCount: 0 };
+        }
+        return c;
+      })
+    );
+
+    // 2. Mark seen in database and notify socket server
+    if (userId) {
+      chatApi.markSeen(userId, phoneDisplay).catch(() => { });
+      socket.emit('mark_seen', { otherUserId: phoneDisplay });
+    }
+
+    // 3. Trigger parent onSelectChat
+    if (onSelectChat) {
+      onSelectChat(phoneDisplay, item);
+    }
+  };
+
+  const handleCreateGroup = async (e) => {
+    e.preventDefault();
+    const memberIds = selectedGroupMembers.map((member) => member.fullPhone || member.phone || member.id);
+    if (!groupName.trim() || memberIds.length === 0) {
+      setModalError('Group name and at least one member are required');
+      return;
+    }
+    setCreatingGroup(true);
+    setModalError('');
+    try {
+      const data = await chatApi.createGroup(userId, groupName.trim(), memberIds);
+      const group = data.group;
+      setShowGroupModal(false);
+      setGroupName('');
+      setGroupMemberQuery('');
+      setSelectedGroupMembers([]);
+      setGroupMemberResults([]);
+      if (group) {
+        const groupItem = {
+          ...group,
+          id: `group:${group.id}`,
+          groupId: group.id,
+          name: group.name,
+          isGroup: true,
+          unreadCount: 0,
+          lastMessage: null
+        };
+        setConversations((prev) => [groupItem, ...prev.filter((c) => String(c.id) !== String(groupItem.id) && String(c.groupId) !== String(group.id))]);
+        socket.emit('join_group_room', group.id);
+        handleSelectUser(`group:${group.id}`, groupItem);
+      }
+      fetchConversations();
+    } catch (err) {
+      setModalError(err.message || 'Could not create group');
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  // Clear unread count when activeChat changes
+  useEffect(() => {
+    if (activeChat) {
+      const isGroup = String(activeChat).startsWith('group:');
+      const cleanGroupId = isGroup ? String(activeChat).replace(/^group:/, '') : '';
+      const activeKey = String(activeChat).replace(/\D/g, '');
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (isGroup) {
+            if (c.isGroup && (String(c.id) === String(activeChat) || String(c.groupId) === cleanGroupId)) {
+              return { ...c, unreadCount: 0 };
+            }
+          } else {
+            const cKey = (c.fullPhone || c.phone || c.id || '').replace(/\D/g, '');
+            if (cKey && activeKey && cKey === activeKey && (c.unreadCount || 0) > 0) {
+              return { ...c, unreadCount: 0 };
+            }
+          }
+          return c;
+        })
+      );
+    }
+  }, [activeChat]);
+
+  // Fetch Call Logs
+  const fetchCallLogs = async () => {
+    if (!userId) return;
+    try {
+      setCallLogsLoading(true);
+      const data = await callApi.getCallLogs(userId);
+      if (data && data.success && Array.isArray(data.calls)) {
+        setCallLogs(data.calls);
+      } else {
+        setCallLogs([]);
+      }
+    } catch (err) {
+      console.error('Failed to load call logs:', err);
+    } finally {
+      setCallLogsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchConversations();
-  }, [userId, recentMessages]);
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const refresh = () => fetchConversations();
+    const handleGroupCreated = ({ group }) => {
+      if (group && group.id) {
+        socket.emit('join_group_room', group.id);
+        const groupItem = {
+          ...group,
+          id: `group:${group.id}`,
+          groupId: group.id,
+          name: group.name,
+          isGroup: true,
+          unreadCount: 0,
+          lastMessage: null
+        };
+        setConversations((prev) => [groupItem, ...prev.filter((c) => String(c.id) !== String(groupItem.id) && String(c.groupId) !== String(group.id))]);
+      }
+      fetchConversations();
+    };
+    const handleGroupDetails = (group) => {
+      if (!group?.id) return;
+      const groupId = String(group.id).replace(/^group:/, '');
+      setConversations((prev) => prev.map((conversation) => (
+        conversation.isGroup && String(conversation.groupId || conversation.id).replace(/^group:/, '') === groupId
+          ? { ...conversation, ...group, id: `group:${groupId}`, groupId, isGroup: true }
+          : conversation
+      )));
+      fetchConversations();
+    };
+    const onSeen = ({ seenBy, conversationWith }) => {
+      const key = String(seenBy || conversationWith || '').replace(/\D/g, '');
+      if (key) {
+        setConversations((prev) =>
+          prev.map((c) => {
+            const cKey = (c.fullPhone || c.phone || c.id || '').replace(/\D/g, '');
+            if (cKey === key) {
+              return { ...c, unreadCount: 0 };
+            }
+            return c;
+          })
+        );
+      }
+    };
+    socket.on('message_received', refresh);
+    socket.on('message_saved', refresh);
+    socket.on('group_created', handleGroupCreated);
+    socket.on('group_details', handleGroupDetails);
+    socket.on('group_message_received', refresh);
+    socket.on('conversation_refresh', refresh);
+    socket.on('messages_seen', onSeen);
+    return () => {
+      socket.off('message_received', refresh);
+      socket.off('message_saved', refresh);
+      socket.off('group_created', handleGroupCreated);
+      socket.off('group_details', handleGroupDetails);
+      socket.off('group_message_received', refresh);
+      socket.off('conversation_refresh', refresh);
+      socket.off('messages_seen', onSeen);
+    };
+  }, [userId, activeChat]);
+
+  useEffect(() => {
+    if (userId) {
+      fetchCallLogs();
+    }
+  }, [userId, callLogsTrigger, activeTab]);
+
+  const handleDeleteCallLog = async (callId) => {
+    if (!callId || !userId) return;
+    try {
+      await callApi.deleteCallLog(callId, userId);
+      setCallLogs((prev) => prev.filter((c) => c.id !== callId));
+    } catch (err) {
+      console.error('Failed to delete call log:', err);
+    }
+  };
+
+  const handleClearCallLogs = async () => {
+    if (!userId || !window.confirm('Clear all call history logs?')) return;
+    try {
+      await callApi.clearCallLogs(userId);
+      setCallLogs([]);
+    } catch (err) {
+      console.error('Failed to clear call logs:', err);
+    }
+  };
+
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds <= 0) return '0s';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins === 0) return `${secs}s`;
+    return `${mins}m ${secs}s`;
+  };
+
+  const formatCallTime = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (isToday) return `Today, ${timeStr}`;
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) return `Yesterday, ${timeStr}`;
+    return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${timeStr}`;
+  };
+
+  const missedCallsCount = callLogs.filter(
+    (c) => c.direction === 'missed' || c.rawStatus === 'missed'
+  ).length;
+
+  // Close any swiped item when clicking outside
+  useEffect(() => {
+    const handleGlobalClick = (e) => {
+      if (!e.target.closest('.wa-swipe-item-container') && !e.target.closest('.wa-delete-chat-modal')) {
+        setSwipedId(null);
+      }
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowMenu(false);
+      }
+    };
+    window.addEventListener('mousedown', handleGlobalClick);
+    window.addEventListener('touchstart', handleGlobalClick);
+    return () => {
+      window.removeEventListener('mousedown', handleGlobalClick);
+      window.removeEventListener('touchstart', handleGlobalClick);
+    };
+  }, []);
 
   // 2. Search Database by Phone Number
   useEffect(() => {
@@ -115,6 +447,30 @@ export default function ChatList({
     return () => clearTimeout(timer);
   }, [searchQuery, userId]);
 
+  useEffect(() => {
+    const trimmed = groupMemberQuery.trim();
+    if (!showGroupModal || !trimmed) {
+      setGroupMemberResults([]);
+      setIsSearchingGroupMembers(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingGroupMembers(true);
+      try {
+        const data = await chatApi.searchUsers(trimmed, userId);
+        const selectedIds = new Set(selectedGroupMembers.map((member) => String(member.id)));
+        setGroupMemberResults((data?.users || []).filter((member) => !selectedIds.has(String(member.id))));
+      } catch (error) {
+        setGroupMemberResults([]);
+      } finally {
+        setIsSearchingGroupMembers(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [groupMemberQuery, showGroupModal, userId, selectedGroupMembers]);
+
   // 3. Add / Start New Chat
   const handleStartNewChat = async (e) => {
     e.preventDefault();
@@ -139,7 +495,7 @@ export default function ChatList({
       setShowNewChatModal(false);
       setNewPhone('');
       setNewName('');
-      onSelectChat(fullPhone);
+      handleSelectUser(fullPhone);
     } catch (err) {
       setModalError(err.message || 'Could not start chat');
     } finally {
@@ -147,10 +503,132 @@ export default function ChatList({
     }
   };
 
+  // 4. Swipe Gestures Handling (Touch & Mouse Drag)
+  const handleTouchStart = (e, item) => {
+    const touch = e.touches[0];
+    const isCurrentlySwiped = swipedId === item.id;
+    if (swipedId && swipedId !== item.id) {
+      setSwipedId(null);
+    }
+    setDragState({
+      id: item.id,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      currentOffset: isCurrentlySwiped ? -80 : 0,
+      isDragging: true,
+      isHorizontal: false
+    });
+  };
+
+  const handleTouchMove = (e, item) => {
+    if (!dragState.isDragging || dragState.id !== item.id) return;
+    const touch = e.touches[0];
+    const diffX = touch.clientX - dragState.startX;
+    const diffY = touch.clientY - dragState.startY;
+
+    if (!dragState.isHorizontal) {
+      if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 6) {
+        setDragState((prev) => ({ ...prev, isHorizontal: true }));
+      } else if (Math.abs(diffY) > 8) {
+        setDragState((prev) => ({ ...prev, isDragging: false }));
+        return;
+      }
+    }
+
+    if (dragState.isHorizontal) {
+      const base = swipedId === item.id ? -80 : 0;
+      const rawOffset = base + diffX;
+      // Clamp between -100px and 0px
+      const clamped = Math.min(0, Math.max(-100, rawOffset));
+      setDragState((prev) => ({ ...prev, currentOffset: clamped }));
+    }
+  };
+
+  const handleTouchEnd = (e, item) => {
+    if (dragState.id !== item.id) return;
+    if (dragState.isHorizontal) {
+      if (dragState.currentOffset < -40) {
+        setSwipedId(item.id);
+      } else {
+        setSwipedId(null);
+      }
+    }
+    setDragState({
+      id: null,
+      startX: 0,
+      startY: 0,
+      currentOffset: 0,
+      isDragging: false,
+      isHorizontal: false
+    });
+  };
+
+  // Toggle slide manually on desktop / button click
+  const handleToggleSwipe = (e, item) => {
+    e.stopPropagation();
+    if (swipedId === item.id) {
+      setSwipedId(null);
+    } else {
+      setSwipedId(item.id);
+    }
+  };
+
+  // Delete Conversation Flow
+  const handleOpenDeleteModal = (e, item) => {
+    e.stopPropagation();
+    setDeleteModal({
+      isOpen: true,
+      item,
+      isDeleting: false
+    });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteModal.item || !userId) return;
+    const item = deleteModal.item;
+    const targetPhone = item.fullPhone || item.phone || item.id;
+
+    setDeleteModal((prev) => ({ ...prev, isDeleting: true }));
+
+    try {
+      // 1. API Call
+      await chatApi.deleteConversation(targetPhone, userId);
+
+      // 2. Socket Event
+      socket.emit('delete_conversation', { otherUserId: targetPhone });
+
+      // 3. Optimistic Local State Update
+      setConversations((prev) =>
+        prev.filter((c) => c.id !== item.id && c.fullPhone !== targetPhone && c.phone !== targetPhone)
+      );
+
+      // 4. Notify parent if active chat was deleted
+      if (
+        activeChat &&
+        (activeChat === targetPhone ||
+          activeChat === String(targetPhone).replace(/^\+/, '') ||
+          activeChat === `+${String(targetPhone).replace(/^\+/, '')}` ||
+          activeChat === item.id)
+      ) {
+        if (onDeleteChat) {
+          onDeleteChat(targetPhone);
+        }
+      }
+
+      setSwipedId(null);
+      setDeleteModal({ isOpen: false, item: null, isDeleting: false });
+    } catch (err) {
+      console.error('Failed to delete chat:', err);
+      alert(err.message || 'Could not delete conversation');
+      setDeleteModal((prev) => ({ ...prev, isDeleting: false }));
+    }
+  };
+
   const filteredConversations = conversations.filter((c) => {
     const q = searchQuery.toLowerCase();
     const phone = (c.fullPhone || c.phone || c.id || '').toLowerCase();
-    return phone.includes(q);
+    const name = (c.name || '').toLowerCase();
+    return phone.includes(q) || name.includes(q);
   });
 
   return (
@@ -195,6 +673,14 @@ export default function ChatList({
           <button
             type="button"
             className="wa-inbox-icon"
+            title="Create Group"
+            onClick={() => setShowGroupModal(true)}
+          >
+            <i className="fa-solid fa-users"></i>
+          </button>
+          <button
+            type="button"
+            className="wa-inbox-icon"
             title="Search"
             onClick={() => {
               const el = document.getElementById('chat-search');
@@ -203,7 +689,7 @@ export default function ChatList({
           >
             <i className="fa-solid fa-magnifying-glass"></i>
           </button>
-          <div className="wa-menu-anchor">
+          <div className="wa-menu-anchor" ref={menuRef}>
             <button
               type="button"
               className="wa-inbox-icon"
@@ -237,6 +723,16 @@ export default function ChatList({
                   }}
                 >
                   <i className="fa-solid fa-gear"></i> Settings / Profile
+                </button>
+                <button
+                  type="button"
+                  className="wa-menu-item"
+                  onClick={() => {
+                    setShowMenu(false);
+                    setShowGroupModal(true);
+                  }}
+                >
+                  <i className="fa-solid fa-users"></i> New Group
                 </button>
                 <button
                   type="button"
@@ -293,6 +789,13 @@ export default function ChatList({
           onClick={() => setActiveTab('calls')}
         >
           CALLS
+          {missedCallsCount > 0 ? (
+            <span className="wa-tab-badge missed-pill" title={`${missedCallsCount} Missed Call${missedCallsCount > 1 ? 's' : ''}`}>
+              {missedCallsCount}
+            </span>
+          ) : callLogs.length > 0 ? (
+            <span className="wa-tab-badge">{callLogs.length}</span>
+          ) : null}
         </button>
       </div>
 
@@ -303,7 +806,7 @@ export default function ChatList({
           <input
             id="chat-search"
             type="text"
-            placeholder="Search mobile number (+91...)"
+            placeholder={activeTab === 'calls' ? "Search call logs..." : "Search mobile number (+91...)"}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -319,111 +822,490 @@ export default function ChatList({
         </div>
       </div>
 
-      {/* Chat List Body */}
+      {/* Main List Body */}
       <div className="wa-chat-items-list">
-        {/* --- SEARCH RESULTS SECTION --- */}
-        {searchQuery.trim() ? (
-          <div className="wa-search-results-section">
-            <div className="wa-section-title">
-              <span>Database Number Match</span>
-              {isSearchingDb && <i className="fa-solid fa-circle-notch fa-spin"></i>}
+        {/* ======================= TAB: CALLS ======================= */}
+        {activeTab === 'calls' ? (
+          callLogsLoading && callLogs.length === 0 ? (
+            <div className="wa-inbox-loading">
+              <i className="fa-solid fa-circle-notch fa-spin"></i>
+              <span>Loading call history...</span>
             </div>
-
-            {searchResults.length > 0 ? (
-              searchResults.map((user) => {
-                const phoneDisplay = user.fullPhone || user.phone || user.id;
-                const displayName = user.name || phoneDisplay;
-                const online = isUserOnline(phoneDisplay);
-                return (
-                  <div
-                    key={user.id}
-                    className="wa-chat-item-row search-match"
-                    onClick={() => onSelectChat(phoneDisplay, user)}
-                  >
-                    <div className="wa-item-avatar search-avatar" style={{ position: 'relative' }}>
-                      {user.avatar ? (
-                        user.avatar.length <= 4 ? (
-                          <span style={{ fontSize: '22px', lineHeight: 1 }}>{user.avatar}</span>
-                        ) : (
-                          <img
-                            src={user.avatar}
-                            alt="Avatar"
-                            style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                          />
-                        )
-                      ) : (
-                        <i className="fa-solid fa-user"></i>
-                      )}
-                      {online && (
-                        <span
-                          style={{
-                            position: 'absolute',
-                            bottom: '2px',
-                            right: '2px',
-                            width: '10px',
-                            height: '10px',
-                            backgroundColor: '#25d366',
-                            borderRadius: '50%',
-                            border: '2px solid #ffffff'
-                          }}
-                          title="Online"
-                        />
-                      )}
-                    </div>
-                    <div className="wa-item-center">
-                      <div className="wa-item-top">
-                        <span className="wa-item-name">{displayName}</span>
-                        <span className="wa-search-tag">Start Chat</span>
-                      </div>
-                      <div className="wa-item-bottom">
-                        <span className="wa-item-msg">
-                          {user.name && user.name !== phoneDisplay ? `${phoneDisplay} • ` : ''}
-                          {user.about || 'Available'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            ) : !isSearchingDb ? (
-              <div
-                className="wa-search-no-match"
-                onClick={() => {
-                  let num = searchQuery.trim();
-                  if (!num.startsWith('+')) num = `+91${num.replace(/\D/g, '')}`;
-                  onSelectChat(num);
-                }}
-              >
-                <i className="fa-solid fa-paper-plane"></i>
-                <div>
-                  <strong>Chat with "{searchQuery.trim()}"</strong>
-                  <p>Tap here to start chatting with this mobile number</p>
-                </div>
+          ) : callLogs.length === 0 ? (
+            <div className="wa-inbox-empty">
+              <div className="wa-empty-icon-circle">
+                <i className="fa-solid fa-phone-slash"></i>
               </div>
-            ) : null}
+              <h4>No call history</h4>
+              <p>To start a call, open a chat or select a contact and tap the voice or video call button.</p>
+            </div>
+          ) : (
+            <div className="wa-calls-history-wrapper">
+              <div className="wa-calls-header-row">
+                <span className="wa-calls-header-title">Recent Calls</span>
+                {callLogs.length > 0 && (
+                  <button
+                    type="button"
+                    className="wa-calls-clear-btn"
+                    onClick={handleClearCallLogs}
+                    title="Clear All Call Logs"
+                  >
+                    <i className="fa-solid fa-trash-can"></i> Clear All
+                  </button>
+                )}
+              </div>
 
-            {/* Existing matching chats */}
-            {filteredConversations.length > 0 && (
-              <>
-                <div className="wa-section-title">Existing Chats</div>
-                {filteredConversations.map((item) => {
-                  const phoneDisplay = item.fullPhone || item.phone || item.id;
-                  const displayName = item.name || phoneDisplay;
-                  const online = isUserOnline(phoneDisplay);
-                  const isActive = activeChat && (
-                    activeChat === phoneDisplay ||
-                    activeChat === item.phone ||
-                    activeChat === item.fullPhone ||
-                    activeChat === item.id
-                  );
+              {callLogs
+                .filter((call) => {
+                  if (!searchQuery.trim()) return true;
+                  const q = searchQuery.toLowerCase();
+                  const name = (call.peerName || '').toLowerCase();
+                  const phone = (call.peerPhone || call.peerId || '').toLowerCase();
+                  return name.includes(q) || phone.includes(q);
+                })
+                .map((call) => {
+                  const isMissed = call.direction === 'missed' || call.rawStatus === 'missed';
+                  const isDeclined = call.direction === 'declined' || call.rawStatus === 'declined';
+                  const isOutgoing = call.direction === 'outgoing';
+                  const peerPhoneDisplay = call.peerPhone || call.peerId;
+                  const displayName = call.peerName || peerPhoneDisplay;
+                  const isOnline = isUserOnline(peerPhoneDisplay);
+
                   return (
                     <div
-                      key={item.id}
-                      className={`wa-chat-item-row ${isActive ? 'active' : ''}`}
-                      onClick={() => onSelectChat(phoneDisplay, item)}
+                      key={call.id}
+                      className={`wa-chat-item-row wa-call-item-row ${isMissed ? 'wa-call-missed' : ''}`}
+                      onClick={() => handleSelectUser(peerPhoneDisplay)}
+                      title="Tap to open conversation"
                     >
                       <div className="wa-item-avatar" style={{ position: 'relative' }}>
-                        {item.avatar ? (
+                        {call.peerAvatar ? (
+                          call.peerAvatar.length <= 4 ? (
+                            <span style={{ fontSize: '22px', lineHeight: 1 }}>{call.peerAvatar}</span>
+                          ) : (
+                            <img
+                              src={call.peerAvatar}
+                              alt="Avatar"
+                              style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                            />
+                          )
+                        ) : (
+                          <i className="fa-solid fa-user"></i>
+                        )}
+                        {isOnline && (
+                          <span
+                            style={{
+                              position: 'absolute',
+                              bottom: '2px',
+                              right: '2px',
+                              width: '10px',
+                              height: '10px',
+                              backgroundColor: '#f97316',
+                              borderRadius: '50%',
+                              border: '2px solid #ffffff'
+                            }}
+                            title="Online"
+                          />
+                        )}
+                      </div>
+
+                      <div className="wa-item-center">
+                        <div className="wa-item-top">
+                          <span className={`wa-item-name ${isMissed ? 'wa-missed-title' : ''}`}>
+                            {displayName}
+                          </span>
+                          <span className="wa-item-time">{formatCallTime(call.createdAt)}</span>
+                        </div>
+                        <div className="wa-item-bottom">
+                          <span className="wa-call-subtitle-info">
+                            {isMissed ? (
+                              <>
+                                <i className="fa-solid fa-arrow-down-left" style={{ color: '#ef4444', marginRight: '5px', fontSize: '13px' }}></i>
+                                <span style={{ color: '#ef4444', fontWeight: '600' }}>Missed</span>
+                                <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
+                              </>
+                            ) : isDeclined ? (
+                              <>
+                                <i className="fa-solid fa-arrow-down-left" style={{ color: '#ef4444', marginRight: '5px', fontSize: '13px' }}></i>
+                                <span style={{ color: '#ef4444' }}>Declined</span>
+                                <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
+                              </>
+                            ) : isOutgoing ? (
+                              <>
+                                <i className="fa-solid fa-arrow-up-right" style={{ color: '#f97316', marginRight: '5px', fontSize: '13px' }}></i>
+                                <span>Outgoing</span>
+                                {call.duration > 0 ? (
+                                  <span style={{ color: '#8696a0', marginLeft: '5px' }}>({formatDuration(call.duration)})</span>
+                                ) : (
+                                  <span style={{ color: '#8696a0', marginLeft: '5px' }}>• Unanswered</span>
+                                )}
+                                <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
+                              </>
+                            ) : (
+                              <>
+                                <i className="fa-solid fa-arrow-down-left" style={{ color: '#f97316', marginRight: '5px', fontSize: '13px' }}></i>
+                                <span>Incoming</span>
+                                {call.duration > 0 && (
+                                  <span style={{ color: '#8696a0', marginLeft: '5px' }}>({formatDuration(call.duration)})</span>
+                                )}
+                                <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 1-Tap Callback Actions & Delete */}
+                      <div className="wa-call-item-actions" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="wa-call-action-btn-small voice"
+                          title={`Voice call ${displayName}`}
+                          onClick={() => onStartCall && onStartCall('voice', peerPhoneDisplay)}
+                        >
+                          <i className="fa-solid fa-phone"></i>
+                        </button>
+                        <button
+                          type="button"
+                          className="wa-call-action-btn-small video"
+                          title={`Video call ${displayName}`}
+                          onClick={() => onStartCall && onStartCall('video', peerPhoneDisplay)}
+                        >
+                          <i className="fa-solid fa-video"></i>
+                        </button>
+                        <button
+                          type="button"
+                          className="wa-call-action-btn-small delete"
+                          title="Delete call record"
+                          onClick={() => handleDeleteCallLog(call.id)}
+                        >
+                          <i className="fa-solid fa-trash-can"></i>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )
+        ) : activeTab === 'status' ? (
+          /* ======================= TAB: STATUS ======================= */
+          <StatusTab userId={userId} currentUser={currentUser} onSelectChat={onSelectChat} />
+        ) : (
+          /* ======================= TAB: CHATS ======================= */
+          searchQuery.trim() ? (
+            <div className="wa-search-results-section">
+              <div className="wa-section-title">
+                <span>Database Number Match</span>
+                {isSearchingDb && <i className="fa-solid fa-circle-notch fa-spin"></i>}
+              </div>
+
+              {searchResults.length > 0 ? (
+                searchResults.map((user) => {
+                  const phoneDisplay = user.fullPhone || user.phone || user.id;
+                  const displayName = user.name || phoneDisplay;
+                  const online = isUserOnline(phoneDisplay);
+                  return (
+                    <div
+                      key={user.id}
+                      className="wa-chat-item-row search-match"
+                      onClick={() => handleSelectUser(phoneDisplay, user)}
+                    >
+                      <div className="wa-item-avatar search-avatar" style={{ position: 'relative' }}>
+                        {user.avatar ? (
+                          user.avatar.length <= 4 ? (
+                            <span style={{ fontSize: '22px', lineHeight: 1 }}>{user.avatar}</span>
+                          ) : (
+                            <img
+                              src={user.avatar}
+                              alt="Avatar"
+                              style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                            />
+                          )
+                        ) : (
+                          <i className="fa-solid fa-user"></i>
+                        )}
+                        {online && (
+                          <span
+                            style={{
+                              position: 'absolute',
+                              bottom: '2px',
+                              right: '2px',
+                              width: '10px',
+                              height: '10px',
+                              backgroundColor: '#f97316',
+                              borderRadius: '50%',
+                              border: '2px solid #ffffff'
+                            }}
+                            title="Online"
+                          />
+                        )}
+                      </div>
+                      <div className="wa-item-center">
+                        <div className="wa-item-top">
+                          <span className="wa-item-name">{displayName}</span>
+                          <span className="wa-search-tag">Start Chat</span>
+                        </div>
+                        <div className="wa-item-bottom">
+                          <span className="wa-item-msg">
+                            {user.name && user.name !== phoneDisplay ? `${phoneDisplay} • ` : ''}
+                            {user.about || 'Available'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : !isSearchingDb ? (
+                <div
+                  className="wa-search-no-match"
+                  onClick={() => {
+                    let num = searchQuery.trim();
+                    if (!num.startsWith('+')) num = `+91${num.replace(/\D/g, '')}`;
+                    handleSelectUser(num);
+                  }}
+                >
+                  <i className="fa-solid fa-paper-plane"></i>
+                  <div>
+                    <strong>Chat with "{searchQuery.trim()}"</strong>
+                    <p>Tap here to start chatting with this mobile number</p>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Existing matching chats */}
+              {filteredConversations.length > 0 && (
+                <>
+                  <div className="wa-section-title">Existing Chats</div>
+                  {filteredConversations.map((item) => {
+                    const phoneDisplay = item.fullPhone || item.phone || item.id;
+                    const displayName = item.name || phoneDisplay;
+                    const online = isUserOnline(phoneDisplay);
+                    const isActive =
+                      activeChat &&
+                      (activeChat === phoneDisplay ||
+                        activeChat === item.phone ||
+                        activeChat === item.fullPhone ||
+                        activeChat === item.id);
+
+                    return (
+                      <div className="wa-swipe-item-container" key={item.id}>
+                        {/* Swipe Delete Action (revealed on slide left) */}
+                        <div className="wa-swipe-actions">
+                          <button
+                            type="button"
+                            className="wa-swipe-delete-btn"
+                            title="Delete Chat"
+                            onClick={(e) => handleOpenDeleteModal(e, item)}
+                          >
+                            <i className="fa-solid fa-trash-can"></i>
+                            <span>Delete</span>
+                          </button>
+                        </div>
+
+                        {/* Foreground Row */}
+                        <div
+                          className={`wa-chat-item-row wa-swipeable-row ${isActive ? 'active' : ''} ${swipedId === item.id ? 'is-swiped' : ''
+                            }`}
+                          style={{
+                            transform: `translateX(${dragState.id === item.id
+                              ? `${dragState.currentOffset}px`
+                              : swipedId === item.id
+                                ? '-80px'
+                                : '0px'
+                              })`,
+                            transition:
+                              dragState.id === item.id && dragState.isDragging
+                                ? 'none'
+                                : 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)'
+                          }}
+                          onTouchStart={(e) => handleTouchStart(e, item)}
+                          onTouchMove={(e) => handleTouchMove(e, item)}
+                          onTouchEnd={(e) => handleTouchEnd(e, item)}
+                          onClick={() => {
+                            if (swipedId === item.id) {
+                              setSwipedId(null);
+                              return;
+                            }
+                            handleSelectUser(phoneDisplay, item);
+                          }}
+                        >
+                          <div className="wa-item-avatar" style={{ position: 'relative' }}>
+                            {item.avatar ? (
+                              item.avatar.length <= 4 ? (
+                                <span style={{ fontSize: '22px', lineHeight: 1 }}>{item.avatar}</span>
+                              ) : (
+                                <img
+                                  src={item.avatar}
+                                  alt="Avatar"
+                                  style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                                />
+                              )
+                            ) : (
+                              <i className="fa-solid fa-user"></i>
+                            )}
+                            {online && (
+                              <span
+                                style={{
+                                  position: 'absolute',
+                                  bottom: '2px',
+                                  right: '2px',
+                                  width: '10px',
+                                  height: '10px',
+                                  backgroundColor: '#f97316',
+                                  borderRadius: '50%',
+                                  border: '2px solid #ffffff'
+                                }}
+                                title="Online"
+                              />
+                            )}
+                          </div>
+                          <div className="wa-item-center">
+                            <div className="wa-item-top">
+                              <span className="wa-item-name">{displayName}</span>
+                              {item.lastMessageAt && (
+                                <span className="wa-item-time">
+                                  {new Date(item.lastMessageAt).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                            <div className="wa-item-bottom">
+                              <span className="wa-item-msg">{item.lastMessage || 'Tap to chat'}</span>
+                            </div>
+                          </div>
+
+                          {/* Desktop Slide Toggle Icon */}
+                          <div className="wa-row-slide-trigger" onClick={(e) => handleToggleSwipe(e, item)} title="Options">
+                            <i className="fa-solid fa-chevron-left"></i>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          ) : (
+            /* --- NORMAL CONVERSATIONS LIST --- */
+            loading && conversations.length === 0 ? (
+              <div className="wa-inbox-loading">
+                <i className="fa-solid fa-circle-notch fa-spin"></i>
+                <span>Loading chats...</span>
+              </div>
+            ) : conversations.length === 0 ? (
+              <div className="wa-inbox-empty">
+                <div className="wa-empty-icon-circle">
+                  <i className="fa-solid fa-comments"></i>
+                </div>
+                <h4>No conversations yet</h4>
+                <p>Type any mobile number in the search bar above or tap 💬 below to start chatting!</p>
+              </div>
+            ) : (
+              conversations.map((item) => {
+                const isGroup = Boolean(item.isGroup);
+                const phoneDisplay = item.fullPhone || item.phone || item.id;
+                const displayName = item.name || phoneDisplay;
+                const isDeletedMsg = item.lastMessageType === 'deleted';
+                const isLocationMsg = !isDeletedMsg && item.lastMessageType === 'location';
+                const isImageMsg = !isDeletedMsg && item.lastMessageType === 'image';
+                const isStatusReaction = !isDeletedMsg && item.lastMessageType === 'status_reaction';
+                const isStatusReply = !isDeletedMsg && item.lastMessageType === 'status_reply';
+
+                let lastMsg = item.lastMessage || 'Tap to chat';
+                if (isDeletedMsg) {
+                  lastMsg = '🚫 This message was deleted';
+                } else if (isLocationMsg) {
+                  lastMsg = '📍 Location';
+                } else if (isImageMsg) {
+                  lastMsg = '📷 Photo';
+                } else if (isStatusReaction) {
+                  let emoji = '❤️';
+                  try {
+                    if (item.lastMessage && item.lastMessage.startsWith('{')) {
+                      const parsed = JSON.parse(item.lastMessage);
+                      emoji = parsed.reaction || emoji;
+                    } else if (item.lastMessage) {
+                      emoji = item.lastMessage;
+                    }
+                  } catch (e) { }
+                  lastMsg = `${emoji} Reacted to status`;
+                } else if (isStatusReply) {
+                  let reply = '';
+                  try {
+                    if (item.lastMessage && item.lastMessage.startsWith('{')) {
+                      const parsed = JSON.parse(item.lastMessage);
+                      reply = parsed.replyText || '';
+                    } else if (item.lastMessage) {
+                      reply = item.lastMessage;
+                    }
+                  } catch (e) { }
+                  lastMsg = reply ? `↩ Status: ${reply}` : '↩ Replied to status';
+                }
+                const online = !isGroup && isUserOnline(phoneDisplay);
+                const isActive =
+                  activeChat &&
+                  (activeChat === phoneDisplay ||
+                    activeChat === item.phone ||
+                    activeChat === item.fullPhone ||
+                    activeChat === item.id);
+                const time = item.lastMessageAt
+                  ? new Date(item.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : '';
+
+                return (
+                  <div className="wa-swipe-item-container" key={item.id}>
+                    {/* Swipe Delete Action (revealed on slide left) */}
+                    <div className="wa-swipe-actions">
+                      <button
+                        type="button"
+                        className="wa-swipe-delete-btn"
+                        title="Delete Chat"
+                        onClick={(e) => handleOpenDeleteModal(e, item)}
+                      >
+                        <i className="fa-solid fa-trash-can"></i>
+                        <span>Delete</span>
+                      </button>
+                    </div>
+
+                    {/* Foreground Sliding Chat Row */}
+                    <div
+                      className={`wa-chat-item-row wa-swipeable-row ${isActive ? 'active' : ''} ${swipedId === item.id ? 'is-swiped' : ''
+                        }`}
+                      style={{
+                        transform: `translateX(${dragState.id === item.id
+                          ? `${dragState.currentOffset}px`
+                          : swipedId === item.id
+                            ? '-80px'
+                            : '0px'
+                          })`,
+                        transition:
+                          dragState.id === item.id && dragState.isDragging
+                            ? 'none'
+                            : 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)'
+                      }}
+                      onTouchStart={(e) => handleTouchStart(e, item)}
+                      onTouchMove={(e) => handleTouchMove(e, item)}
+                      onTouchEnd={(e) => handleTouchEnd(e, item)}
+                      onClick={() => {
+                        if (swipedId === item.id) {
+                          setSwipedId(null);
+                          return;
+                        }
+                        handleSelectUser(phoneDisplay, item);
+                      }}
+                    >
+                      <div className="wa-item-avatar" style={{ position: 'relative' }}>
+                        {isGroup ? (
+                          item.avatar ? (
+                            item.avatar.length <= 4 ? (
+                              <span style={{ fontSize: '22px', lineHeight: 1 }}>{item.avatar}</span>
+                            ) : (
+                              <img src={item.avatar} alt="Group" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                            )
+                          ) : <i className="fa-solid fa-users"></i>
+                        ) : item.avatar ? (
                           item.avatar.length <= 4 ? (
                             <span style={{ fontSize: '22px', lineHeight: 1 }}>{item.avatar}</span>
                           ) : (
@@ -444,7 +1326,7 @@ export default function ChatList({
                               right: '2px',
                               width: '10px',
                               height: '10px',
-                              backgroundColor: '#25d366',
+                              backgroundColor: '#f97316',
                               borderRadius: '50%',
                               border: '2px solid #ffffff'
                             }}
@@ -454,130 +1336,58 @@ export default function ChatList({
                       </div>
                       <div className="wa-item-center">
                         <div className="wa-item-top">
-                          <span className="wa-item-name">{displayName}</span>
-                          {item.lastMessageAt && (
-                            <span className="wa-item-time">
-                              {new Date(item.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
+                          <span className={`wa-item-name ${item.unreadCount > 0 ? 'unread' : ''}`}>{displayName}</span>
+                          {time && (
+                            <span className={`wa-item-time ${item.unreadCount > 0 ? 'unread' : ''}`}>{time}</span>
                           )}
                         </div>
                         <div className="wa-item-bottom">
-                          <span className="wa-item-msg">{item.lastMessage || 'Tap to chat'}</span>
+                          {isGroup ? (
+                            <span className="wa-item-msg">{item.lastMessage || `${item.memberCount || 0} members`}</span>
+                          ) : isContactTyping(phoneDisplay) ? (
+                            <span className="wa-item-typing">
+                              typing
+                              <span className="wa-typing-dots">
+                                <span className="dot">.</span>
+                                <span className="dot">.</span>
+                                <span className="dot">.</span>
+                              </span>
+                            </span>
+                          ) : (
+                            <span className={`wa-item-msg ${item.unreadCount > 0 ? 'unread' : ''}`}>
+                              {isLocationMsg && (
+                                <i className="fa-solid fa-location-dot" style={{ color: '#f97316', marginRight: '4px' }}></i>
+                              )}
+                              {isImageMsg && (
+                                <i className="fa-solid fa-camera" style={{ color: '#8696a0', marginRight: '4px' }}></i>
+                              )}
+                              {lastMsg}
+                            </span>
+                          )}
+                          {item.unreadCount > 0 && (
+                            <span
+                              className="wa-unread-badge"
+                              title={`${item.unreadCount} new unread message${item.unreadCount > 1 ? 's' : ''}`}
+                            >
+                              {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                            </span>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </>
-            )}
-          </div>
-        ) : (
-          /* --- NORMAL CONVERSATIONS LIST --- */
-          loading && conversations.length === 0 ? (
-            <div className="wa-inbox-loading">
-              <i className="fa-solid fa-circle-notch fa-spin"></i>
-              <span>Loading chats...</span>
-            </div>
-          ) : conversations.length === 0 ? (
-            <div className="wa-inbox-empty">
-              <div className="wa-empty-icon-circle">
-                <i className="fa-solid fa-comments"></i>
-              </div>
-              <h4>No conversations yet</h4>
-              <p>Type any mobile number in the search bar above or tap 💬 below to start chatting!</p>
-            </div>
-          ) : (
-            conversations.map((item) => {
-              const phoneDisplay = item.fullPhone || item.phone || item.id;
-              const displayName = item.name || phoneDisplay;
-              const isDeletedMsg = item.lastMessageType === 'deleted';
-              const isLocationMsg = !isDeletedMsg && item.lastMessageType === 'location';
-              const isImageMsg = !isDeletedMsg && item.lastMessageType === 'image';
-              const lastMsg = isDeletedMsg
-                ? '🚫 This message was deleted'
-                : isLocationMsg
-                  ? '📍 Location'
-                  : isImageMsg
-                    ? '📷 Photo'
-                    : item.lastMessage || 'Tap to chat';
-              const online = isUserOnline(phoneDisplay);
-              const isActive = activeChat && (
-                activeChat === phoneDisplay ||
-                activeChat === item.phone ||
-                activeChat === item.fullPhone ||
-                activeChat === item.id
-              );
-              const time = item.lastMessageAt
-                ? new Date(item.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                : '';
 
-              return (
-                <div
-                  key={item.id}
-                  className={`wa-chat-item-row ${isActive ? 'active' : ''}`}
-                  onClick={() => onSelectChat(phoneDisplay, item)}
-                >
-                  <div className="wa-item-avatar" style={{ position: 'relative' }}>
-                    {item.avatar ? (
-                      item.avatar.length <= 4 ? (
-                        <span style={{ fontSize: '22px', lineHeight: 1 }}>{item.avatar}</span>
-                      ) : (
-                        <img
-                          src={item.avatar}
-                          alt="Avatar"
-                          style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                        />
-                      )
-                    ) : (
-                      <i className="fa-solid fa-user"></i>
-                    )}
-                    {online && (
-                      <span
-                        style={{
-                          position: 'absolute',
-                          bottom: '2px',
-                          right: '2px',
-                          width: '10px',
-                          height: '10px',
-                          backgroundColor: '#25d366',
-                          borderRadius: '50%',
-                          border: '2px solid #ffffff'
-                        }}
-                        title="Online"
-                      />
-                    )}
-                  </div>
-                  <div className="wa-item-center">
-                    <div className="wa-item-top">
-                      <span className={`wa-item-name ${item.unreadCount > 0 ? 'unread' : ''}`}>{displayName}</span>
-                      {time && (
-                        <span className={`wa-item-time ${item.unreadCount > 0 ? 'unread' : ''}`}>
-                          {time}
-                        </span>
-                      )}
-                    </div>
-                    <div className="wa-item-bottom">
-                      {isContactTyping(phoneDisplay) ? (
-                        <span className="wa-item-typing">
-                          typing<span className="wa-typing-dots"><span className="dot">.</span><span className="dot">.</span><span className="dot">.</span></span>
-                        </span>
-                      ) : (
-                        <span className={`wa-item-msg ${item.unreadCount > 0 ? 'unread' : ''}`}>
-                          {isLocationMsg && <i className="fa-solid fa-location-dot" style={{ color: '#008069', marginRight: '4px' }}></i>}
-                          {isImageMsg && <i className="fa-solid fa-camera" style={{ color: '#8696a0', marginRight: '4px' }}></i>}
-                          {lastMsg}
-                        </span>
-                      )}
-                      {item.unreadCount > 0 && (
-                        <span className="wa-unread-badge" title={`${item.unreadCount} new unread message${item.unreadCount > 1 ? 's' : ''}`}>
-                          {item.unreadCount > 99 ? '99+' : item.unreadCount}
-                        </span>
-                      )}
+                      {/* Desktop / Touch Slide Trigger Chevron */}
+                      <div
+                        className="wa-row-slide-trigger"
+                        onClick={(e) => handleToggleSwipe(e, item)}
+                        title="Slide to delete"
+                      >
+                        <i className={`fa-solid ${swipedId === item.id ? 'fa-chevron-right' : 'fa-chevron-left'}`}></i>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })
+            )
           )
         )}
       </div>
@@ -591,6 +1401,90 @@ export default function ChatList({
       >
         <i className="fa-solid fa-message"></i>
       </button>
+
+      {showGroupModal && (
+        <div className="wa-modal-overlay" onClick={() => setShowGroupModal(false)}>
+          <div className="wa-new-chat-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="wa-modal-header">
+              <h3>Create Group</h3>
+              <button type="button" className="wa-modal-close" onClick={() => setShowGroupModal(false)}>✕</button>
+            </div>
+            {modalError && <div className="wa-auth-error">{modalError}</div>}
+            <form onSubmit={handleCreateGroup} className="wa-modal-form">
+              <label>Group Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Weekend Friends"
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                autoFocus
+                required
+              />
+              <label style={{ marginTop: '12px' }}>Members' phone numbers</label>
+              <input
+                type="text"
+                placeholder="Type a registered number to search"
+                value={groupMemberQuery}
+                onChange={(e) => setGroupMemberQuery(e.target.value)}
+              />
+              {selectedGroupMembers.length > 0 && (
+                <div className="wa-group-member-chips">
+                  {selectedGroupMembers.map((member) => (
+                    <button
+                      type="button"
+                      className="wa-group-member-chip"
+                      key={member.id}
+                      onClick={() => setSelectedGroupMembers((prev) => prev.filter((item) => item.id !== member.id))}
+                      title="Remove member"
+                    >
+                      {member.name || member.fullPhone || member.phone} <span>×</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {groupMemberQuery.trim() && (
+                <div className="wa-group-member-results">
+                  {isSearchingGroupMembers ? (
+                    <div className="wa-group-member-search-state">Searching...</div>
+                  ) : groupMemberResults.length > 0 ? (
+                    groupMemberResults.map((member) => (
+                      <button
+                        type="button"
+                        className="wa-group-member-result"
+                        key={member.id}
+                        onClick={() => {
+                          setSelectedGroupMembers((prev) => [...prev, member]);
+                          setGroupMemberQuery('');
+                        }}
+                      >
+                        <i className="fa-solid fa-user"></i>
+                        <span>
+                          <strong>{member.name || member.fullPhone || member.phone}</strong>
+                          <small>{member.fullPhone || member.phone}</small>
+                        </span>
+                        <i className="fa-solid fa-plus"></i>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="wa-group-member-search-state">No registered user found</div>
+                  )}
+                </div>
+              )}
+              <small style={{ display: 'block', margin: '8px 0 14px', color: '#6b7280' }}>
+                Search by number, then tap a result to add it to the group.
+              </small>
+              <button
+                type="submit"
+                className="wa-auth-green-btn"
+                style={{ width: '100%', maxWidth: '100%', margin: '0' }}
+                disabled={creatingGroup || selectedGroupMembers.length === 0}
+              >
+                {creatingGroup ? 'Creating...' : 'Create Group'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Start Chat / Add Contact */}
       {showNewChatModal && (
@@ -656,6 +1550,52 @@ export default function ChatList({
                 {addingContact ? 'Adding & Opening...' : 'Start Chatting'}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Delete Conversation Confirmation */}
+      {deleteModal.isOpen && (
+        <div
+          className="wa-modal-overlay"
+          onClick={() => !deleteModal.isDeleting && setDeleteModal({ isOpen: false, item: null, isDeleting: false })}
+        >
+          <div className="wa-delete-chat-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="wa-delete-modal-icon">
+              <i className="fa-solid fa-trash-can"></i>
+            </div>
+            <h3>Delete this chat?</h3>
+            <p>
+              Messages will be cleared and this chat will be deleted for you (
+              <strong>
+                {deleteModal.item?.name || deleteModal.item?.fullPhone || deleteModal.item?.phone || deleteModal.item?.id}
+              </strong>
+              ).
+            </p>
+            <div className="wa-delete-modal-actions">
+              <button
+                type="button"
+                className="wa-delete-cancel-btn"
+                disabled={deleteModal.isDeleting}
+                onClick={() => setDeleteModal({ isOpen: false, item: null, isDeleting: false })}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="wa-delete-confirm-btn"
+                disabled={deleteModal.isDeleting}
+                onClick={handleConfirmDelete}
+              >
+                {deleteModal.isDeleting ? (
+                  <>
+                    <i className="fa-solid fa-circle-notch fa-spin"></i> Deleting...
+                  </>
+                ) : (
+                  'Delete Chat'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

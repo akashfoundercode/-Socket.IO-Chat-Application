@@ -5,28 +5,59 @@ export default function ChatHeader({
   userId,
   recipientId,
   recipientName,
+  recipientProfile,
   recipientAvatar,
   recipientAbout,
   isRecipientOnline,
   isConnected,
   isTyping,
+  onlineUsers,
   isBlockedByMe,
   isBlockedByThem,
   onStartCall,
   onBack,
   onBlock,
-  onUnblock
+  onUnblock,
+  onRenameContact,
+  isGroup = false,
+  groupDetails = null,
+  onUpdateGroup,
+  onAddGroupMember,
+  onUpdateGroupMemberRole
 }) {
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [customNameInput, setCustomNameInput] = useState('');
+  const [isSavingRename, setIsSavingRename] = useState(false);
 
-  const displayName = recipientName || recipientId || 'Select Chat';
-  const displayPhone = recipientId || '';
-  const showSubtitlePhone = recipientName && recipientName !== recipientId;
+  const displayPhone = recipientProfile?.fullPhone || recipientProfile?.phone || recipientId || '';
+  const customName = recipientProfile?.customName;
+  const profileName = recipientProfile?.profileName;
+  const displayName = isGroup
+    ? (groupDetails?.name || 'Group chat')
+    : (customName || profileName || recipientName || recipientProfile?.name || displayPhone || recipientId || 'Select Chat');
+  const showSubtitleProfile = !isGroup && !customName && profileName && profileName !== displayPhone;
 
   const isBlocked = isBlockedByMe || isBlockedByThem;
   const effectiveAvatar = isBlocked ? null : recipientAvatar;
   const effectiveOnline = isBlocked ? false : isRecipientOnline;
+  const currentGroupMember = groupDetails?.members?.find((member) => (
+    String(member.userId) === String(userId) ||
+    String(member.fullPhone || '').replace(/^\+/, '') === String(userId).replace(/^\+/, '')
+  ));
+  const isGroupAdmin = isGroup && currentGroupMember?.role === 'admin';
+  const groupOnlineCount = isGroup
+    ? (groupDetails?.members || []).filter((member) => {
+      const id = String(member.fullPhone || member.userId || '').trim();
+      const variants = [id, id.startsWith('+') ? id.slice(1) : `+${id}`, id.replace(/^\+/, '')];
+      return variants.some((variant) => onlineUsers?.has(variant));
+    }).length
+    : 0;
+  const isSuperAdmin = isGroup && (
+    String(groupDetails?.creatorId) === String(userId) ||
+    String(groupDetails?.creatorId || '').replace(/^\+/, '') === String(userId).replace(/^\+/, '')
+  );
 
   const statusText = isBlockedByMe
     ? 'Blocked'
@@ -39,6 +70,34 @@ export default function ChatHeader({
           : effectiveOnline
             ? 'online'
             : 'offline';
+
+  const handleOpenRename = (e) => {
+    if (e) e.stopPropagation();
+    setShowMenu(false);
+    setCustomNameInput(customName || '');
+    setShowRenameModal(true);
+  };
+
+  const handleSaveRename = async (e, isReset = false) => {
+    if (e) e.preventDefault();
+    if (!onRenameContact) return;
+
+    setIsSavingRename(true);
+    const finalName = isReset ? '' : customNameInput.trim();
+    try {
+      await onRenameContact(recipientId, finalName);
+      setShowRenameModal(false);
+    } catch (err) {
+      console.error('Rename error:', err);
+    } finally {
+      setIsSavingRename(false);
+    }
+  };
+
+  const openGroupSettings = () => {
+    setShowMenu(false);
+    setShowContactInfo(true);
+  };
 
   return (
     <>
@@ -54,7 +113,9 @@ export default function ChatHeader({
             onClick={() => setShowContactInfo(true)}
             title="View Contact Info"
           >
-            {effectiveAvatar ? (
+            {isGroup ? (
+              groupDetails?.avatar ? <img src={groupDetails.avatar} alt="Group" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} /> : <i className="fa-solid fa-users"></i>
+            ) : effectiveAvatar ? (
               effectiveAvatar.length <= 4 ? (
                 <span style={{ fontSize: '20px', lineHeight: 1 }}>{effectiveAvatar}</span>
               ) : (
@@ -68,7 +129,7 @@ export default function ChatHeader({
               <i className="fa-solid fa-user"></i>
             )}
             {/* Online Green Dot Badge */}
-            {effectiveOnline && (
+            {!isGroup && effectiveOnline && (
               <span
                 style={{
                   position: 'absolute',
@@ -76,7 +137,7 @@ export default function ChatHeader({
                   right: '0',
                   width: '10px',
                   height: '10px',
-                  backgroundColor: '#25d366',
+                  backgroundColor: '#f97316',
                   borderRadius: '50%',
                   border: '2px solid #ffffff'
                 }}
@@ -85,23 +146,39 @@ export default function ChatHeader({
             )}
           </div>
 
-          <div
-            className="wa-chat-title-wrap"
-            style={{ cursor: 'pointer' }}
-            onClick={() => setShowContactInfo(true)}
-            title="View Contact Info"
-          >
-            <div className="wa-chat-name" title={displayName}>
-              {displayName}
+          <div className="wa-chat-title-wrap">
+            <div className="wa-chat-name-row" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span
+                className="wa-chat-name"
+                onClick={() => setShowContactInfo(true)}
+                title={displayName}
+                style={{ cursor: 'pointer' }}
+              >
+                {displayName}
+              </span>
+              {!isGroup && <button
+                type="button"
+                className="wa-header-rename-btn"
+                title="Edit contact name (only visible to you)"
+                onClick={handleOpenRename}
+              >
+                <i className="fa-solid fa-pencil"></i>
+              </button>}
             </div>
             <div className="wa-chat-status">
-              {showSubtitlePhone && <span style={{ opacity: 0.85, marginRight: '4px' }}>{displayPhone} •</span>}
-              <span
+              {isGroup ? (
+                <span>{groupOnlineCount > 0 ? `${groupOnlineCount} online` : 'offline'}</span>
+              ) : customName ? (
+                <span style={{ opacity: 0.85, marginRight: '4px' }}>{displayPhone} •</span>
+              ) : showSubtitleProfile ? (
+                <span style={{ opacity: 0.85, marginRight: '4px' }}>~{profileName} •</span>
+              ) : null}
+              {!isGroup && <span
                 style={{
                   color: isBlockedByMe
                     ? '#f87171'
                     : isTyping && !isBlocked
-                      ? '#25d366'
+                      ? '#f97316'
                       : effectiveOnline
                         ? '#dcfce7'
                         : 'rgba(255,255,255,0.75)',
@@ -124,7 +201,7 @@ export default function ChatHeader({
                 ) : (
                   statusText
                 )}
-              </span>
+              </span>}
             </div>
           </div>
         </div>
@@ -174,11 +251,27 @@ export default function ChatHeader({
                   <i className="fa-solid fa-user"></i> Contact info
                 </button>
 
-                {isBlockedByMe ? (
+                {isGroup ? (
                   <button
                     type="button"
                     className="wa-menu-item"
-                    style={{ color: '#25d366' }}
+                    onClick={openGroupSettings}
+                  >
+                    <i className="fa-solid fa-circle-info"></i> Group info
+                  </button>
+                ) : <button
+                  type="button"
+                  className="wa-menu-item"
+                  onClick={handleOpenRename}
+                >
+                  <i className="fa-solid fa-user-pen"></i> Edit contact name
+                </button>}
+
+                {!isGroup && (isBlockedByMe ? (
+                  <button
+                    type="button"
+                    className="wa-menu-item"
+                    style={{ color: '#f97316' }}
                     onClick={() => {
                       setShowMenu(false);
                       onUnblock && onUnblock(recipientId);
@@ -200,7 +293,7 @@ export default function ChatHeader({
                   >
                     <i className="fa-solid fa-ban"></i> Block contact
                   </button>
-                )}
+                ))}
 
                 <button
                   type="button"
@@ -224,6 +317,8 @@ export default function ChatHeader({
           recipientId={recipientId}
           recipientProfile={{
             name: displayName,
+            profileName: recipientProfile?.profileName,
+            customName: recipientProfile?.customName,
             phone: displayPhone,
             fullPhone: displayPhone,
             avatar: effectiveAvatar,
@@ -236,7 +331,92 @@ export default function ChatHeader({
           onStartCall={onStartCall}
           onBlock={onBlock}
           onUnblock={onUnblock}
+          onRenameContact={onRenameContact}
+          isGroup={isGroup}
+          groupDetails={groupDetails}
+          currentUserId={userId}
+          onlineUsers={onlineUsers}
+          onUpdateGroup={onUpdateGroup}
+          onAddGroupMember={onAddGroupMember}
+          onUpdateGroupMemberRole={onUpdateGroupMemberRole}
         />
+      )}
+
+      {/* Modal: Edit Contact Name (Private per-user alias) */}
+      {showRenameModal && (
+        <div className="wa-modal-overlay" onClick={() => !isSavingRename && setShowRenameModal(false)}>
+          <div className="wa-rename-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="wa-modal-header" style={{ marginBottom: '10px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#111827' }}>Edit Contact Name</h3>
+              <button
+                type="button"
+                className="wa-modal-close"
+                onClick={() => !isSavingRename && setShowRenameModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="wa-rename-info-pill">
+              <i className="fa-solid fa-shield-halved" style={{ color: '#f97316', fontSize: '14px' }}></i>
+              <span>This custom name is private and only visible to you on your device.</span>
+            </div>
+
+            <form onSubmit={(e) => handleSaveRename(e, false)} className="wa-modal-form" style={{ marginTop: '12px' }}>
+              <label style={{ fontSize: '12px', fontWeight: '600', color: '#374151', marginBottom: '4px' }}>
+                Contact Name / Nickname:
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Rahul Manager, Bhai, etc."
+                value={customNameInput}
+                onChange={(e) => setCustomNameInput(e.target.value)}
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '14px',
+                  marginBottom: '16px',
+                  outline: 'none'
+                }}
+              />
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="wa-delete-cancel-btn"
+                  disabled={isSavingRename}
+                  onClick={() => setShowRenameModal(false)}
+                  style={{ flex: 1 }}
+                >
+                  Cancel
+                </button>
+                {recipientProfile?.customName && (
+                  <button
+                    type="button"
+                    className="wa-delete-cancel-btn"
+                    disabled={isSavingRename}
+                    onClick={(e) => handleSaveRename(e, true)}
+                    title="Reset to default WhatsApp name"
+                    style={{ flex: 1, color: '#dc2626', borderColor: '#fca5a5' }}
+                  >
+                    Reset
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="wa-auth-green-btn"
+                  disabled={isSavingRename}
+                  style={{ flex: 1.4, margin: 0 }}
+                >
+                  {isSavingRename ? 'Saving...' : 'Save Name'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </>
   );

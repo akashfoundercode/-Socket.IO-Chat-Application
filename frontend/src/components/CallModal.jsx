@@ -5,28 +5,39 @@ export default function CallModal({
   onAcceptCall,
   onRejectCall,
   onEndCall,
-  localStream,
-  remoteStream
+  localVideoTrack,
+  remoteVideoTrack,
+  onToggleMute,
+  onToggleVideo
 }) {
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoDisabled, setIsVideoDisabled] = useState(false);
   const [duration, setDuration] = useState(0);
 
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
+  const localVideoContainerRef = useRef(null);
+  const remoteVideoContainerRef = useRef(null);
 
-  // Bind streams to video elements
+  // Bind Agora Local Video Track to DOM container
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+    if (localVideoContainerRef.current && localVideoTrack) {
+      try {
+        localVideoTrack.play(localVideoContainerRef.current);
+      } catch (err) {
+        console.warn('Local video play error:', err);
+      }
     }
-  }, [localStream, callState?.isAccepted]);
+  }, [localVideoTrack, callState?.callType]);
 
+  // Bind Agora Remote Video Track to DOM container
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+    if (remoteVideoContainerRef.current && remoteVideoTrack) {
+      try {
+        remoteVideoTrack.play(remoteVideoContainerRef.current);
+      } catch (err) {
+        console.warn('Remote video play error:', err);
+      }
     }
-  }, [remoteStream, callState?.isAccepted]);
+  }, [remoteVideoTrack, callState?.callType]);
 
   // Call duration timer once connected
   useEffect(() => {
@@ -45,23 +56,19 @@ export default function CallModal({
 
   // Mute / Unmute Audio Track
   const toggleMute = () => {
-    if (localStream) {
-      const audioTrack = localStream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
-      }
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    if (onToggleMute) {
+      onToggleMute(nextMuted);
     }
   };
 
   // Enable / Disable Video Track
   const toggleVideo = () => {
-    if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoDisabled(!videoTrack.enabled);
-      }
+    const nextDisabled = !isVideoDisabled;
+    setIsVideoDisabled(nextDisabled);
+    if (onToggleVideo) {
+      onToggleVideo(nextDisabled);
     }
   };
 
@@ -103,7 +110,9 @@ export default function CallModal({
           </div>
 
           <h3 className="wa-incoming-name">{peerName}</h3>
-          <p className="wa-incoming-status">Ringing...</p>
+          <p className="wa-incoming-status">
+            {callState.isCallWaiting ? 'Incoming Call Waiting...' : 'Ringing...'}
+          </p>
 
           <div className="wa-incoming-actions">
             {/* Decline Call Button */}
@@ -136,15 +145,17 @@ export default function CallModal({
           <div className="wa-active-call-top">
             <div className="wa-call-secure-badge">
               <i className="fa-solid fa-lock"></i>
-              <span>End-to-end encrypted</span>
+              <span>End-to-end encrypted (Agora RTC)</span>
             </div>
             <h2 className="wa-active-call-name">{peerName}</h2>
             <div className="wa-active-call-status">
               {callState.isAccepted
                 ? formatDuration(duration)
-                : callState.isIncoming
-                  ? 'Connecting...'
-                  : 'Calling...'}
+                : callState.isCallWaiting
+                  ? 'User is on another call...'
+                  : callState.isRinging
+                    ? 'Ringing...'
+                    : 'Calling...'}
             </div>
           </div>
 
@@ -153,16 +164,15 @@ export default function CallModal({
             {isVideo ? (
               /* Video Streams Container */
               <div className="wa-video-call-stage">
-                {/* Remote Video Stream */}
-                <video
-                  ref={remoteVideoRef}
-                  autoPlay
-                  playsInline
+                {/* Remote Video Stream Container */}
+                <div
+                  ref={remoteVideoContainerRef}
                   className="wa-remote-video"
+                  style={{ width: '100%', height: '100%', position: 'relative' }}
                 />
 
                 {/* Remote fallback if stream not active */}
-                {!remoteStream && (
+                {!remoteVideoTrack && (
                   <div className="wa-video-placeholder">
                     <div className="wa-call-avatar-circle">
                       {peerAvatar ? (
@@ -181,12 +191,10 @@ export default function CallModal({
 
                 {/* Local Video Stream PiP */}
                 <div className="wa-local-video-pip">
-                  <video
-                    ref={localVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
+                  <div
+                    ref={localVideoContainerRef}
                     className="wa-local-video"
+                    style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}
                   />
                   {isVideoDisabled && (
                     <div className="wa-video-disabled-overlay">

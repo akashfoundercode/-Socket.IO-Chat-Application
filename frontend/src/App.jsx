@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { socket } from './socket/socket';
-import { profileApi, blockApi } from './services/api';
+import { profileApi, blockApi, chatApi, agoraApi } from './services/api';
+import agoraService from './services/agoraService';
 import JoinModal from './components/JoinModal';
 import ChatList from './components/ChatList';
 import ChatHeader from './components/ChatHeader';
@@ -8,16 +9,8 @@ import MessageList from './components/MessageList';
 import MessageInput from './components/MessageInput';
 import ProfileSettings from './components/ProfileSettings';
 import CallModal from './components/CallModal';
-import { startIncomingRingtone, startOutgoingDialTone, stopCallSounds } from './utils/callSounds';
+import { startIncomingRingtone, startOutgoingDialTone, stopCallSounds, playMessageNotification } from './utils/callSounds';
 import './App.css';
-
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
-  ]
-};
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
@@ -36,6 +29,9 @@ export default function App() {
   const [onlineUsers, setOnlineUsers] = useState(new Set());
   const [typingUsers, setTypingUsers] = useState(new Set());
   const [messages, setMessages] = useState([]);
+  const [groupDetails, setGroupDetails] = useState(null);
+  const [groupTypingUsers, setGroupTypingUsers] = useState(new Set());
+  const [replyingTo, setReplyingTo] = useState(null);
   const [recentMessageEvent, setRecentMessageEvent] = useState(null);
 
   // Block & Privacy States for active conversation
@@ -43,36 +39,21 @@ export default function App() {
   const [isBlockedByThem, setIsBlockedByThem] = useState(false);
   const [blockedByMeUsers, setBlockedByMeUsers] = useState(new Set());
 
-  // Calling & Media Stream States
+  // Agora Calling & Media States
   const [callState, setCallState] = useState(null);
-  const [localStream, setLocalStream] = useState(null);
-  const [remoteStream, setRemoteStream] = useState(null);
-
-  const localStreamRef = useRef(null);
-  const peerConnectionRef = useRef(null);
+  const [localVideoTrack, setLocalVideoTrack] = useState(null);
+  const [remoteVideoTrack, setRemoteVideoTrack] = useState(null);
+  const [callLogsTrigger, setCallLogsTrigger] = useState(0);
+  const [remotePeerMediaStatus, setRemotePeerMediaStatus] = useState({ isMuted: false, isVideoOff: false });
 
   const userId = currentUser ? (currentUser.fullPhone || currentUser.id) : '';
 
-  // Cleanup helper for Calling
+  // Cleanup helper for Agora Calling
   const cleanupCall = useCallback(() => {
     stopCallSounds();
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
-    }
-    setLocalStream(null);
-    setRemoteStream(null);
-
-    if (peerConnectionRef.current) {
-      try {
-        peerConnectionRef.current.close();
-      } catch (e) {
-        console.warn('Error closing peer connection:', e);
-      }
-      peerConnectionRef.current = null;
-    }
-
+    agoraService.leaveChannel();
+    setLocalVideoTrack(null);
+    setRemoteVideoTrack(null);
     setCallState(null);
   }, []);
 
@@ -98,6 +79,46 @@ export default function App() {
 
     function onConversationHistory(history) {
       setMessages(Array.isArray(history) ? history : []);
+    }
+
+    function onGroupHistory(history) {
+      setMessages(Array.isArray(history) ? history : []);
+    }
+
+    function onGroupDetails(group) {
+      setGroupDetails(group || null);
+    }
+
+    function onGroupCreated({ group }) {
+      if (group && group.id) {
+        socket.emit('join_group_room', group.id);
+      }
+    }
+
+    function onGroupMessageReceived(message) {
+      const isCurrentGroup = activeChat === `group:${message.groupId}`;
+      if (!isCurrentGroup || document.hidden) {
+        playMessageNotification();
+      }
+      if (activeChat === `group:${message.groupId}`) {
+        setMessages((prev) => [...prev, message]);
+      }
+      setRecentMessageEvent({ type: 'group_message', timestamp: Date.now() });
+    }
+
+    function onGroupReactionUpdated({ messageId, reactions }) {
+      setMessages((prev) => prev.map((message) => (
+        String(message.id) === String(messageId) ? { ...message, reactions } : message
+      )));
+    }
+
+    function onGroupTyping({ from, isTyping }) {
+      setGroupTypingUsers((prev) => {
+        const next = new Set(prev);
+        if (isTyping) next.add(String(from));
+        else next.delete(String(from));
+        return next;
+      });
     }
 
     // Online users list
@@ -160,7 +181,12 @@ export default function App() {
     function onMessageReceived(msg) {
       setRecentMessageEvent(msg);
 
-      if (activeChat && (msg.from === activeChat || msg.to === activeChat)) {
+      const isCurrentChat = activeChat && (msg.from === activeChat || msg.to === activeChat);
+      if (!isCurrentChat || document.hidden) {
+        playMessageNotification();
+      }
+
+      if (isCurrentChat) {
         // If recipient is currently inside this chat, mark as seen immediately
         socket.emit('mark_seen', { otherUserId: activeChat });
         setMessages((prev) => [...prev, { ...msg, status: 'seen' }]);
@@ -217,31 +243,105 @@ export default function App() {
       setRecentMessageEvent({ type: 'message_edited', message: updatedMsg, timestamp: Date.now() });
     }
 
-    // WebRTC Calling Socket Handlers
-    function onIncomingCall({ from, callerName, callerAvatar, callType, offer }) {
+    // Real-time 1-on-1 Message Reaction Handler
+    function onMessageReactionUpdated({ messageId, reactions }) {
+      setMessages((prev) =>
+        prev.map((m) => (String(m.id) === String(messageId) ? { ...m, reactions } : m))
+      );
+    }
+
+    // Real-time Conversation Deleted Handler (Swipe to Delete)
+    function onConversationDeleted({ otherUserId }) {
+      if (
+        activeChat &&
+        (activeChat === otherUserId ||
+          activeChat === String(otherUserId).replace(/^\+/, '') ||
+          activeChat === `+${String(otherUserId).replace(/^\+/, '')}`)
+      ) {
+        setActiveChat(null);
+        setRecipientProfile(null);
+        setMessages([]);
+        setCurrentView('inbox');
+      }
+      setRecentMessageEvent({ type: 'conversation_deleted', otherUserId, timestamp: Date.now() });
+    }
+
+    // Real-time Contact Renamed Handler (Private Alias)
+    function onContactRenamed({ contactId, customName }) {
+      if (
+        activeChat &&
+        (activeChat === contactId ||
+          activeChat === String(contactId).replace(/^\+/, '') ||
+          activeChat === `+${String(contactId).replace(/^\+/, '')}`)
+      ) {
+        setRecipientProfile((prev) => {
+          if (!prev) return prev;
+          const newDisplayName = customName || prev.profileName || prev.fullPhone || contactId;
+          return { ...prev, name: newDisplayName, customName: customName || null };
+        });
+      }
+      setRecentMessageEvent({ type: 'contact_renamed', contactId, customName, timestamp: Date.now() });
+    }
+
+    // Agora Calling Socket Handlers
+    function onIncomingCall({ from, callerName, callerAvatar, callType, channelName }) {
       setCallState({
         isIncoming: true,
         isAccepted: false,
+        isRinging: true,
         callType: callType || 'voice',
+        channelName: channelName || null,
         peerId: from,
         peerName: callerName || from,
-        peerAvatar: callerAvatar || null,
-        offer: offer || null
+        peerAvatar: callerAvatar || null
+      });
+
+      // Acknowledge to caller that device received signal and is ringing
+      socket.emit('call_ringing', { to: from, channelName });
+      startIncomingRingtone();
+    }
+
+    function onIncomingGroupCall({ from, groupId, callerName, callerAvatar, callType, channelName }) {
+      setCallState({
+        isIncoming: true,
+        isAccepted: false,
+        isRinging: true,
+        callType: callType || 'voice',
+        channelName: channelName || null,
+        peerId: `group:${groupId}`,
+        groupId: String(groupId),
+        callerId: from,
+        peerName: `${callerName || from} (group call)`,
+        peerAvatar: callerAvatar || null
       });
       startIncomingRingtone();
     }
 
-    async function onCallAccepted({ from, answer }) {
-      stopCallSounds();
-      setCallState((prev) => (prev ? { ...prev, isAccepted: true } : null));
+    function onCallWaiting({ from, callerName, callerAvatar, callType, channelName }) {
+      setCallState({
+        isIncoming: true,
+        isAccepted: false,
+        isCallWaiting: true,
+        callType: callType || 'voice',
+        channelName: channelName || null,
+        peerId: from,
+        peerName: callerName || from,
+        peerAvatar: callerAvatar || null
+      });
+      startIncomingRingtone();
+    }
 
-      if (peerConnectionRef.current && answer) {
-        try {
-          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-        } catch (err) {
-          console.warn('Error setting remote description on call_accepted:', err);
-        }
-      }
+    function onCallWaitingResponse({ message }) {
+      setCallState((prev) => (prev ? { ...prev, isCallWaiting: true, isRinging: false } : null));
+    }
+
+    function onCallRinging({ from }) {
+      setCallState((prev) => (prev ? { ...prev, isRinging: true, isCallWaiting: false } : null));
+    }
+
+    async function onCallAccepted({ from, channelName }) {
+      stopCallSounds();
+      setCallState((prev) => (prev ? { ...prev, isAccepted: true, isRinging: false } : null));
     }
 
     function onCallRejected({ reason }) {
@@ -253,14 +353,17 @@ export default function App() {
       cleanupCall();
     }
 
-    async function onIceCandidate({ candidate }) {
-      if (peerConnectionRef.current && candidate) {
-        try {
-          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (err) {
-          console.warn('Error adding ICE candidate:', err);
-        }
-      }
+    function onCallLogUpdated() {
+      setCallLogsTrigger((prev) => prev + 1);
+    }
+
+    function onCallMediaStatus({ isMuted, isVideoOff }) {
+      setRemotePeerMediaStatus({ isMuted: Boolean(isMuted), isVideoOff: Boolean(isVideoOff) });
+    }
+
+    function onGroupCallAccepted() {
+      stopCallSounds();
+      setCallState((prev) => (prev ? { ...prev, isAccepted: true, isRinging: false } : null));
     }
 
     // Real-Time Cross-User Profile Update Sync
@@ -274,14 +377,42 @@ export default function App() {
           activeChat === `+${targetId}` ||
           activeChat === targetId.replace(/^\+/, ''))
       ) {
-        setRecipientProfile((prev) => ({
-          ...prev,
-          name: updatedUser.name || prev?.name,
-          about: updatedUser.about || prev?.about,
-          avatar: updatedUser.avatar !== undefined ? updatedUser.avatar : prev?.avatar,
-          avatarPrivacy: updatedUser.avatarPrivacy || prev?.avatarPrivacy
-        }));
+        setRecipientProfile((prev) => {
+          if (!prev) return prev;
+          const currentDisplayName = prev.customName || prev.fullPhone || prev.phone || activeChat;
+          return {
+            ...prev,
+            name: currentDisplayName,
+            profileName: updatedUser.profileName || updatedUser.name || prev.profileName,
+            about: updatedUser.about !== undefined ? updatedUser.about : prev.about,
+            avatar: updatedUser.avatar !== undefined ? updatedUser.avatar : prev.avatar,
+            avatarPrivacy: updatedUser.avatarPrivacy || prev.avatarPrivacy
+          };
+        });
       }
+
+      setGroupDetails((prev) => {
+        if (!prev?.members) return prev;
+        const normalizedTarget = targetId.replace(/^\+/, '');
+        const hasMember = prev.members.some((member) => (
+          String(member.userId).replace(/^\+/, '') === normalizedTarget ||
+          String(member.fullPhone || '').replace(/^\+/, '') === normalizedTarget
+        ));
+        if (!hasMember) return prev;
+        return {
+          ...prev,
+          members: prev.members.map((member) => {
+            const memberId = String(member.userId).replace(/^\+/, '');
+            const memberPhone = String(member.fullPhone || '').replace(/^\+/, '');
+            if (memberId !== normalizedTarget && memberPhone !== normalizedTarget) return member;
+            return {
+              ...member,
+              name: updatedUser.profileName || updatedUser.name || member.name,
+              avatar: updatedUser.avatar !== undefined ? updatedUser.avatar : member.avatar
+            };
+          })
+        };
+      });
 
       setRecentMessageEvent({ type: 'profile_sync', timestamp: Date.now() });
     }
@@ -354,18 +485,34 @@ export default function App() {
     socket.on('user_unblocked', onUserUnblocked);
     socket.on('message_error', onMessageError);
     socket.on('conversation_history', onConversationHistory);
+    socket.on('group_history', onGroupHistory);
+    socket.on('group_details', onGroupDetails);
+    socket.on('group_created', onGroupCreated);
+    socket.on('group_message_received', onGroupMessageReceived);
+    socket.on('group_reaction_updated', onGroupReactionUpdated);
+    socket.on('group_typing', onGroupTyping);
     socket.on('message_received', onMessageReceived);
     socket.on('message_saved', onMessageSaved);
+    socket.on('message_reaction_updated', onMessageReactionUpdated);
     socket.on('messages_seen', onMessagesSeen);
     socket.on('messages_delivered', onMessagesDelivered);
     socket.on('message_deleted', onMessageDeleted);
     socket.on('message_edited', onMessageEdited);
+    socket.on('conversation_deleted', onConversationDeleted);
+    socket.on('contact_renamed', onContactRenamed);
 
     socket.on('incoming_call', onIncomingCall);
+    socket.on('incoming_group_call', onIncomingGroupCall);
+    socket.on('call_waiting', onCallWaiting);
+    socket.on('call_waiting_response', onCallWaitingResponse);
+    socket.on('call_ringing', onCallRinging);
     socket.on('call_accepted', onCallAccepted);
     socket.on('call_rejected', onCallRejected);
     socket.on('call_ended', onCallEnded);
-    socket.on('ice_candidate', onIceCandidate);
+    socket.on('call_log_updated', onCallLogUpdated);
+    socket.on('call_media_status', onCallMediaStatus);
+    socket.on('group_call_accepted', onGroupCallAccepted);
+    socket.on('group_call_ended', onCallEnded);
 
     if (socket.connected && userId) {
       socket.emit('join', userId);
@@ -383,18 +530,34 @@ export default function App() {
       socket.off('user_unblocked', onUserUnblocked);
       socket.off('message_error', onMessageError);
       socket.off('conversation_history', onConversationHistory);
+      socket.off('group_history', onGroupHistory);
+      socket.off('group_details', onGroupDetails);
+      socket.off('group_created', onGroupCreated);
+      socket.off('group_message_received', onGroupMessageReceived);
+      socket.off('group_reaction_updated', onGroupReactionUpdated);
+      socket.off('group_typing', onGroupTyping);
       socket.off('message_received', onMessageReceived);
       socket.off('message_saved', onMessageSaved);
+      socket.off('message_reaction_updated', onMessageReactionUpdated);
       socket.off('messages_seen', onMessagesSeen);
       socket.off('messages_delivered', onMessagesDelivered);
       socket.off('message_deleted', onMessageDeleted);
       socket.off('message_edited', onMessageEdited);
+      socket.off('conversation_deleted', onConversationDeleted);
+      socket.off('contact_renamed', onContactRenamed);
 
       socket.off('incoming_call', onIncomingCall);
+      socket.off('incoming_group_call', onIncomingGroupCall);
+      socket.off('call_waiting', onCallWaiting);
+      socket.off('call_waiting_response', onCallWaitingResponse);
+      socket.off('call_ringing', onCallRinging);
       socket.off('call_accepted', onCallAccepted);
       socket.off('call_rejected', onCallRejected);
       socket.off('call_ended', onCallEnded);
-      socket.off('ice_candidate', onIceCandidate);
+      socket.off('call_log_updated', onCallLogUpdated);
+      socket.off('call_media_status', onCallMediaStatus);
+      socket.off('group_call_accepted', onGroupCallAccepted);
+      socket.off('group_call_ended', onCallEnded);
     };
   }, [userId, activeChat, cleanupCall]);
 
@@ -402,11 +565,29 @@ export default function App() {
   useEffect(() => {
     if (activeChat && userId) {
       setMessages([]);
+      setReplyingTo(null);
+      setGroupDetails(null);
+      setGroupTypingUsers(new Set());
       setIsBlockedByMe(false);
       setIsBlockedByThem(false);
+      setCurrentView('chat');
+
+      if (String(activeChat).startsWith('group:')) {
+        socket.emit('loadGroup', activeChat);
+        return;
+      }
+
       socket.emit('loadConversation', activeChat);
       socket.emit('check_user_status', activeChat);
-      setCurrentView('chat');
+
+      // Fast HTTP fetch for past messages
+      chatApi.getChatHistory(userId, activeChat)
+        .then((data) => {
+          if (data && data.success && Array.isArray(data.messages)) {
+            setMessages(data.messages);
+          }
+        })
+        .catch(() => { });
 
       // Fetch recipient's latest profile (Name, Avatar, About, Avatar Privacy, Block state)
       profileApi.getProfile(activeChat, userId)
@@ -459,115 +640,155 @@ export default function App() {
     )
   );
 
-  // 1. Initiate Outgoing Call (Voice / Video)
-  const handleStartCall = async (callType) => {
-    if (!activeChat) return;
+  // 1. Initiate Outgoing Call (Voice / Video with Agora RTC)
+  const handleStartCall = async (callType, targetPeer = null) => {
+    const peer = targetPeer || activeChat;
+    if (!peer) return;
+    const isGroupCall = String(peer).startsWith('group:');
+    const groupId = isGroupCall ? String(peer).replace(/^group:/, '') : null;
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: callType === 'video'
-      });
+    if (targetPeer && targetPeer !== activeChat) {
+      setActiveChat(targetPeer);
+    }
 
-      localStreamRef.current = stream;
-      setLocalStream(stream);
+    // Generate unique Agora channel name for this call session
+    const cleanPeer = isGroupCall ? `group_${groupId}` : peer.replace(/\D/g, '');
+    const cleanSelf = String(userId || '').replace(/\D/g, '');
+    const channelName = `call_${cleanSelf}_${cleanPeer}_${Date.now()}`;
 
-      const pc = new RTCPeerConnection(ICE_SERVERS);
-      peerConnectionRef.current = pc;
+    startOutgoingDialTone();
 
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-      pc.ontrack = (event) => {
-        if (event.streams && event.streams[0]) {
-          setRemoteStream(event.streams[0]);
-        }
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit('ice_candidate', { to: activeChat, candidate: event.candidate });
-        }
-      };
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      startOutgoingDialTone();
-
-      socket.emit('call_user', {
-        to: activeChat,
+    // Signal incoming call to remote peer via Socket.IO
+    if (isGroupCall) {
+      socket.emit('group_call_user', {
+        groupId,
         callerName: currentUser?.name || userId,
         callerAvatar: currentUser?.avatar || null,
         callType,
-        offer
+        channelName
       });
-
-      setCallState({
-        isIncoming: false,
-        isAccepted: false,
+    } else {
+      socket.emit('call_user', {
+        to: peer,
+        callerName: currentUser?.name || userId,
+        callerAvatar: currentUser?.avatar || null,
         callType,
-        peerId: activeChat,
-        peerName: recipientProfile?.name || activeChat,
-        peerAvatar: recipientProfile?.avatar || null
+        channelName
       });
+    }
+
+    setCallState({
+      isIncoming: false,
+      isAccepted: false,
+      isRinging: false,
+      callType,
+      channelName,
+      peerId: peer,
+      groupId,
+      peerName: isGroupCall ? (groupDetails?.name || 'Group') : ((targetPeer && targetPeer === peer ? targetPeer : recipientProfile?.name) || peer),
+      peerAvatar: recipientProfile?.avatar || null
+    });
+
+    try {
+      // Fetch dynamic RTC Token from Backend
+      const tokenRes = await agoraApi.getToken(channelName);
+      const appId = tokenRes?.appId || import.meta.env.VITE_AGORA_APP_ID;
+      const token = tokenRes?.token;
+
+      if (appId && token) {
+        // Join Agora RTC Channel & Publish Camera/Mic Tracks
+        const { localVideoTrack: lvTrack } = await agoraService.joinChannel({
+          appId,
+          channelName,
+          token,
+          callType,
+          onRemoteUserPublished: (user, mediaType) => {
+            if (mediaType === 'video' && user.videoTrack) {
+              setRemoteVideoTrack(user.videoTrack);
+            }
+          },
+          onRemoteUserUnpublished: (user, mediaType) => {
+            if (mediaType === 'video') {
+              setRemoteVideoTrack(null);
+            }
+          },
+          onUserLeft: (user) => {
+            console.log('[Agora] Remote user left call:', user);
+            cleanupCall();
+          }
+        });
+
+        setLocalVideoTrack(lvTrack || null);
+      }
     } catch (err) {
-      console.error('Failed to start call:', err);
-      alert('Could not access microphone or camera. Please check browser permissions.');
-      cleanupCall();
+      console.warn('[Agora] Outgoing media setup notice:', err.message);
     }
   };
 
-  // 2. Accept Incoming Call
+  // 2. Accept Incoming Call (Agora RTC)
   const handleAcceptCall = async () => {
     if (!callState || !callState.peerId) return;
     stopCallSounds();
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: callState.callType === 'video'
-      });
-
-      localStreamRef.current = stream;
-      setLocalStream(stream);
-
-      const pc = new RTCPeerConnection(ICE_SERVERS);
-      peerConnectionRef.current = pc;
-
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-      pc.ontrack = (event) => {
-        if (event.streams && event.streams[0]) {
-          setRemoteStream(event.streams[0]);
-        }
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit('ice_candidate', { to: callState.peerId, candidate: event.candidate });
-        }
-      };
-
-      if (callState.offer) {
-        await pc.setRemoteDescription(new RTCSessionDescription(callState.offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        socket.emit('answer_call', { to: callState.peerId, answer });
-      }
-
-      setCallState((prev) => (prev ? { ...prev, isAccepted: true } : null));
-    } catch (err) {
-      console.error('Failed to accept call:', err);
-      alert('Could not access microphone or camera. Call declined.');
+    const channelName = callState.channelName;
+    if (!channelName) {
+      console.error('Channel name is missing for this call');
       handleRejectCall();
+      return;
+    }
+
+    // Immediately update call state to accepted & signal caller via socket
+    setCallState((prev) => (prev ? { ...prev, isAccepted: true, isRinging: false } : null));
+    if (callState.groupId) {
+      socket.emit('group_call_response', { groupId: callState.groupId, channelName, accepted: true });
+    } else {
+      socket.emit('answer_call', { to: callState.peerId, channelName });
+    }
+
+    try {
+      // Fetch dynamic RTC Token from Backend
+      const tokenRes = await agoraApi.getToken(channelName);
+      const appId = tokenRes?.appId || import.meta.env.VITE_AGORA_APP_ID;
+      const token = tokenRes?.token;
+
+      if (appId && token) {
+        // Join Agora RTC Channel & Publish Camera/Mic Tracks
+        const { localVideoTrack: lvTrack } = await agoraService.joinChannel({
+          appId,
+          channelName,
+          token,
+          callType: callState.callType,
+          onRemoteUserPublished: (user, mediaType) => {
+            if (mediaType === 'video' && user.videoTrack) {
+              setRemoteVideoTrack(user.videoTrack);
+            }
+          },
+          onRemoteUserUnpublished: (user, mediaType) => {
+            if (mediaType === 'video') {
+              setRemoteVideoTrack(null);
+            }
+          },
+          onUserLeft: (user) => {
+            console.log('[Agora] Remote user left call:', user);
+            cleanupCall();
+          }
+        });
+
+        setLocalVideoTrack(lvTrack || null);
+      }
+    } catch (err) {
+      console.warn('[Agora] Incoming media setup notice:', err.message);
     }
   };
 
   // 3. Reject Incoming Call
   const handleRejectCall = () => {
     if (callState?.peerId) {
-      socket.emit('reject_call', { to: callState.peerId, reason: 'Declined' });
+      if (callState.groupId) {
+        socket.emit('group_call_response', { groupId: callState.groupId, channelName: callState.channelName, accepted: false });
+      } else {
+        socket.emit('reject_call', { to: callState.peerId, reason: 'Declined' });
+      }
     }
     cleanupCall();
   };
@@ -575,20 +796,55 @@ export default function App() {
   // 4. End Active Call
   const handleEndCall = () => {
     if (callState?.peerId) {
-      socket.emit('end_call', { to: callState.peerId });
+      if (callState.groupId) {
+        socket.emit('group_call_end', { groupId: callState.groupId, channelName: callState.channelName });
+      } else {
+        socket.emit('end_call', { to: callState.peerId });
+      }
     }
     cleanupCall();
+  };
+
+  // 5. Mute Audio Control
+  const handleToggleMute = (isMuted) => {
+    agoraService.toggleAudio(isMuted);
+  };
+
+  // 6. Toggle Video Camera Control
+  const handleToggleVideo = (isVideoDisabled) => {
+    agoraService.toggleVideo(isVideoDisabled);
   };
 
   // 5. Emit Typing Indicator
   const handleTyping = useCallback(
     (isTyping) => {
       if (activeChat) {
-        socket.emit('typing', { to: activeChat, isTyping });
+        if (String(activeChat).startsWith('group:')) {
+          socket.emit('group_typing', { groupId: activeChat, isTyping });
+        } else {
+          socket.emit('typing', { to: activeChat, isTyping });
+        }
       }
     },
     [activeChat]
   );
+
+  const getGroupId = (groupId) => String(groupId || '').replace(/^group:/, '');
+
+  const handleUpdateGroup = async (groupId, changes) => {
+    const data = await chatApi.updateGroup(getGroupId(groupId), userId, changes);
+    if (data?.group) setGroupDetails(data.group);
+  };
+
+  const handleAddGroupMember = async (groupId, memberId) => {
+    const data = await chatApi.addGroupMember(getGroupId(groupId), userId, memberId);
+    if (data?.group) setGroupDetails(data.group);
+  };
+
+  const handleUpdateGroupMemberRole = async (groupId, memberId, role) => {
+    const data = await chatApi.updateGroupMemberRole(getGroupId(groupId), userId, memberId, role);
+    if (data?.group) setGroupDetails(data.group);
+  };
 
   // Login Success
   const handleLoginSuccess = (id, userObj) => {
@@ -608,7 +864,18 @@ export default function App() {
     }
     setActiveChat(recipientPhone);
     setCurrentView('chat');
+    if (userId && recipientPhone) {
+      chatApi.markSeen(userId, recipientPhone).catch(() => { });
+      socket.emit('mark_seen', { otherUserId: recipientPhone });
+    }
   };
+
+  const isActiveGroup = String(activeChat || '').startsWith('group:');
+  const activeGroupMember = groupDetails?.members?.find((member) => (
+    String(member.userId) === String(userId) ||
+    String(member.fullPhone || '').replace(/^\+/, '') === String(userId).replace(/^\+/, '')
+  ));
+  const canSendGroupMessages = !isActiveGroup || groupDetails?.messagePermission !== 'admins' || activeGroupMember?.role === 'admin';
 
   // Back button in 1-on-1 Chat -> Return to ChatList
   const handleBackToChatList = () => {
@@ -666,6 +933,26 @@ export default function App() {
     }
   };
 
+  // Rename Contact / Custom Alias (Only visible to current user)
+  const handleRenameContact = async (contactId, customName) => {
+    const cleanContact = String(contactId || activeChat || '').trim();
+    if (!cleanContact || !userId) return;
+
+    try {
+      await chatApi.renameContact(userId, cleanContact, customName);
+      socket.emit('rename_contact', { contactId: cleanContact, customName });
+      setRecipientProfile((prev) => {
+        if (!prev) return prev;
+        const newDisplayName = customName || prev.profileName || prev.fullPhone || cleanContact;
+        return { ...prev, name: newDisplayName, customName: customName || null };
+      });
+      setRecentMessageEvent({ type: 'contact_renamed', contactId: cleanContact, customName, timestamp: Date.now() });
+    } catch (err) {
+      console.error('Failed to rename contact:', err);
+      alert(err.message || 'Failed to save contact name');
+    }
+  };
+
   // Explicit Logout
   const handleLogout = () => {
     socket.emit('logout');
@@ -704,25 +991,56 @@ export default function App() {
     [activeChat]
   );
 
-  // Send Message (Text or Image Media)
-  const handleSendMessage = useCallback((to, text, type = 'text', mediaUrl = null) => {
-    socket.emit('message', { to, text, type, mediaUrl });
+  // Send Message (Text, Image Media, Voice Note, Location)
+  const handleSendMessage = useCallback((to, text, type = 'text', mediaUrl = null, extra = {}) => {
+    if (String(to).startsWith('group:')) {
+      socket.emit('group_message', {
+        groupId: to,
+        text,
+        type,
+        mediaUrl,
+        replyToId: extra.replyToId || null,
+        replyToText: extra.replyToText || null,
+        replyToSender: extra.replyToSender || null,
+        mentions: extra.mentions || []
+      });
+      return;
+    }
+    socket.emit('message', {
+      to,
+      text,
+      type,
+      mediaUrl,
+      replyToId: extra.replyToId || null,
+      replyToText: extra.replyToText || null,
+      replyToSender: extra.replyToSender || null
+    });
   }, []);
+
+  const handleReactMessage = useCallback((messageId, emoji) => {
+    if (String(activeChat || '').startsWith('group:')) {
+      socket.emit('group_reaction', { groupId: activeChat, messageId, emoji });
+    } else {
+      socket.emit('message_reaction', { to: activeChat, messageId, emoji });
+    }
+  }, [activeChat]);
 
   return (
     <div className={`wa-app-root ${currentUser ? 'is-logged-in' : 'is-logged-out'}`}>
       {/* Background Top Strip for Desktop/Web */}
       <div className="wa-web-top-strip"></div>
 
-      {/* Call Modal / Overlay (Active, Incoming, Video, Voice) */}
+      {/* Call Modal / Overlay (Active, Incoming, Video, Voice - Agora RTC) */}
       {callState && (
         <CallModal
           callState={callState}
           onAcceptCall={handleAcceptCall}
           onRejectCall={handleRejectCall}
           onEndCall={handleEndCall}
-          localStream={localStream}
-          remoteStream={remoteStream}
+          localVideoTrack={localVideoTrack}
+          remoteVideoTrack={remoteVideoTrack}
+          onToggleMute={handleToggleMute}
+          onToggleVideo={handleToggleVideo}
         />
       )}
 
@@ -755,8 +1073,11 @@ export default function App() {
                 onlineUsers={onlineUsers}
                 typingUsers={typingUsers}
                 onSelectChat={handleSelectChat}
+                onDeleteChat={handleBackToChatList}
                 onOpenProfile={handleOpenProfile}
                 onLogout={handleLogout}
+                onStartCall={handleStartCall}
+                callLogsTrigger={callLogsTrigger}
                 recentMessages={recentMessageEvent}
               />
             )}
@@ -770,17 +1091,25 @@ export default function App() {
                   userId={userId}
                   recipientId={activeChat}
                   recipientName={recipientProfile?.name}
+                  recipientProfile={recipientProfile}
                   recipientAvatar={recipientProfile?.avatar}
                   recipientAbout={recipientProfile?.about}
                   isRecipientOnline={isRecipientOnline}
                   isConnected={isConnected}
                   isTyping={isRecipientTyping}
+                  onlineUsers={onlineUsers}
                   isBlockedByMe={isBlockedByMe}
                   isBlockedByThem={isBlockedByThem}
                   onStartCall={handleStartCall}
                   onBack={handleBackToChatList}
                   onBlock={handleBlockUser}
                   onUnblock={handleUnblockUser}
+                  onRenameContact={handleRenameContact}
+                  isGroup={String(activeChat).startsWith('group:')}
+                  groupDetails={groupDetails}
+                  onUpdateGroup={handleUpdateGroup}
+                  onAddGroupMember={handleAddGroupMember}
+                  onUpdateGroupMemberRole={handleUpdateGroupMemberRole}
                 />
 
                 <MessageList
@@ -789,6 +1118,10 @@ export default function App() {
                   recipientId={activeChat}
                   onDeleteMessage={handleDeleteMessage}
                   onEditMessage={handleEditMessage}
+                  isGroup={String(activeChat).startsWith('group:')}
+                  groupDetails={groupDetails}
+                  onReactMessage={handleReactMessage}
+                  onReplyMessage={setReplyingTo}
                 />
 
                 <MessageInput
@@ -799,6 +1132,11 @@ export default function App() {
                   isBlockedByMe={isBlockedByMe}
                   isBlockedByThem={isBlockedByThem}
                   onUnblock={handleUnblockUser}
+                  groupId={String(activeChat).startsWith('group:') ? activeChat : null}
+                  groupMembers={groupDetails?.members || []}
+                  canSendMessages={canSendGroupMessages}
+                  replyTo={replyingTo}
+                  onClearReply={() => setReplyingTo(null)}
                 />
               </div>
             ) : (

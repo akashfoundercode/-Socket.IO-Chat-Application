@@ -1,10 +1,6 @@
 const crypto = require("crypto");
 const authModel = require("../models/auth.model");
 
-// ============================================
-// Country Code Validation Rules
-// ============================================
-
 const COUNTRY_RULES = {
     "+91": {
         name: "India",
@@ -68,9 +64,6 @@ const COUNTRY_RULES = {
     }
 };
 
-/**
- * Normalizes and validates country code (e.g. "+91", "91", "1" -> "+91", "+1")
- */
 const validateCountryCode = (countryCode) => {
     if (!countryCode) return { isValid: false, error: "Country code is required" };
 
@@ -87,9 +80,6 @@ const validateCountryCode = (countryCode) => {
     return { isValid: true, value: normalized };
 };
 
-/**
- * Validates phone number according to country code rules
- */
 const validatePhone = (phone, normalizedCountryCode = "+91") => {
     if (!phone) return { isValid: false, error: "Phone number is required" };
 
@@ -112,7 +102,7 @@ const validatePhone = (phone, normalizedCountryCode = "+91") => {
             };
         }
     } else {
-        // Fallback for any other country code
+    
         if (cleanedPhone.length < 6 || cleanedPhone.length > 15) {
             return {
                 isValid: false,
@@ -124,9 +114,6 @@ const validatePhone = (phone, normalizedCountryCode = "+91") => {
     return { isValid: true, value: cleanedPhone };
 };
 
-/**
- * Generates a secure numeric OTP (e.g. 6 digits)
- */
 const generateOtp = (length = 6) => {
     const digits = "0123456789";
     let otp = "";
@@ -137,20 +124,11 @@ const generateOtp = (length = 6) => {
     return otp;
 };
 
-// ============================================
-// Auth Controllers
-// ============================================
-
-/**
- * Send / Generate OTP
- * POST /api/auth/send-otp
- * Body: { countryCode: "+91", phone: "9876543210" }
- */
 const sendOtp = async (req, res) => {
     try {
         const { countryCode, phone } = req.body;
 
-        // 1. Validate country code
+
         const validCountryCode = validateCountryCode(countryCode);
         if (!validCountryCode.isValid) {
             return res.status(400).json({ success: false, message: validCountryCode.error });
@@ -158,7 +136,6 @@ const sendOtp = async (req, res) => {
 
         const normalizedCountryCode = validCountryCode.value;
 
-        // 2. Validate phone number according to country code
         const validPhone = validatePhone(phone, normalizedCountryCode);
         if (!validPhone.isValid) {
             return res.status(400).json({ success: false, message: validPhone.error });
@@ -167,10 +144,8 @@ const sendOtp = async (req, res) => {
         const normalizedPhone = validPhone.value;
         const fullPhone = `${normalizedCountryCode}${normalizedPhone}`;
 
-        // 3. Generate 6-digit OTP
         const otp = generateOtp(6);
 
-        // 4. Save OTP in MySQL Database (5 minutes validity)
         await authModel.saveOtp({
             countryCode: normalizedCountryCode,
             phone: normalizedPhone,
@@ -189,7 +164,7 @@ const sendOtp = async (req, res) => {
                 phone: normalizedPhone,
                 fullPhone,
                 expiresIn: "5 minutes",
-                otp // Returned for testing / development
+                otp
             }
         });
     } catch (error) {
@@ -202,16 +177,10 @@ const sendOtp = async (req, res) => {
     }
 };
 
-/**
- * Verify OTP & Login
- * POST /api/auth/verify-otp
- * Body: { countryCode: "+91", phone: "9876543210", otp: "123456", name?: "Akash" }
- */
 const verifyOtp = async (req, res) => {
     try {
         const { countryCode, phone, otp, name } = req.body;
 
-        // 1. Validate country code
         const validCountryCode = validateCountryCode(countryCode);
         if (!validCountryCode.isValid) {
             return res.status(400).json({ success: false, message: validCountryCode.error });
@@ -219,7 +188,6 @@ const verifyOtp = async (req, res) => {
 
         const normalizedCountryCode = validCountryCode.value;
 
-        // 2. Validate phone number according to country code
         const validPhone = validatePhone(phone, normalizedCountryCode);
         if (!validPhone.isValid) {
             return res.status(400).json({ success: false, message: validPhone.error });
@@ -236,7 +204,6 @@ const verifyOtp = async (req, res) => {
             });
         }
 
-        // 3. Verify OTP against database
         const verification = await authModel.verifyOtpInDb({
             fullPhone,
             otp: cleanOtp
@@ -249,7 +216,6 @@ const verifyOtp = async (req, res) => {
             });
         }
 
-        // 4. Find or register user in database
         const user = await authModel.findOrCreateUserByPhone({
             countryCode: normalizedCountryCode,
             phone: normalizedPhone,
@@ -272,10 +238,6 @@ const verifyOtp = async (req, res) => {
     }
 };
 
-/**
- * Get current user profile
- * GET /api/auth/me/:id
- */
 const getProfile = async (req, res) => {
     try {
         const userId = req.params.id;

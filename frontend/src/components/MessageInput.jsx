@@ -8,7 +8,12 @@ export default function MessageInput({
   onTyping,
   isBlockedByMe,
   isBlockedByThem,
-  onUnblock
+  onUnblock,
+  groupId = null,
+  groupMembers = [],
+  replyTo = null,
+  onClearReply,
+  canSendMessages = true
 }) {
   const [text, setText] = useState('');
   const [showRecipientInput, setShowRecipientInput] = useState(!recipientId);
@@ -28,11 +33,355 @@ export default function MessageInput({
   const fileInputRef = useRef(null);
   const typingTimerRef = useRef(null);
 
+  // Advanced Voice Recording states & refs
+  const [isRecording, setIsRecording] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
+  const [recordDuration, setRecordDuration] = useState(0);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [audioLevels, setAudioLevels] = useState(Array(18).fill(15));
+
+  const recorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const mediaStreamRef = useRef(null);
+  const cachedStreamRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const animFrameRef = useRef(null);
+  const timerIntervalRef = useRef(null);
+  const pressStartTimeRef = useRef(0);
+  const recordingStartTimeRef = useRef(0);
+  const pointerStartPosRef = useRef({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
+  const isCancelledRef = useRef(false);
+  const isPointerDownRef = useRef(false);
+  const isLockedRef = useRef(false);
+  const isInitializingMicRef = useRef(false);
+
   const isBlocked = isBlockedByMe || isBlockedByThem;
+
+  const warmUpMic = () => {
+    if (cachedStreamRef.current || isBlocked || !recipientId?.trim()) return;
+    navigator.mediaDevices?.getUserMedia({ audio: true })
+      .then((stream) => { cachedStreamRef.current = stream; })
+      .catch(() => { });
+  };
+
+  React.useEffect(() => {
+    return () => {
+      cleanupRecordingResources();
+      if (cachedStreamRef.current) {
+        cachedStreamRef.current.getTracks().forEach((t) => t.stop());
+        cachedStreamRef.current = null;
+      }
+    };
+  }, []);
+
+  const formatRecordTime = (secs) => {
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const cleanupRecordingResources = () => {
+    isInitializingMicRef.current = false;
+    isPointerDownRef.current = false;
+    isLockedRef.current = false;
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try {
+        audioContextRef.current.close();
+      } catch (e) { }
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    recorderRef.current = null;
+    setIsRecording(false);
+    setIsLocked(false);
+    setIsCanceling(false);
+    setDragOffset(0);
+    setRecordDuration(0);
+    setAudioLevels(Array(18).fill(15));
+  };
+
+  const startRecording = async () => {
+    if (isBlocked || !canSendMessages || !recipientId.trim()) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      alert('Voice recording is not supported in this browser');
+      cleanupRecordingResources();
+      return;
+    }
+
+    isInitializingMicRef.current = true;
+    try {
+      // Use pre-warmed stream if available, else request fresh
+      let stream = cachedStreamRef.current;
+      cachedStreamRef.current = null;
+      if (!stream || stream.getTracks().some((t) => t.readyState === 'ended')) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
+      }
+      mediaStreamRef.current = stream;
+
+      // If user released pointer immediately or cancelled during getUserMedia
+      if (isCancelledRef.current) {
+        cleanupRecordingResources();
+        return;
+      }
+
+      // Setup Web Audio API Analyser for real-time live frequency meter waves
+      try {
+        const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtxClass) {
+          const audioCtx = new AudioCtxClass();
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 64;
+          const source = audioCtx.createMediaStreamSource(stream);
+          source.connect(analyser);
+          audioContextRef.current = audioCtx;
+          analyserRef.current = analyser;
+
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          const updateAudioLevels = () => {
+            if (!analyserRef.current) return;
+            analyserRef.current.getByteFrequencyData(dataArray);
+            const barsCount = 18;
+            const step = Math.max(1, Math.floor(dataArray.length / barsCount));
+            const newLevels = [];
+            for (let i = 0; i < barsCount; i++) {
+              const val = dataArray[i * step] || 0;
+              const normalized = Math.max(14, Math.min(100, Math.round((val / 255) * 100)));
+              newLevels.push(normalized);
+            }
+            setAudioLevels(newLevels);
+            animFrameRef.current = requestAnimationFrame(updateAudioLevels);
+          };
+          animFrameRef.current = requestAnimationFrame(updateAudioLevels);
+        }
+      } catch (audioErr) {
+        console.warn('Web Audio Analyser not supported:', audioErr);
+      }
+
+      const getBestSupportedMimeType = () => {
+        if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+        const candidates = [
+          'audio/webm;codecs=opus',
+          'audio/webm',
+          'audio/mp4',
+          'audio/ogg;codecs=opus',
+          'audio/aac',
+          'audio/wav'
+        ];
+        for (const t of candidates) {
+          if (MediaRecorder.isTypeSupported(t)) {
+            return t;
+          }
+        }
+        return '';
+      };
+
+      const supportedType = getBestSupportedMimeType();
+      const recorder = supportedType
+        ? new MediaRecorder(stream, { mimeType: supportedType })
+        : new MediaRecorder(stream);
+
+      chunksRef.current = [];
+      recordingStartTimeRef.current = Date.now();
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        if (isCancelledRef.current) {
+          chunksRef.current = [];
+          cleanupRecordingResources();
+          return;
+        }
+
+        const totalBytes = chunksRef.current.reduce((acc, c) => acc + (c.size || 0), 0);
+        // Discard 0-sec empty recordings (header only < 800 bytes)
+        if (totalBytes < 800) {
+          chunksRef.current = [];
+          cleanupRecordingResources();
+          return;
+        }
+
+        const mime = recorder.mimeType || supportedType || 'audio/webm';
+        const blob = new Blob(chunksRef.current, { type: mime });
+        if (blob.size >= 800) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const replySnippet = replyTo ? (
+              replyTo.type === 'voice' ? '🎤 Voice message' :
+                replyTo.type === 'image' ? '📷 Photo' :
+                  replyTo.type === 'location' ? '📍 Location' :
+                    (replyTo.text || '')
+            ) : null;
+
+            onSendMessage(recipientId.trim(), 'Voice message', 'voice', reader.result, {
+              replyToId: replyTo?.id || null,
+              replyToText: replySnippet,
+              replyToSender: replyTo ? (replyTo.from || '') : null
+            });
+            onClearReply?.();
+          };
+          reader.readAsDataURL(blob);
+        }
+        cleanupRecordingResources();
+      };
+
+      recorder.start(50);
+      recorderRef.current = recorder;
+      isInitializingMicRef.current = false;
+      setIsRecording(true);
+      setIsCanceling(false);
+      setRecordDuration(0);
+      setDragOffset(0);
+
+      const startTimestamp = Date.now();
+      timerIntervalRef.current = setInterval(() => {
+        const secs = Math.floor((Date.now() - startTimestamp) / 1000);
+        setRecordDuration(secs);
+      }, 500);
+
+      // If user released finger while getUserMedia was resolving
+      if (!isPointerDownRef.current && !isLockedRef.current) {
+        // Always record for at least 400ms to collect valid audio packets before stopping
+        setTimeout(() => {
+          if (!isLockedRef.current && recorderRef.current && recorderRef.current.state === 'recording') {
+            stopAndSendRecording(isCancelledRef.current);
+          }
+        }, 400);
+      }
+    } catch (error) {
+      alert(`Microphone permission is required: ${error.message}`);
+      cleanupRecordingResources();
+    }
+  };
+
+  const stopAndSendRecording = (isCancel = false) => {
+    isCancelledRef.current = Boolean(isCancel);
+    if (recorderRef.current && recorderRef.current.state === 'recording') {
+      // stop() flushes the final dataavailable chunk before onstop runs.
+      // Calling requestData() first can race with onstop on mobile browsers.
+      try {
+        recorderRef.current.stop();
+      } catch (e) {
+        cleanupRecordingResources();
+      }
+    } else {
+      cleanupRecordingResources();
+    }
+  };
+
+  // Pointer / Touch Handlers for Hold to Record & Drag to Cancel
+  const handleMicPointerDown = (e) => {
+    if (isBlocked || !recipientId.trim() || text.trim()) return;
+    e.preventDefault();
+    pressStartTimeRef.current = Date.now();
+    pointerStartPosRef.current = { x: e.clientX, y: e.clientY };
+    isDraggingRef.current = true;
+    isPointerDownRef.current = true;
+    isLockedRef.current = false;
+    isCancelledRef.current = false;
+    setIsRecording(true);
+    setIsCanceling(false);
+    setIsLocked(false);
+    setDragOffset(0);
+    setRecordDuration(0);
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) { }
+    startRecording();
+  };
+
+  const handleMicPointerMove = (e) => {
+    if (isLockedRef.current || !isDraggingRef.current) return;
+    const deltaX = e.clientX - pointerStartPosRef.current.x;
+    const deltaY = e.clientY - pointerStartPosRef.current.y;
+
+    if (deltaX < 0) {
+      const offset = Math.max(-140, deltaX);
+      setDragOffset(offset);
+      if (deltaX < -65) {
+        setIsCanceling(true);
+        isCancelledRef.current = true;
+      } else {
+        setIsCanceling(false);
+        isCancelledRef.current = false;
+      }
+    } else {
+      setDragOffset(0);
+      setIsCanceling(false);
+      isCancelledRef.current = false;
+    }
+
+    if (deltaY < -55) {
+      setIsLocked(true);
+      isLockedRef.current = true;
+      setDragOffset(0);
+      setIsCanceling(false);
+      isCancelledRef.current = false;
+    }
+  };
+
+  const handleMicPointerUp = (e) => {
+    isPointerDownRef.current = false;
+    isDraggingRef.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) { }
+
+    if (isCanceling || isCancelledRef.current) {
+      stopAndSendRecording(true);
+      return;
+    }
+
+    if (isLockedRef.current) {
+      // In hands-free mode, do not stop on pointer release
+      return;
+    }
+
+    if (isInitializingMicRef.current) {
+      // Mic is still starting, let startRecording handle the release
+      return;
+    }
+
+    const elapsed = Date.now() - (pressStartTimeRef.current || 0);
+    if (elapsed < 350) {
+      // Accidental short tap: cancel to prevent 0-sec recording
+      stopAndSendRecording(true);
+      return;
+    }
+
+    stopAndSendRecording(false);
+  };
+
+  const handleMicPointerCancel = () => {
+    isPointerDownRef.current = false;
+    isDraggingRef.current = false;
+    stopAndSendRecording(true);
+  };
 
   // Debounced Typing emitter
   const handleTextChange = (e) => {
-    if (isBlocked) return;
+    if (isBlocked || !canSendMessages) return;
     const val = e.target.value;
     setText(val);
 
@@ -51,14 +400,29 @@ export default function MessageInput({
   };
 
   const handleSubmit = (e) => {
-    e.preventDefault();
-    if (isBlocked) return;
+    e?.preventDefault?.();
+    if (isBlocked || !canSendMessages) return;
     const trimmed = text.trim();
     if (trimmed && recipientId.trim()) {
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
       if (onTyping) onTyping(false);
-      onSendMessage(recipientId.trim(), trimmed, 'text', null);
+      const mentions = groupId
+        ? groupMembers.filter((member) => trimmed.includes(`@${member.name || member.fullPhone || member.userId}`)).map((member) => member.userId)
+        : [];
+      const replySnippet = replyTo ? (
+        replyTo.type === 'voice' ? '🎤 Voice message' :
+          replyTo.type === 'image' ? '📷 Photo' :
+            replyTo.type === 'location' ? '📍 Location' :
+              (replyTo.text || '')
+      ) : null;
+      onSendMessage(recipientId.trim(), trimmed, 'text', null, {
+        replyToId: replyTo?.id || null,
+        replyToText: replySnippet,
+        replyToSender: replyTo ? (replyTo.from || '') : null,
+        mentions
+      });
       setText('');
+      onClearReply?.();
       setShowEmojiPicker(false);
       setShowAttachMenu(false);
     }
@@ -122,11 +486,22 @@ export default function MessageInput({
 
   // Send Image with optional caption
   const handleSendImage = () => {
-    if (isBlocked || !pendingImage || !recipientId.trim()) return;
-    onSendMessage(recipientId.trim(), imageCaption.trim(), 'image', pendingImage);
+    if (isBlocked || !canSendMessages || !pendingImage || !recipientId.trim()) return;
+    const replySnippet = replyTo ? (
+      replyTo.type === 'voice' ? '🎤 Voice message' :
+        replyTo.type === 'image' ? '📷 Photo' :
+          replyTo.type === 'location' ? '📍 Location' :
+            (replyTo.text || '')
+    ) : null;
+    onSendMessage(recipientId.trim(), imageCaption.trim(), 'image', pendingImage, {
+      replyToId: replyTo?.id || null,
+      replyToText: replySnippet,
+      replyToSender: replyTo ? (replyTo.from || '') : null
+    });
     setPendingImage(null);
     setImageCaption('');
     setShowImagePreview(false);
+    onClearReply?.();
   };
 
   // 📍 Fetch Current GPS Location
@@ -162,7 +537,7 @@ export default function MessageInput({
 
   // 📍 Send Location Message
   const handleSendLocation = () => {
-    if (!pendingLocation || !recipientId.trim() || isBlocked) return;
+    if (!pendingLocation || !recipientId.trim() || isBlocked || !canSendMessages) return;
     const locationPayload = JSON.stringify({
       latitude: pendingLocation.latitude,
       longitude: pendingLocation.longitude,
@@ -170,9 +545,21 @@ export default function MessageInput({
       title: pendingLocation.title || 'Current Location'
     });
 
-    onSendMessage(recipientId.trim(), locationPayload, 'location', null);
+    const replySnippet = replyTo ? (
+      replyTo.type === 'voice' ? '🎤 Voice message' :
+        replyTo.type === 'image' ? '📷 Photo' :
+          replyTo.type === 'location' ? '📍 Location' :
+            (replyTo.text || '')
+    ) : null;
+
+    onSendMessage(recipientId.trim(), locationPayload, 'location', null, {
+      replyToId: replyTo?.id || null,
+      replyToText: replySnippet,
+      replyToSender: replyTo ? (replyTo.from || '') : null
+    });
     setShowLocationModal(false);
     setPendingLocation(null);
+    onClearReply?.();
   };
 
   return (
@@ -342,6 +729,40 @@ export default function MessageInput({
         />
       )}
 
+      {replyTo && (
+        <div className="wa-reply-preview">
+          <div className="wa-reply-preview-bar"></div>
+          <div className="wa-reply-preview-content">
+            <div className="wa-reply-preview-sender">
+              Replying to {replyTo.from || 'Message'}
+            </div>
+            <div className="wa-reply-preview-snippet">
+              {replyTo.type === 'voice' ? '🎤 Voice message' : replyTo.type === 'image' ? '📷 Photo' : replyTo.type === 'location' ? '📍 Location' : (replyTo.text || '')}
+            </div>
+          </div>
+          <button type="button" className="wa-reply-preview-close" onClick={onClearReply} title="Cancel reply">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {groupId && text.includes('@') && (
+        <div className="wa-mention-menu">
+          {groupMembers.filter((member) => (member.name || member.fullPhone || member.userId || '').toLowerCase().includes(text.split('@').pop().toLowerCase())).slice(0, 5).map((member) => {
+            const label = member.name || member.fullPhone || member.userId;
+            return (
+              <button
+                type="button"
+                key={member.userId}
+                onClick={() => setText((prev) => `${prev.slice(0, prev.lastIndexOf('@'))}@${label} `)}
+              >
+                @{label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Top Recipient Changer Bar */}
       {(!recipientId || showRecipientInput) && !isBlocked && (
         <div className="wa-recipient-bar">
@@ -367,7 +788,14 @@ export default function MessageInput({
       )}
 
       {/* If Blocked, Display WhatsApp style Block Notice Bar */}
-      {isBlocked ? (
+      {!canSendMessages ? (
+        <div className="wa-blocked-bar wa-group-admin-only-bar">
+          <div className="wa-blocked-content">
+            <i className="fa-solid fa-lock"></i>
+            <span>Only group admins can send messages.</span>
+          </div>
+        </div>
+      ) : isBlocked ? (
         <div className="wa-blocked-bar">
           {isBlockedByMe ? (
             <div className="wa-blocked-content">
@@ -389,66 +817,139 @@ export default function MessageInput({
       ) : (
         /* WhatsApp Message Input Row */
         <form className="wa-input-row" onSubmit={handleSubmit}>
-          <div className="wa-input-capsule">
-            <button
-              type="button"
-              className={`wa-capsule-icon ${showEmojiPicker ? 'active' : ''}`}
-              title="Emoji Keyboard"
-              onClick={() => {
-                setShowEmojiPicker((prev) => !prev);
-                setShowAttachMenu(false);
-              }}
-            >
-              <i className={showEmojiPicker ? 'fa-solid fa-keyboard' : 'fa-regular fa-face-smile'}></i>
-            </button>
+          {isRecording ? (
+            /* Live Recording Active Capsule with Waveform Visualizer */
+            <div className={`wa-recording-capsule ${isCanceling ? 'canceling' : ''}`}>
+              <div className="wa-rec-timer-wrap">
+                <div className="wa-rec-pulse-dot" />
+                <span className="wa-rec-timer">{formatRecordTime(recordDuration)}</span>
+              </div>
 
-            <input
-              type="text"
-              className="wa-main-input"
-              placeholder={recipientId ? 'Message' : 'Set recipient first'}
-              value={text}
-              onChange={handleTextChange}
-              disabled={!recipientId.trim()}
-            />
+              {/* Dynamic Live Audio Frequency Meter Waves */}
+              <div className="wa-rec-waveform-meter">
+                {audioLevels.map((lvl, idx) => (
+                  <span
+                    key={idx}
+                    className="wa-rec-meter-bar"
+                    style={{ height: `${lvl}%` }}
+                  />
+                ))}
+              </div>
 
-            <button
-              type="button"
-              className={`wa-capsule-icon ${showAttachMenu ? 'active' : ''}`}
-              title="Attach File or Location"
-              onClick={() => {
-                setShowAttachMenu((prev) => !prev);
-                setShowEmojiPicker(false);
-              }}
-            >
-              {isLocating ? (
-                <i className="fa-solid fa-circle-notch fa-spin" style={{ color: '#008069' }}></i>
+              {/* Slide to Cancel or Release to Delete Alert */}
+              {!isLocked ? (
+                <div
+                  className="wa-rec-cancel-slide"
+                  style={{ transform: `translateX(${dragOffset}px)` }}
+                >
+                  {isCanceling ? (
+                    <span className="wa-rec-cancel-text trash">
+                      <i className="fa-solid fa-trash-can" style={{ color: '#ef4444' }}></i>
+                      Release to cancel
+                    </span>
+                  ) : (
+                    <span className="wa-rec-cancel-text">
+                      <i className="fa-solid fa-chevron-left"></i>
+                      Slide to cancel
+                    </span>
+                  )}
+                </div>
               ) : (
-                <i className="fa-solid fa-paperclip"></i>
+                <div className="wa-rec-locked-actions">
+                  <button
+                    type="button"
+                    className="wa-rec-locked-btn delete"
+                    onClick={() => stopAndSendRecording(true)}
+                    title="Cancel recording"
+                  >
+                    <i className="fa-solid fa-trash-can"></i>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Normal Typing Capsule */
+            <div className="wa-input-capsule">
+              <button
+                type="button"
+                className={`wa-capsule-icon ${showEmojiPicker ? 'active' : ''}`}
+                title="Emoji Keyboard"
+                onClick={() => {
+                  setShowEmojiPicker((prev) => !prev);
+                  setShowAttachMenu(false);
+                }}
+              >
+                <i className={showEmojiPicker ? 'fa-solid fa-keyboard' : 'fa-regular fa-face-smile'}></i>
+              </button>
+
+              <input
+                type="text"
+                className="wa-main-input"
+                placeholder={recipientId ? 'Message' : 'Set recipient first'}
+                value={text}
+                onChange={handleTextChange}
+                disabled={!recipientId.trim() || !canSendMessages}
+              />
+
+              <button
+                type="button"
+                className={`wa-capsule-icon ${showAttachMenu ? 'active' : ''}`}
+                title="Attach File or Location"
+                onClick={() => {
+                  setShowAttachMenu((prev) => !prev);
+                  setShowEmojiPicker(false);
+                }}
+              >
+                {isLocating ? (
+                  <i className="fa-solid fa-circle-notch fa-spin" style={{ color: '#f97316' }}></i>
+                ) : (
+                  <i className="fa-solid fa-paperclip"></i>
+                )}
+              </button>
+
+              <button
+                type="button"
+                className="wa-capsule-icon"
+                title="Change recipient"
+                onClick={() => setShowRecipientInput((prev) => !prev)}
+              >
+                <i className="fa-solid fa-address-book"></i>
+              </button>
+            </div>
+          )}
+
+          {text.trim() ? (
+            <button
+              type="submit"
+              className="wa-send-mic-btn"
+              disabled={!recipientId.trim() || !canSendMessages}
+              title="Send Message"
+            >
+              <i className="fa-solid fa-paper-plane"></i>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`wa-send-mic-btn ${isRecording ? 'recording' : ''} ${isCanceling ? 'canceling' : ''}`}
+              disabled={!recipientId.trim()}
+              onPointerEnter={warmUpMic}
+              onFocus={warmUpMic}
+              onPointerDown={handleMicPointerDown}
+              onPointerMove={handleMicPointerMove}
+              onPointerUp={handleMicPointerUp}
+              onPointerCancel={handleMicPointerCancel}
+              onClick={isLocked ? () => stopAndSendRecording(false) : undefined}
+              title={isRecording ? (isLocked ? 'Send voice note' : 'Release to send, drag left to cancel') : 'Hold to record, release to send'}
+            >
+              {isLocked ? (
+                <i className="fa-solid fa-paper-plane"></i>
+              ) : isRecording ? (
+                <i className="fa-solid fa-microphone"></i>
+              ) : (
+                <i className="fa-solid fa-microphone"></i>
               )}
             </button>
-
-            <button
-              type="button"
-              className="wa-capsule-icon"
-              title="Change recipient"
-              onClick={() => setShowRecipientInput((prev) => !prev)}
-            >
-              <i className="fa-solid fa-address-book"></i>
-            </button>
-          </div>
-
-          <button
-            type="submit"
-            className="wa-send-mic-btn"
-            disabled={!recipientId.trim() || !text.trim()}
-            title="Send"
-          >
-            {text.trim() ? (
-              <i className="fa-solid fa-paper-plane"></i>
-            ) : (
-              <i className="fa-solid fa-microphone"></i>
-            )}
-          </button>
+          )}
         </form>
       )}
     </div>

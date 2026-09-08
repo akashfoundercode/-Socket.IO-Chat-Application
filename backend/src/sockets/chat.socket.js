@@ -3,6 +3,11 @@ const chatModel = require("../models/chat.model");
 // Track online users and their active sockets: userId -> Set<socketId>
 const onlineUsers = new Map();
 
+// Track active call sessions: channelName -> { callId, callerId, receiverId, callType, startTime, isAnswered }
+const activeCalls = new Map();
+// Track which user is currently on an active call: userId -> channelName
+const userCallSessions = new Map();
+
 const isUserOnline = (id) => {
     if (!id) return false;
     const cleanId = String(id).trim();
@@ -25,25 +30,35 @@ module.exports = (io) => {
             socket.data.userId = normalizedUserId;
             socket.join(normalizedUserId);
 
-            // Add to online users map
+            try {
+                const groups = await chatModel.listGroups(normalizedUserId);
+                groups.forEach((group) => socket.join(`group:${group.groupId}`));
+            } catch (err) {
+                console.error("join group rooms error:", err.message);
+            }
+
+
             if (!onlineUsers.has(normalizedUserId)) {
                 onlineUsers.set(normalizedUserId, new Set());
             }
             onlineUsers.get(normalizedUserId).add(socket.id);
 
-            // Update user last seen in DB
-            await chatModel.updateLastSeen(normalizedUserId);
 
-            // Broadcast that this user is ONLINE to all connected clients
+            try {
+                await chatModel.updateLastSeen(normalizedUserId);
+            } catch (err) {
+                console.error("updateLastSeen error:", err.message);
+            }
+
             io.emit("user_status", {
                 userId: normalizedUserId,
                 isOnline: true
             });
 
-            // Send current list of online users to the newly joined client
+
             socket.emit("online_users", Array.from(onlineUsers.keys()));
 
-            // When user comes online, mark all pending 'sent' messages as 'delivered'
+
             try {
                 const updatedCount = await chatModel.markMessagesAsDelivered(normalizedUserId);
                 if (updatedCount > 0) {
@@ -56,7 +71,7 @@ module.exports = (io) => {
             socket.emit("joined", normalizedUserId);
         });
 
-        // 2. Check single user online/offline status
+
         socket.on("check_user_status", async (targetUserId) => {
             const cleanTarget = String(targetUserId || "").trim();
             if (!cleanTarget) return;
@@ -79,7 +94,6 @@ module.exports = (io) => {
             });
         });
 
-        // 3. Load Conversation and Mark Seen (Double Blue Tick)
         socket.on("loadConversation", async (otherUserId) => {
             const userId = socket.data.userId;
             otherUserId = String(otherUserId || "").trim();
@@ -87,19 +101,16 @@ module.exports = (io) => {
 
             socket.data.activeWith = otherUserId;
 
-            // Check block status
             const blockStatus = await chatModel.getBlockStatus(userId, otherUserId);
             const isOnline = (blockStatus.isBlockedByThem || blockStatus.isBlockedByMe)
                 ? false
                 : isUserOnline(otherUserId);
 
-            // Send immediate online/offline status of recipient
             socket.emit("user_status", {
                 userId: otherUserId,
                 isOnline
             });
 
-            // Mark all messages from otherUserId to userId as SEEN (Double Blue Tick)
             try {
                 await chatModel.markMessagesAsSeen(otherUserId, userId);
                 io.to(otherUserId).emit("messages_seen", {
@@ -114,7 +125,7 @@ module.exports = (io) => {
             socket.emit("conversation_history", history);
         });
 
-        // 4. Mark Seen Explicit Trigger
+
         socket.on("mark_seen", async ({ otherUserId }) => {
             const userId = socket.data.userId;
             const targetId = String(otherUserId || "").trim();
@@ -133,19 +144,18 @@ module.exports = (io) => {
             }
         });
 
-        // 5. Close Active Chat (Back to Chat List)
+
         socket.on("close_chat", () => {
             socket.data.activeWith = null;
         });
 
-        // 6. Send Message with Real-Time Tick Determination
+
         socket.on("message", async (data) => {
             const from = socket.data.userId;
             const to = String(data?.to || "").trim();
             const text = String(data?.text || "").trim();
             if (!from || !to || (!text && !data?.mediaUrl)) return;
 
-            // Check block status before proceeding
             const blockStatus = await chatModel.getBlockStatus(from, to);
             if (blockStatus.isBlockedByMe || blockStatus.isBlockedByThem) {
                 socket.emit("message_error", {
@@ -156,15 +166,15 @@ module.exports = (io) => {
                 return;
             }
 
-            // Determine initial status:
+
             const isRecipientOnline = isUserOnline(to);
 
-            let initialStatus = "sent"; // Single Gray Tick
+            let initialStatus = "sent";
 
             if (isRecipientOnline) {
-                initialStatus = "delivered"; // Double Gray Tick
+                initialStatus = "delivered";
 
-                // Check if recipient is currently inside this specific conversation
+
                 const recipientSockets = onlineUsers.get(to) ||
                     onlineUsers.get(to.startsWith('+') ? to : `+${to}`) ||
                     onlineUsers.get(to.replace(/^\+/, ''));
@@ -188,17 +198,18 @@ module.exports = (io) => {
                     text,
                     type: data?.type || "text",
                     status: initialStatus,
-                    mediaUrl: data?.mediaUrl
+                    mediaUrl: data?.mediaUrl,
+                    replyToId: data?.replyToId || null,
+                    replyToText: data?.replyToText || null,
+                    replyToSender: data?.replyToSender || null
                 });
 
-                // Deliver message to recipient if online
                 if (isRecipientOnline) {
                     io.to(to).emit("message_received", message);
                     const altTo = to.startsWith('+') ? to.replace(/^\+/, '') : `+${to}`;
                     io.to(altTo).emit("message_received", message);
                 }
 
-                // Acknowledge sender with saved message containing status
                 socket.emit("message_saved", message);
             } catch (err) {
                 console.error("Socket message error:", err.message);
@@ -206,7 +217,133 @@ module.exports = (io) => {
             }
         });
 
-        // 7. Delete Message (Delete for Me vs Delete for Everyone)
+        socket.on("message_reaction", async ({ messageId, emoji, to }) => {
+            const userId = socket.data.userId;
+            if (!userId || !messageId) return;
+            try {
+                const result = await chatModel.reactToMessage(messageId, userId, emoji);
+                socket.emit("message_reaction_updated", result);
+                const target = to || result.recipientId || result.senderId;
+                if (target) {
+                    const variants = chatModel.getPhoneVariants(target);
+                    variants.forEach((v) => {
+                        io.to(v).emit("message_reaction_updated", result);
+                    });
+                }
+            } catch (err) {
+                console.error("message_reaction error:", err.message);
+                socket.emit("message_error", { message: err.message });
+            }
+        });
+
+        socket.on("loadGroup", async (groupId) => {
+            const userId = socket.data.userId;
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (!userId || !cleanGroupId) return;
+            try {
+                const group = await chatModel.getGroup(cleanGroupId, userId);
+                if (!group) return socket.emit("message_error", { message: "You are not a member of this group." });
+                socket.join(`group:${cleanGroupId}`);
+                socket.data.activeGroup = cleanGroupId;
+                await chatModel.markGroupMessagesAsSeen(cleanGroupId, userId).catch(() => { });
+                socket.emit("group_details", group);
+                socket.emit("group_history", await chatModel.getGroupMessages(cleanGroupId, userId));
+            } catch (err) {
+                socket.emit("message_error", { message: err.message });
+            }
+        });
+
+        socket.on("mark_group_seen", async ({ groupId }) => {
+            const userId = socket.data.userId;
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (!userId || !cleanGroupId) return;
+            try {
+                await chatModel.markGroupMessagesAsSeen(cleanGroupId, userId);
+            } catch (err) {
+                console.error("mark_group_seen error:", err.message);
+            }
+        });
+
+        socket.on("join_group_room", (groupId) => {
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (cleanGroupId) socket.join(`group:${cleanGroupId}`);
+        });
+
+        socket.on("group_message", async (data) => {
+            const senderId = socket.data.userId;
+            const groupId = String(data?.groupId || "").replace(/^group:/, "");
+            if (!senderId || !groupId || (!String(data?.text || "").trim() && !data?.mediaUrl)) return;
+            try {
+                const message = await chatModel.addGroupMessage({
+                    groupId,
+                    senderId,
+                    text: data.text,
+                    type: data.type || "text",
+                    mediaUrl: data.mediaUrl || null,
+                    replyToId: data.replyToId || null,
+                    mentions: data.mentions || []
+                });
+                io.to(`group:${groupId}`).emit("group_message_received", message);
+                io.to(`group:${groupId}`).emit("conversation_refresh");
+            } catch (err) {
+                socket.emit("message_error", { message: err.message });
+            }
+        });
+
+        socket.on("group_reaction", async ({ groupId, messageId, emoji }) => {
+            const userId = socket.data.userId;
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (!userId || !cleanGroupId || !messageId) return;
+            try {
+                const reactions = await chatModel.reactToGroupMessage(cleanGroupId, messageId, userId, emoji);
+                io.to(`group:${cleanGroupId}`).emit("group_reaction_updated", { messageId: String(messageId), reactions });
+            } catch (err) {
+                socket.emit("message_error", { message: err.message });
+            }
+        });
+
+        socket.on("group_typing", ({ groupId, isTyping }) => {
+            const userId = socket.data.userId;
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (!userId || !cleanGroupId) return;
+            socket.to(`group:${cleanGroupId}`).emit("group_typing", { from: userId, isTyping: Boolean(isTyping) });
+        });
+
+        socket.on("group_call_user", async ({ groupId, callerName, callerAvatar, callType, channelName }) => {
+            const from = socket.data.userId;
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (!from || !cleanGroupId) return;
+            const group = await chatModel.getGroup(cleanGroupId, from);
+            if (!group) return;
+            const cName = channelName || `group_call_${cleanGroupId}_${Date.now()}`;
+            socket.join(`group:${cleanGroupId}`);
+            socket.to(`group:${cleanGroupId}`).emit("incoming_group_call", {
+                from,
+                groupId: cleanGroupId,
+                callerName: callerName || from,
+                callerAvatar: callerAvatar || null,
+                callType: callType || "voice",
+                channelName: cName
+            });
+        });
+
+        socket.on("group_call_response", ({ groupId, channelName, accepted }) => {
+            const from = socket.data.userId;
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (!from || !cleanGroupId) return;
+            socket.to(`group:${cleanGroupId}`).emit(accepted ? "group_call_accepted" : "group_call_rejected", {
+                from,
+                groupId: cleanGroupId,
+                channelName
+            });
+        });
+
+        socket.on("group_call_end", ({ groupId, channelName }) => {
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (cleanGroupId) socket.to(`group:${cleanGroupId}`).emit("group_call_ended", { channelName });
+        });
+
+
         socket.on("delete_message", async ({ messageId, deleteFor, to }) => {
             const userId = socket.data.userId;
             if (!userId || !messageId) return;
@@ -217,14 +354,14 @@ module.exports = (io) => {
                 if (!result) return;
 
                 if (isEveryone) {
-                    // Notify sender
+
                     socket.emit("message_deleted", {
                         messageId: String(messageId),
                         deleteFor: "everyone",
                         message: result
                     });
 
-                    // Notify recipient
+
                     if (to) {
                         const cleanTo = String(to).trim();
                         const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
@@ -240,7 +377,7 @@ module.exports = (io) => {
                         });
                     }
                 } else {
-                    // Delete for Me: Only notify sender's own devices/sockets
+
                     socket.emit("message_deleted", {
                         messageId: String(messageId),
                         deleteFor: "me",
@@ -253,7 +390,35 @@ module.exports = (io) => {
             }
         });
 
-        // 8. Edit Message (Real-Time Edit Synchronization)
+
+        socket.on("delete_conversation", async ({ otherUserId }) => {
+            const userId = socket.data.userId;
+            if (!userId || !otherUserId) return;
+
+            try {
+                await chatModel.deleteConversation(userId, otherUserId);
+                socket.emit("conversation_deleted", { otherUserId: String(otherUserId) });
+            } catch (err) {
+                console.error("delete_conversation error:", err.message);
+                socket.emit("message_error", { message: err.message });
+            }
+        });
+
+
+        socket.on("rename_contact", async ({ contactId, customName }) => {
+            const userId = socket.data.userId;
+            if (!userId || !contactId) return;
+
+            try {
+                const result = await chatModel.saveCustomContactName(userId, contactId, customName);
+                socket.emit("contact_renamed", result);
+            } catch (err) {
+                console.error("rename_contact error:", err.message);
+                socket.emit("message_error", { message: err.message });
+            }
+        });
+
+
         socket.on("edit_message", async ({ messageId, text, to }) => {
             const userId = socket.data.userId;
             if (!userId || !messageId || !text) return;
@@ -262,10 +427,10 @@ module.exports = (io) => {
                 const updatedMessage = await chatModel.updateMessage(messageId, userId, text);
                 if (!updatedMessage) return;
 
-                // Notify sender
+
                 socket.emit("message_edited", updatedMessage);
 
-                // Notify recipient
+
                 if (to) {
                     const cleanTo = String(to).trim();
                     const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
@@ -278,14 +443,14 @@ module.exports = (io) => {
             }
         });
 
-        // 9. Typing Indicators
+
         socket.on("typing", async ({ to, isTyping }) => {
             const from = socket.data.userId;
             if (!from || !to) return;
             const cleanTo = String(to).trim();
             const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
 
-            // Do not broadcast typing if blocked
+
             const blockStatus = await chatModel.getBlockStatus(from, cleanTo);
             if (blockStatus.isBlockedByMe || blockStatus.isBlockedByThem) return;
 
@@ -293,7 +458,7 @@ module.exports = (io) => {
             io.to(altTo).emit("typing", { from, isTyping: Boolean(isTyping) });
         });
 
-        // 8. Block & Unblock Real-Time Synchronization
+
         socket.on("block_user", async ({ targetUserId }) => {
             const userId = socket.data.userId;
             const targetId = String(targetUserId || "").trim();
@@ -301,15 +466,14 @@ module.exports = (io) => {
 
             await chatModel.blockUser(userId, targetId);
 
-            // Notify blocker client
             socket.emit("user_blocked", { targetUserId: targetId, byMe: true });
 
-            // Notify blocked user client
+
             const altTarget = targetId.startsWith('+') ? targetId.replace(/^\+/, '') : `+${targetId}`;
             io.to(targetId).emit("user_blocked", { targetUserId: userId, byMe: false });
             io.to(altTarget).emit("user_blocked", { targetUserId: userId, byMe: false });
 
-            // Mask status as offline for blocked user
+
             io.to(targetId).emit("user_status", { userId, isOnline: false });
             io.to(altTarget).emit("user_status", { userId, isOnline: false });
         });
@@ -321,15 +485,15 @@ module.exports = (io) => {
 
             await chatModel.unblockUser(userId, targetId);
 
-            // Notify unblocker client
             socket.emit("user_unblocked", { targetUserId: targetId, byMe: true });
 
-            // Notify unblocked user client
+
+
             const altTarget = targetId.startsWith('+') ? targetId.replace(/^\+/, '') : `+${targetId}`;
             io.to(targetId).emit("user_unblocked", { targetUserId: userId, byMe: false });
             io.to(altTarget).emit("user_unblocked", { targetUserId: userId, byMe: false });
 
-            // Emit accurate presence
+
             const isMeOnline = isUserOnline(userId);
             io.to(targetId).emit("user_status", { userId, isOnline: isMeOnline });
             io.to(altTarget).emit("user_status", { userId, isOnline: isMeOnline });
@@ -338,9 +502,10 @@ module.exports = (io) => {
             socket.emit("user_status", { userId: targetId, isOnline: isTargetOnline });
         });
 
-        // 9. WebRTC Calling Signaling Events
+
+        // 9. WebRTC / Agora Calling Signaling Events
         // A. Initiate Call
-        socket.on("call_user", async ({ to, callerName, callerAvatar, callType, offer }) => {
+        socket.on("call_user", async ({ to, callerName, callerAvatar, callType, channelName }) => {
             const from = socket.data.userId;
             if (!from || !to) return;
             const cleanTo = String(to).trim();
@@ -356,63 +521,229 @@ module.exports = (io) => {
                 return;
             }
 
+            const cName = channelName || `call_${Date.now()}`;
+
+            // Persist Call Log entry with initial status 'missed'
+            let callLog = null;
+            try {
+                callLog = await chatModel.createCallLog({
+                    callerId: from,
+                    receiverId: cleanTo,
+                    callType: callType || 'voice',
+                    status: 'missed',
+                    channelName: cName
+                });
+            } catch (logErr) {
+                console.error("createCallLog error:", logErr.message);
+            }
+
+            const callSession = {
+                callId: callLog?.id,
+                callerId: from,
+                receiverId: cleanTo,
+                callType: callType || 'voice',
+                channelName: cName,
+                startTime: null,
+                isAnswered: false
+            };
+
+            activeCalls.set(cName, callSession);
+            userCallSessions.set(from, cName);
+
             const payload = {
+                callId: callLog?.id,
                 from,
                 callerName: callerName || from,
                 callerAvatar: callerAvatar || null,
-                callType: callType || 'voice', // 'voice' | 'video'
-                offer: offer || null
+                callType: callType || 'voice',
+                channelName: cName
             };
 
-            io.to(cleanTo).emit("incoming_call", payload);
-            io.to(altTo).emit("incoming_call", payload);
+            // Check if receiver is currently on another call (Call Waiting)
+            const isReceiverBusy = userCallSessions.has(cleanTo) || userCallSessions.has(altTo);
+
+            if (isReceiverBusy) {
+                // Inform receiver about Call Waiting
+                io.to(cleanTo).emit("call_waiting", payload);
+                io.to(altTo).emit("call_waiting", payload);
+
+                // Inform caller that user is on another call (Call Waiting)
+                socket.emit("call_waiting_response", {
+                    to: cleanTo,
+                    channelName: cName,
+                    message: "User is on another call (Call Waiting)..."
+                });
+            } else {
+                io.to(cleanTo).emit("incoming_call", payload);
+                io.to(altTo).emit("incoming_call", payload);
+            }
+
+            // Real-time notification to update calls tab
+            io.to(from).emit("call_log_updated");
         });
 
-        // B. Answer / Accept Call
-        socket.on("answer_call", ({ to, answer }) => {
+        // B. Recipient device received ring -> notify caller with "Ringing..."
+        socket.on("call_ringing", ({ to, channelName }) => {
             const from = socket.data.userId;
             if (!from || !to) return;
             const cleanTo = String(to).trim();
             const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
 
-            io.to(cleanTo).emit("call_accepted", { from, answer });
-            io.to(altTo).emit("call_accepted", { from, answer });
+            io.to(cleanTo).emit("call_ringing", { from, channelName });
+            io.to(altTo).emit("call_ringing", { from, channelName });
         });
 
-        // C. Reject / Decline Call
-        socket.on("reject_call", ({ to, reason }) => {
+        // C. Answer / Accept Call
+        socket.on("answer_call", async ({ to, channelName }) => {
             const from = socket.data.userId;
             if (!from || !to) return;
             const cleanTo = String(to).trim();
             const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+
+            const session = channelName ? activeCalls.get(channelName) : null;
+            if (session) {
+                session.isAnswered = true;
+                session.startTime = Date.now();
+                userCallSessions.set(from, channelName);
+
+                if (session.callId) {
+                    try {
+                        await chatModel.updateCallLog(session.callId, { status: 'incoming', duration: 0 });
+                    } catch (err) {
+                        console.error("updateCallLog on answer error:", err.message);
+                    }
+                }
+            }
+
+            io.to(cleanTo).emit("call_accepted", { from, channelName });
+            io.to(altTo).emit("call_accepted", { from, channelName });
+
+            io.to(cleanTo).emit("call_log_updated");
+            io.to(from).emit("call_log_updated");
+        });
+
+        // D. Reject / Decline Call
+        socket.on("reject_call", async ({ to, channelName, reason }) => {
+            const from = socket.data.userId;
+            if (!from || !to) return;
+            const cleanTo = String(to).trim();
+            const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
+
+            const session = channelName ? activeCalls.get(channelName) : null;
+            if (session && session.callId) {
+                try {
+                    await chatModel.updateCallLog(session.callId, { status: 'declined', duration: 0 });
+                } catch (err) {
+                    console.error("updateCallLog on reject error:", err.message);
+                }
+            }
+
+            if (channelName) {
+                activeCalls.delete(channelName);
+            }
+            userCallSessions.delete(from);
 
             io.to(cleanTo).emit("call_rejected", { from, reason: reason || 'Call declined' });
             io.to(altTo).emit("call_rejected", { from, reason: reason || 'Call declined' });
+
+            io.to(cleanTo).emit("call_log_updated");
+            io.to(from).emit("call_log_updated");
         });
 
-        // D. End / Hangup Active Call
-        socket.on("end_call", ({ to }) => {
+        // E. End / Hangup Active Call
+        socket.on("end_call", async ({ to, channelName }) => {
             const from = socket.data.userId;
             if (!from || !to) return;
             const cleanTo = String(to).trim();
             const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
 
+            const session = channelName ? activeCalls.get(channelName) : null;
+            if (session) {
+                let duration = 0;
+                if (session.isAnswered && session.startTime) {
+                    duration = Math.max(1, Math.round((Date.now() - session.startTime) / 1000));
+                }
+                if (session.callId) {
+                    try {
+                        await chatModel.updateCallLog(session.callId, {
+                            status: session.isAnswered ? 'incoming' : 'missed',
+                            duration
+                        });
+                    } catch (err) {
+                        console.error("updateCallLog on end error:", err.message);
+                    }
+                }
+                activeCalls.delete(channelName);
+            }
+
+            userCallSessions.delete(from);
+            userCallSessions.delete(cleanTo);
+            userCallSessions.delete(altTo);
+
             io.to(cleanTo).emit("call_ended", { from });
             io.to(altTo).emit("call_ended", { from });
+
+            io.to(cleanTo).emit("call_log_updated");
+            io.to(from).emit("call_log_updated");
         });
 
-        // E. WebRTC ICE Candidates Exchange
-        socket.on("ice_candidate", ({ to, candidate }) => {
+        // Media Status Sync (Mute / Video Off notification to peer)
+        socket.on("call_media_status", ({ to, isMuted, isVideoOff }) => {
             const from = socket.data.userId;
-            if (!from || !to || !candidate) return;
+            if (!from || !to) return;
             const cleanTo = String(to).trim();
             const altTo = cleanTo.startsWith('+') ? cleanTo.replace(/^\+/, '') : `+${cleanTo}`;
-
-            io.to(cleanTo).emit("ice_candidate", { from, candidate });
-            io.to(altTo).emit("ice_candidate", { from, candidate });
+            io.to(cleanTo).emit("call_media_status", { from, isMuted, isVideoOff });
+            io.to(altTo).emit("call_media_status", { from, isMuted, isVideoOff });
         });
 
-        // 8. Explicit User Logout
+        // Profile Updated Real-time broadcast
+        socket.on("profile_updated", (data) => {
+            const userId = socket.data.userId || data?.userId;
+            if (!userId) return;
+            io.emit("user_profile_changed", {
+                userId,
+                name: data?.name,
+                profileName: data?.name,
+                about: data?.about,
+                avatar: data?.avatar,
+                avatarPrivacy: data?.avatarPrivacy
+            });
+        });
+
+        // Status Real-Time Socket Handlers
+        socket.on("status_posted", ({ userId }) => {
+            io.emit("status_updated", { userId: userId || socket.data.userId });
+        });
+
+        socket.on("status_deleted", ({ userId }) => {
+            io.emit("status_updated", { userId: userId || socket.data.userId });
+        });
+
+        socket.on("status_viewed", ({ statusId, ownerId, viewerId }) => {
+            if (!ownerId) return;
+            const cleanOwner = String(ownerId).trim();
+            const altOwner = cleanOwner.startsWith('+') ? cleanOwner.replace(/^\+/, '') : `+${cleanOwner}`;
+            io.to(cleanOwner).emit("status_view_updated", { statusId, viewerId: viewerId || socket.data.userId });
+            io.to(altOwner).emit("status_view_updated", { statusId, viewerId: viewerId || socket.data.userId });
+        });
+
+        socket.on("status_reaction", ({ statusId, ownerId, emoji }) => {
+            if (!ownerId) return;
+            const cleanOwner = String(ownerId).trim();
+            const altOwner = cleanOwner.startsWith('+') ? cleanOwner.replace(/^\+/, '') : `+${cleanOwner}`;
+            io.to(cleanOwner).emit("status_reaction_updated", {
+                statusId,
+                reactorId: socket.data.userId,
+                emoji
+            });
+            io.to(altOwner).emit("status_reaction_updated", {
+                statusId,
+                reactorId: socket.data.userId,
+                emoji
+            });
+        });
+
         socket.on("logout", async () => {
             const userId = socket.data.userId;
             if (userId && onlineUsers.has(userId)) {
@@ -432,7 +763,7 @@ module.exports = (io) => {
             socket.data.activeWith = null;
         });
 
-        // 9. Disconnect / Cleanup
+
         socket.on("disconnect", async () => {
             const userId = socket.data.userId;
             if (userId && onlineUsers.has(userId)) {
@@ -450,4 +781,3 @@ module.exports = (io) => {
         });
     });
 };
-

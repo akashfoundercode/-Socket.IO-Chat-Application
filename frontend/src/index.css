@@ -2,7 +2,16 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  height: 100%;
+  height: -webkit-fill-available;
+  overflow: hidden;
 }
 
 body {
@@ -10,13 +19,53 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  height: -webkit-fill-available;
+  overflow: hidden;
+  overscroll-behavior: none;
   padding: 16px;
 }
 
 #root {
   width: 100%;
+  height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+/* ── Mobile: full screen, no padding, safe area ── */
+@media (max-width: 767px) {
+  body {
+    padding: 0;
+    background: #ffffff;
+  }
+
+  /* Hide scrollbars on mobile */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+}
+
+/* ── Desktop: thin scrollbar ── */
+@media (min-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d1d7db;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #b0bec5;
+  }
 }

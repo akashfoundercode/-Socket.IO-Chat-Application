@@ -3,25 +3,24 @@ const { getPool } = require("../config/database");
 const mapUser = (row) => {
     if (!row) return null;
     return {
-        id: String(row.id),
-        name: row.full_phone || row.id,
-        countryCode: row.country_code,
-        phone: row.phone,
-        fullPhone: row.full_phone || row.id,
-        about: row.about,
-        avatar: row.avatar,
+        id: Number(row.id),
+        name: row.name || row.full_phone || String(row.id),
+        countryCode: row.country_code || "+91",
+        phone: row.phone || "",
+        fullPhone: row.full_phone || row.phone || String(row.id),
+        about: row.about || "Available",
+        avatar: row.avatar || null,
+        avatarPrivacy: row.avatar_privacy || "everyone",
         lastSeen: row.last_seen,
         createdAt: row.created_at
     };
 };
 
-/**
- * Save OTP to database (expires in specified minutes, e.g. 5 mins)
- */
+
 const saveOtp = async ({ countryCode, phone, fullPhone, otp, expiryMinutes = 5 }) => {
     const pool = getPool();
-    
-    // Invalidate previous unverified OTPs for this phone
+
+   
     await pool.execute(
         "UPDATE otps SET is_verified = 1 WHERE full_phone = ? AND is_verified = 0",
         [fullPhone]
@@ -43,9 +42,6 @@ const saveOtp = async ({ countryCode, phone, fullPhone, otp, expiryMinutes = 5 }
     };
 };
 
-/**
- * Verify OTP from database
- */
 const verifyOtpInDb = async ({ fullPhone, otp }) => {
     const pool = getPool();
     const now = new Date();
@@ -66,21 +62,17 @@ const verifyOtpInDb = async ({ fullPhone, otp }) => {
 
     const otpRecord = rows[0];
 
-    // Mark OTP as verified/used
     await pool.execute("UPDATE otps SET is_verified = 1 WHERE id = ?", [otpRecord.id]);
 
     return { valid: true, otpRecord };
 };
 
-/**
- * Find or create user by phone number
- */
-const findOrCreateUserByPhone = async ({ countryCode, phone, fullPhone }) => {
+const findOrCreateUserByPhone = async ({ countryCode, phone, fullPhone, name }) => {
     const pool = getPool();
 
-    // Check if user already exists
+
     const [rows] = await pool.execute(
-        "SELECT * FROM users WHERE full_phone = ? OR id = ? LIMIT 1",
+        "SELECT * FROM users WHERE full_phone = ? OR phone = ? LIMIT 1",
         [fullPhone, fullPhone]
     );
 
@@ -89,25 +81,28 @@ const findOrCreateUserByPhone = async ({ countryCode, phone, fullPhone }) => {
         return mapUser(rows[0]);
     }
 
-    // Use full phone number as user's name & ID
-    const userId = fullPhone;
-    const userName = fullPhone;
+    const userName = name && String(name).trim() ? String(name).trim() : fullPhone;
 
-    await pool.execute(
-        `INSERT INTO users (id, name, country_code, phone, full_phone, last_seen)
-         VALUES (?, ?, ?, ?, ?, NOW())`,
-        [userId, userName, countryCode, phone, fullPhone]
+    const [result] = await pool.execute(
+        `INSERT INTO users (name, country_code, phone, full_phone, last_seen)
+         VALUES (?, ?, ?, ?, NOW())`,
+        [userName, countryCode, phone, fullPhone]
     );
 
-    const [newRows] = await pool.execute("SELECT * FROM users WHERE id = ?", [userId]);
+    const [newRows] = await pool.execute("SELECT * FROM users WHERE id = ?", [result.insertId]);
     return mapUser(newRows[0]);
 };
 
-/**
- * Get user by ID
- */
+
 const getUserById = async (id) => {
-    const [rows] = await getPool().execute("SELECT * FROM users WHERE id = ? LIMIT 1", [id]);
+    const cleanId = String(id || "").trim();
+    if (!cleanId) return null;
+    const withPlus = cleanId.startsWith("+") ? cleanId : `+${cleanId}`;
+
+    const [rows] = await getPool().execute(
+        "SELECT * FROM users WHERE id = ? OR full_phone = ? OR full_phone = ? OR phone = ? LIMIT 1",
+        [cleanId, cleanId, withPlus, cleanId]
+    );
     return mapUser(rows[0]);
 };
 
