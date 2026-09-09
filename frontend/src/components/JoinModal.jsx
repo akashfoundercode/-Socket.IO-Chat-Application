@@ -14,7 +14,7 @@ const COUNTRIES = [
   { code: '+65', name: 'Singapore', flag: '🇸🇬', digits: 8, pattern: /^\d{8}$/ },
 ];
 
-export default function JoinModal({ onJoin, isConnected }) {
+export default function JoinModal({ onJoin, isConnected, theme = 'green', themeVars = {}, onThemeChange }) {
   const [step, setStep] = useState('phone'); // 'phone' | 'otp'
   const [countryCode, setCountryCode] = useState('+91');
   const [phone, setPhone] = useState('');
@@ -162,9 +162,13 @@ export default function JoinModal({ onJoin, isConnected }) {
     );
   };
 
+  const accentColor = themeVars['--wa-green'] || '#00a884';
+  const accentEncoded = accentColor.replace('#', '%23');
+  const svgBg = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180"><rect width="180" height="180" fill="%23fbfbfb"/><g fill="none" stroke="${accentEncoded}" stroke-width="1.2" opacity=".1"><path d="M20 25 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 Z"/><path d="M120 30 l15 15 m0 -15 l-15 15"/><path d="M70 130 a8 8 0 1 1 16 0 a8 8 0 1 1 -16 0 Z"/><path d="M140 120 h16 v16 h-16 Z"/><path d="M25 100 l12 -12 m0 12 l-12 -12"/><path d="M90 20 v20 m-10 -10 h20"/><circle cx="90" cy="90" r="14"/><path d="M40 150 c5 -10 15 -10 20 0"/><path d="M130 80 c0 10 15 10 15 0"/></g></svg>')`;
+
   return (
-    <div className="wa-auth-card">
-      <div className="wa-auth-screen">
+    <div className="wa-auth-card" style={themeVars}>
+      <div className="wa-auth-screen" style={{ backgroundImage: svgBg }}>
         {/* Step 1: Phone Number */}
         {step === 'phone' ? (
           <div className="wa-auth-content">
@@ -229,6 +233,25 @@ export default function JoinModal({ onJoin, isConnected }) {
             <div className="wa-auth-legal">
               Read our <a href="#privacy">Privacy Policy</a>. Tap "Agree & Continue" to accept the <a href="#terms">Terms of Service</a>.
             </div>
+
+            {/* Theme Switcher */}
+            {onThemeChange && (
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '16px' }}>
+                {[['green','#008069'],['orange','#ea580c'],['blue','#126782'],['charcoal','#334155']].map(([t, color]) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => onThemeChange(t)}
+                    title={t.charAt(0).toUpperCase() + t.slice(1)}
+                    style={{
+                      width: '22px', height: '22px', borderRadius: '50%',
+                      background: color, border: theme === t ? '3px solid #111' : '2px solid transparent',
+                      cursor: 'pointer', outline: 'none', boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
+                    }}
+                  />
+                ))}
+              </div>
+            )}
 
             {/* from FACEBOOK Branding */}
             <div className="wa-auth-footer-brand">

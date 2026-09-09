@@ -1406,7 +1406,7 @@ export default function App() {
 
       {/* 1. SCREEN 1: LOGIN / OTP (If not logged in) */}
       {!currentUser ? (
-        <JoinModal onJoin={handleLoginSuccess} isConnected={isConnected} />
+        <JoinModal onJoin={handleLoginSuccess} isConnected={isConnected} theme={theme} themeVars={themes[theme]} onThemeChange={handleThemeChange} />
       ) : (
         /* 2. AUTHENTICATED RESPONSIVE CONTAINER (Desktop / Tablet / Mobile) */
         <div
