@@ -3384,6 +3384,7 @@ body {
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.25);
   animation: slideLeft 0.25s ease-out;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 @keyframes slideLeft {
@@ -3405,6 +3406,7 @@ body {
   gap: 16px;
   flex-shrink: 0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  box-sizing: border-box;
 }
 
 .wa-contact-close-btn {
@@ -3426,24 +3428,29 @@ body {
 .wa-contact-info-body {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 16px;
+  overflow-x: hidden;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
 }
 
 .wa-contact-avatar-section {
   position: relative;
   background: linear-gradient(135deg, #008069 0%, #00a884 100%);
   border-radius: 16px;
-  padding: 24px 20px 20px;
+  padding: 22px 16px 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   flex-shrink: 0 !important;
-  box-shadow: 0 6px 20px rgba(0, 128, 105, 0.25);
-  margin-bottom: 2px;
+  box-shadow: 0 4px 16px rgba(0, 128, 105, 0.2);
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .dark .wa-contact-avatar-section,
