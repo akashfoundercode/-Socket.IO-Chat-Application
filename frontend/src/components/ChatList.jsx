@@ -782,6 +782,7 @@ export default function ChatList({
     const isLocationMsg = !isDeletedMsg && item.lastMessageType === 'location';
     const isImageMsg = !isDeletedMsg && item.lastMessageType === 'image';
     const isCallMsg = !isDeletedMsg && item.lastMessageType === 'call';
+    const isSystemMsg = !isDeletedMsg && item.lastMessageType === 'system';
     const isStatusReaction = !isDeletedMsg && item.lastMessageType === 'status_reaction';
     const isStatusReply = !isDeletedMsg && item.lastMessageType === 'status_reply';
     const draftText = getDraftForConversation(item);
@@ -817,6 +818,19 @@ export default function ChatList({
       lastMsg = '📍 Location';
     } else if (isImageMsg) {
       lastMsg = '📷 Photo';
+    } else if (isSystemMsg) {
+      try {
+        const d = typeof item.lastMessage === 'string' && item.lastMessage.startsWith('{') ? JSON.parse(item.lastMessage) : {};
+        const action = d.action || '';
+        if (action === 'leave_group') lastMsg = `${d.name || d.userId || 'Someone'} left`;
+        else if (action === 'add_member') lastMsg = `${d.actorName || 'Admin'} added ${d.targetName || 'a member'}`;
+        else if (action === 'remove_member') lastMsg = `${d.targetName || 'A member'} was removed`;
+        else if (action === 'create_group') lastMsg = `Group created`;
+        else if (action === 'join_link' || action === 'join_qr') lastMsg = `${d.name || d.userId || 'Someone'} joined`;
+        else lastMsg = 'Group updated';
+      } catch (e) {
+        lastMsg = 'Group updated';
+      }
     } else if (isStatusReaction) {
       let emoji = '❤️';
       try {

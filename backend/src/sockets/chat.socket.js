@@ -335,6 +335,24 @@ module.exports = (io) => {
             }
         });
 
+        socket.on("leave_group", async ({ groupId }) => {
+            const userId = socket.data.userId;
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (!userId || !cleanGroupId) return;
+            try {
+                const { systemMsg } = await chatModel.leaveGroup(cleanGroupId, userId);
+                socket.leave(`group:${cleanGroupId}`);
+                socket.emit("group_left", { groupId: cleanGroupId });
+                if (systemMsg) {
+                    io.to(`group:${cleanGroupId}`).emit("group_message_received", systemMsg);
+                }
+                io.to(`group:${cleanGroupId}`).emit("group_member_left", { groupId: cleanGroupId, userId });
+                io.to(`group:${cleanGroupId}`).emit("conversation_refresh");
+            } catch (err) {
+                socket.emit("message_error", { message: err.message });
+            }
+        });
+
         socket.on("group_typing", ({ groupId, isTyping }) => {
             const userId = socket.data.userId;
             const cleanGroupId = String(groupId || "").replace(/^group:/, "");

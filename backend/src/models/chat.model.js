@@ -1781,6 +1781,8 @@ module.exports = {
     listGroups,
     markGroupMessagesAsSeen,
     addGroupMember,
+    removeGroupMember,
+    leaveGroup,
     joinGroupByInvite,
     updateGroup,
     updateGroupMemberRole,
