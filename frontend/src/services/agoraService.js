@@ -49,6 +49,7 @@ class AgoraService {
     token,
     uid = 0,
     callType = 'voice',
+    onUserJoined,
     onRemoteUserPublished,
     onRemoteUserUnpublished,
     onUserLeft,
@@ -60,6 +61,13 @@ class AgoraService {
     const client = this.initClient();
 
     // Register Remote Event Listeners
+    client.on('user-joined', (user) => {
+      console.log(`[Agora] Remote user ${user.uid} joined channel`);
+      if (onUserJoined) {
+        onUserJoined(user);
+      }
+    });
+
     client.on('user-published', async (user, mediaType) => {
       console.log(`[Agora] Remote user ${user.uid} published ${mediaType}`);
       try {
@@ -78,13 +86,6 @@ class AgoraService {
         }
       } catch (err) {
         console.error('[Agora] Subscribe error:', err);
-      }
-    });
-
-    client.on('user-joined', (user) => {
-      console.log(`[Agora] Remote user ${user.uid} joined channel`);
-      if (onRemoteUserPublished) {
-        onRemoteUserPublished(user, 'joined');
       }
     });
 
@@ -229,6 +230,14 @@ class AgoraService {
     } catch (err) {
       console.warn('[Agora] Cleanup warning:', err.message);
     }
+  }
+
+  getRemoteUsers() {
+    return this.client ? (this.client.remoteUsers || []) : [];
+  }
+
+  getLocalUid() {
+    return this.client ? this.client.uid : null;
   }
 }
 

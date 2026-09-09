@@ -67,6 +67,7 @@ export default function App() {
   const [remotePeerMediaStatus, setRemotePeerMediaStatus] = useState({ isMuted: false, isVideoOff: false });
   const [callParticipants, setCallParticipants] = useState([]);
   const [speakingVolumes, setSpeakingVolumes] = useState({});
+  const callUserMetadataRef = useRef(new Map());
 
   const userId = currentUser ? (currentUser.fullPhone || currentUser.id) : '';
 
@@ -80,6 +81,7 @@ export default function App() {
     setCallParticipants([]);
     setSpeakingVolumes({});
     setCallState(null);
+    callUserMetadataRef.current.clear();
   }, []);
 
   // Handle Socket Events & Real-Time Presence, Ticks, Typing, Calling
@@ -402,7 +404,7 @@ export default function App() {
       startIncomingRingtone();
     }
 
-    function onIncomingGroupCall({ from, groupId, groupName, groupAvatar, callerName, callerAvatar, callType, channelName }) {
+    function onIncomingGroupCall({ from, groupId, groupName, groupAvatar, callerName, callerAvatar, callType, channelName, agoraUid }) {
       setCallState({
         isIncoming: true,
         isAccepted: false,
@@ -416,6 +418,16 @@ export default function App() {
         callerName: callerName || from,
         peerAvatar: groupAvatar || callerAvatar || null
       });
+      // Store caller metadata
+      const callerMeta = {
+        userId: from,
+        name: callerName || from,
+        avatar: callerAvatar || groupAvatar || null
+      };
+      callUserMetadataRef.current.set(String(from), callerMeta);
+      if (agoraUid) {
+        callUserMetadataRef.current.set(String(agoraUid), callerMeta);
+      }
       // An incoming participant must remain outside Agora until they accept.
       setCallParticipants([]);
       startIncomingRingtone();
@@ -477,22 +489,50 @@ export default function App() {
           })()
           : prev
       ));
-      if (data && data.from && data.from !== userId) {
-        setCallParticipants((prev) => {
-          if (prev.some((p) => p.userId === data.from || p.uid === data.from)) return prev;
-          return [
-            ...prev,
-            {
-              uid: data.from,
-              userId: data.from,
-              name: data.name || data.from,
-              avatar: data.avatar || null,
-              isSelf: false,
-              isMuted: false,
-              volume: 0
+      if (data && data.from) {
+        const metadata = {
+          userId: data.from,
+          name: data.name || data.from,
+          avatar: data.avatar || null
+        };
+        callUserMetadataRef.current.set(String(data.from), metadata);
+        if (data.agoraUid) {
+          callUserMetadataRef.current.set(String(data.agoraUid), metadata);
+        }
+        // Update existing participant in list if present
+        setCallParticipants((prev) =>
+          prev.map((p) => {
+            const isMatch = (data.agoraUid && (String(p.uid) === String(data.agoraUid) || String(p.agoraUid) === String(data.agoraUid))) || p.userId === data.from;
+            if (isMatch) {
+              return { ...p, name: data.name || p.name, avatar: data.avatar || p.avatar, userId: data.from };
             }
-          ];
-        });
+            return p;
+          })
+        );
+      }
+    }
+
+    function onGroupCallUserJoined(data) {
+      if (data && data.from) {
+        const metadata = {
+          userId: data.from,
+          name: data.name || data.from,
+          avatar: data.avatar || null
+        };
+        callUserMetadataRef.current.set(String(data.from), metadata);
+        if (data.agoraUid) {
+          callUserMetadataRef.current.set(String(data.agoraUid), metadata);
+        }
+        // Update existing participant in list if present
+        setCallParticipants((prev) =>
+          prev.map((p) => {
+            const isMatch = (data.agoraUid && (String(p.uid) === String(data.agoraUid) || String(p.agoraUid) === String(data.agoraUid))) || p.userId === data.from;
+            if (isMatch) {
+              return { ...p, name: data.name || p.name, avatar: data.avatar || p.avatar, userId: data.from };
+            }
+            return p;
+          })
+        );
       }
     }
 
@@ -663,6 +703,7 @@ export default function App() {
     socket.on('call_log_updated', onCallLogUpdated);
     socket.on('call_media_status', onCallMediaStatus);
     socket.on('group_call_accepted', onGroupCallAccepted);
+    socket.on('group_call_user_joined', onGroupCallUserJoined);
     socket.on('group_call_user_left', onGroupCallUserLeft);
     socket.on('group_call_peer_media_status', onGroupCallPeerMediaStatus);
     socket.on('group_call_ended', onCallEnded);
@@ -713,6 +754,7 @@ export default function App() {
       socket.off('call_log_updated', onCallLogUpdated);
       socket.off('call_media_status', onCallMediaStatus);
       socket.off('group_call_accepted', onGroupCallAccepted);
+      socket.off('group_call_user_joined', onGroupCallUserJoined);
       socket.off('group_call_user_left', onGroupCallUserLeft);
       socket.off('group_call_peer_media_status', onGroupCallPeerMediaStatus);
       socket.off('group_call_ended', onCallEnded);
@@ -835,18 +877,27 @@ export default function App() {
       });
     }
 
-    if (isGroupCall) {
-      setCallParticipants([
-        {
-          uid: 'self',
-          userId: userId,
-          name: currentUser?.name || currentUser?.fullPhone || 'You',
-          avatar: currentUser?.avatar || null,
-          isSelf: true,
-          isMuted: false,
-          volume: 0
+    // Reset call participants list - local user is always represented via isSelf in CallModal
+    setCallParticipants([]);
+
+    // Pre-populate user metadata
+    callUserMetadataRef.current.clear();
+    callUserMetadataRef.current.set(String(userId), {
+      userId,
+      name: currentUser?.name || currentUser?.fullPhone || 'You',
+      avatar: currentUser?.avatar || null
+    });
+    if (isGroupCall && groupDetails?.members) {
+      groupDetails.members.forEach((m) => {
+        const mId = m.userId || m.fullPhone || m.id;
+        if (mId) {
+          callUserMetadataRef.current.set(String(mId), {
+            userId: mId,
+            name: m.name || m.fullPhone || mId,
+            avatar: m.avatar || null
+          });
         }
-      ]);
+      });
     }
 
     setCallState({
@@ -869,7 +920,7 @@ export default function App() {
 
       if (appId && token) {
         // Join Agora RTC Channel & Publish Camera/Mic Tracks
-        const { localVideoTrack: lvTrack } = await agoraService.joinChannel({
+        const { uid: joinedUid, localVideoTrack: lvTrack } = await agoraService.joinChannel({
           appId,
           channelName,
           token,
@@ -884,6 +935,31 @@ export default function App() {
             }
             setSpeakingVolumes(volMap);
           },
+          onUserJoined: (user) => {
+            console.log('[Agora] Remote user joined channel:', user.uid);
+            setCallParticipants((prev) => {
+              const strUid = String(user.uid);
+              const meta = callUserMetadataRef.current.get(strUid) ||
+                (groupDetails?.members?.find((m) => String(m.userId).replace(/\D/g, '') === strUid.replace(/\D/g, '')));
+              const existingIndex = prev.findIndex((p) => String(p.agoraUid || p.uid) === strUid);
+              const participantObj = {
+                uid: user.uid,
+                agoraUid: user.uid,
+                userId: meta?.userId || strUid,
+                name: meta?.name || meta?.profileName || `Participant ${user.uid}`,
+                avatar: meta?.avatar || null,
+                isSelf: false,
+                isMuted: false,
+                volume: 0
+              };
+              if (existingIndex >= 0) {
+                const next = [...prev];
+                next[existingIndex] = { ...next[existingIndex], ...participantObj };
+                return next;
+              }
+              return [...prev, participantObj];
+            });
+          },
           onRemoteUserPublished: (user, mediaType) => {
             if (mediaType === 'video' && user.videoTrack) {
               setRemoteVideoTrack(user.videoTrack);
@@ -895,26 +971,25 @@ export default function App() {
             }
             setCallParticipants((prev) => {
               const strUid = String(user.uid);
-              if (prev.some((p) => String(p.uid) === strUid || String(p.userId) === strUid)) {
-                return prev.map((p) => {
-                  if (String(p.userId) === strUid || String(p.uid) === strUid) {
-                    return { ...p, uid: user.uid };
-                  }
-                  return p;
-                });
+              const meta = callUserMetadataRef.current.get(strUid) ||
+                (groupDetails?.members?.find((m) => String(m.userId).replace(/\D/g, '') === strUid.replace(/\D/g, '')));
+              const existingIndex = prev.findIndex((p) => String(p.agoraUid || p.uid) === strUid);
+              const participantObj = {
+                uid: user.uid,
+                agoraUid: user.uid,
+                userId: meta?.userId || strUid,
+                name: meta?.name || meta?.profileName || `Participant ${user.uid}`,
+                avatar: meta?.avatar || null,
+                isSelf: false,
+                isMuted: false,
+                volume: 0
+              };
+              if (existingIndex >= 0) {
+                const next = [...prev];
+                next[existingIndex] = { ...next[existingIndex], ...participantObj };
+                return next;
               }
-              return [
-                ...prev,
-                {
-                  uid: user.uid,
-                  userId: strUid,
-                  name: `Participant ${user.uid}`,
-                  avatar: null,
-                  isSelf: false,
-                  isMuted: false,
-                  volume: 0
-                }
-              ];
+              return [...prev, participantObj];
             });
           },
           onRemoteUserUnpublished: (user, mediaType) => {
@@ -936,12 +1011,22 @@ export default function App() {
               delete next[String(user.uid)];
               return next;
             });
-            setCallParticipants((prev) => prev.filter((p) => String(p.uid) !== String(user.uid) && String(p.userId) !== String(user.uid)));
+            setCallParticipants((prev) => prev.filter((p) => String(p.agoraUid || p.uid) !== String(user.uid)));
             if (!isGroupCall) {
               cleanupCall();
             }
           }
         });
+
+        if (isGroupCall && joinedUid) {
+          socket.emit('group_call_user_joined', {
+            groupId,
+            channelName,
+            agoraUid: joinedUid,
+            userName: currentUser?.name || userId,
+            userAvatar: currentUser?.avatar || null
+          });
+        }
 
         setLocalVideoTrack(lvTrack || null);
       }
@@ -962,43 +1047,37 @@ export default function App() {
       return;
     }
 
-    // Immediately update call state to accepted & signal caller via socket
+    // Immediately update call state to accepted
     setCallState((prev) => (prev ? { ...prev, isAccepted: true, isRinging: false } : null));
-    if (callState.groupId) {
-      socket.emit('group_call_response', {
-        groupId: callState.groupId,
-        channelName,
-        accepted: true,
-        userName: currentUser?.name || userId,
-        userAvatar: currentUser?.avatar || null
+
+    // Reset callParticipants so only actual joined Agora remote users are in the list
+    setCallParticipants([]);
+
+    // Populate metadata
+    callUserMetadataRef.current.clear();
+    callUserMetadataRef.current.set(String(userId), {
+      userId,
+      name: currentUser?.name || currentUser?.fullPhone || 'You',
+      avatar: currentUser?.avatar || null
+    });
+    if (callState.callerId) {
+      callUserMetadataRef.current.set(String(callState.callerId), {
+        userId: callState.callerId,
+        name: callState.callerName || callState.callerId,
+        avatar: callState.peerAvatar || null
       });
-      setCallParticipants((prev) => {
-        const selfExists = prev.some((p) => p.isSelf || p.userId === userId);
-        const next = selfExists ? [...prev] : [{
-          uid: 'self',
-          userId: userId,
-          name: currentUser?.name || currentUser?.fullPhone || 'You',
-          avatar: currentUser?.avatar || null,
-          isSelf: true,
-          isMuted: false,
-          volume: 0
-        }, ...prev];
-        const callerAlreadyAdded = next.some((p) => p.userId === callState.callerId || p.uid === callState.callerId);
-        if (callState.callerId && !callerAlreadyAdded) {
-          next.push({
-            uid: callState.callerId,
-            userId: callState.callerId,
-            name: callState.callerName || callState.callerId,
-            avatar: callState.callerAvatar || null,
-            isSelf: false,
-            isMuted: false,
-            volume: 0
+    }
+    if (callState.groupId && groupDetails?.members) {
+      groupDetails.members.forEach((m) => {
+        const mId = m.userId || m.fullPhone || m.id;
+        if (mId) {
+          callUserMetadataRef.current.set(String(mId), {
+            userId: mId,
+            name: m.name || m.fullPhone || mId,
+            avatar: m.avatar || null
           });
         }
-        return next;
       });
-    } else {
-      socket.emit('answer_call', { to: callState.peerId, channelName });
     }
 
     try {
@@ -1009,7 +1088,7 @@ export default function App() {
 
       if (appId && token) {
         // Join Agora RTC Channel & Publish Camera/Mic Tracks
-        const { localVideoTrack: lvTrack } = await agoraService.joinChannel({
+        const { uid: joinedUid, localVideoTrack: lvTrack } = await agoraService.joinChannel({
           appId,
           channelName,
           token,
@@ -1024,6 +1103,31 @@ export default function App() {
             }
             setSpeakingVolumes(volMap);
           },
+          onUserJoined: (user) => {
+            console.log('[Agora] Remote user joined channel:', user.uid);
+            setCallParticipants((prev) => {
+              const strUid = String(user.uid);
+              const meta = callUserMetadataRef.current.get(strUid) ||
+                (groupDetails?.members?.find((m) => String(m.userId).replace(/\D/g, '') === strUid.replace(/\D/g, '')));
+              const existingIndex = prev.findIndex((p) => String(p.agoraUid || p.uid) === strUid);
+              const participantObj = {
+                uid: user.uid,
+                agoraUid: user.uid,
+                userId: meta?.userId || strUid,
+                name: meta?.name || meta?.profileName || `Participant ${user.uid}`,
+                avatar: meta?.avatar || null,
+                isSelf: false,
+                isMuted: false,
+                volume: 0
+              };
+              if (existingIndex >= 0) {
+                const next = [...prev];
+                next[existingIndex] = { ...next[existingIndex], ...participantObj };
+                return next;
+              }
+              return [...prev, participantObj];
+            });
+          },
           onRemoteUserPublished: (user, mediaType) => {
             if (mediaType === 'video' && user.videoTrack) {
               setRemoteVideoTrack(user.videoTrack);
@@ -1035,26 +1139,25 @@ export default function App() {
             }
             setCallParticipants((prev) => {
               const strUid = String(user.uid);
-              if (prev.some((p) => String(p.uid) === strUid || String(p.userId) === strUid)) {
-                return prev.map((p) => {
-                  if (String(p.userId) === strUid || String(p.uid) === strUid) {
-                    return { ...p, uid: user.uid };
-                  }
-                  return p;
-                });
+              const meta = callUserMetadataRef.current.get(strUid) ||
+                (groupDetails?.members?.find((m) => String(m.userId).replace(/\D/g, '') === strUid.replace(/\D/g, '')));
+              const existingIndex = prev.findIndex((p) => String(p.agoraUid || p.uid) === strUid);
+              const participantObj = {
+                uid: user.uid,
+                agoraUid: user.uid,
+                userId: meta?.userId || strUid,
+                name: meta?.name || meta?.profileName || `Participant ${user.uid}`,
+                avatar: meta?.avatar || null,
+                isSelf: false,
+                isMuted: false,
+                volume: 0
+              };
+              if (existingIndex >= 0) {
+                const next = [...prev];
+                next[existingIndex] = { ...next[existingIndex], ...participantObj };
+                return next;
               }
-              return [
-                ...prev,
-                {
-                  uid: user.uid,
-                  userId: strUid,
-                  name: `Participant ${user.uid}`,
-                  avatar: null,
-                  isSelf: false,
-                  isMuted: false,
-                  volume: 0
-                }
-              ];
+              return [...prev, participantObj];
             });
           },
           onRemoteUserUnpublished: (user, mediaType) => {
@@ -1076,12 +1179,32 @@ export default function App() {
               delete next[String(user.uid)];
               return next;
             });
-            setCallParticipants((prev) => prev.filter((p) => String(p.uid) !== String(user.uid) && String(p.userId) !== String(user.uid)));
+            setCallParticipants((prev) => prev.filter((p) => String(p.agoraUid || p.uid) !== String(user.uid)));
             if (!callState?.groupId) {
               cleanupCall();
             }
           }
         });
+
+        if (callState.groupId) {
+          socket.emit('group_call_response', {
+            groupId: callState.groupId,
+            channelName,
+            accepted: true,
+            userName: currentUser?.name || userId,
+            userAvatar: currentUser?.avatar || null,
+            agoraUid: joinedUid
+          });
+          socket.emit('group_call_user_joined', {
+            groupId: callState.groupId,
+            channelName,
+            agoraUid: joinedUid,
+            userName: currentUser?.name || userId,
+            userAvatar: currentUser?.avatar || null
+          });
+        } else {
+          socket.emit('answer_call', { to: callState.peerId, channelName });
+        }
 
         setLocalVideoTrack(lvTrack || null);
       }

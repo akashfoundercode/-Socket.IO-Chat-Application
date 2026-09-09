@@ -152,22 +152,34 @@ export default function CallModal({
   const allParticipants = React.useMemo(() => {
     if (!isGroup) return [];
     const self = {
-      uid: 'self', userId: currentUserId || 'self',
+      uid: 'self',
+      agoraUid: 'self',
+      userId: currentUserId || 'self',
       name: currentUser?.name || currentUser?.fullPhone || 'You',
-      avatar: currentUser?.avatar || null, isSelf: true,
-      isMuted, volume: speakingVolumes['self'] || speakingVolumes[0] || 0
+      avatar: currentUser?.avatar || null,
+      isSelf: true,
+      isMuted,
+      volume: speakingVolumes['self'] || speakingVolumes[0] || 0
     };
-    const remote = (participants || []).filter(p => !p.isSelf && p.userId !== currentUserId);
-    if (callState.callerId && callState.callerId !== currentUserId && !remote.some(p => p.userId === callState.callerId)) {
-      remote.push({
-        uid: callState.callerId, userId: callState.callerId,
-        name: callState.peerName || callState.callerId,
-        avatar: callState.peerAvatar, isSelf: false, isMuted: false,
-        volume: speakingVolumes[callState.callerId] || 0
-      });
+
+    // Deduplicate and filter out any invalid or self entries
+    const seenKeys = new Set(['self', String(currentUserId)]);
+    const remoteList = [];
+
+    for (const p of (participants || [])) {
+      if (!p || p.isSelf) continue;
+      const agoraKey = p.agoraUid !== undefined && p.agoraUid !== null ? String(p.agoraUid) : (p.uid !== undefined && p.uid !== null ? String(p.uid) : null);
+      const userKey = p.userId ? String(p.userId) : null;
+      if (agoraKey && seenKeys.has(agoraKey)) continue;
+      if (userKey && seenKeys.has(userKey)) continue;
+
+      if (agoraKey) seenKeys.add(agoraKey);
+      if (userKey) seenKeys.add(userKey);
+      remoteList.push(p);
     }
-    return [self, ...remote];
-  }, [isGroup, participants, currentUserId, currentUser, isMuted, speakingVolumes, callState]);
+
+    return [self, ...remoteList];
+  }, [isGroup, participants, currentUserId, currentUser, isMuted, speakingVolumes]);
 
   const count = allParticipants.length;
 
@@ -234,15 +246,15 @@ export default function CallModal({
                 {allParticipants.map((p, i) => {
                   const vol = p.isSelf
                     ? (isMuted ? 0 : (speakingVolumes['self'] || speakingVolumes[0] || 0))
-                    : (speakingVolumes[p.uid] || speakingVolumes[p.userId] || 0);
+                    : (speakingVolumes[p.agoraUid] || speakingVolumes[p.uid] || speakingVolumes[p.userId] || 0);
                   const speaking = vol > 6;
                   const muted = p.isSelf ? isMuted : Boolean(p.isMuted);
                   const vTrack = p.isSelf
                     ? (isVideo ? localVideoTrack : null)
-                    : (isVideo ? (remoteVideoTracks[p.uid] || remoteVideoTracks[p.userId] || (allParticipants.filter(x => !x.isSelf).length === 1 ? Object.values(remoteVideoTracks)[0] : null) || remoteVideoTrack) : null);
+                    : (isVideo ? (remoteVideoTracks[p.agoraUid] || remoteVideoTracks[p.uid] || remoteVideoTracks[p.userId] || (allParticipants.filter(x => !x.isSelf).length === 1 ? Object.values(remoteVideoTracks)[0] : null) || remoteVideoTrack) : null);
                   return (
                     <VideoTile
-                      key={p.uid || p.userId || i}
+                      key={p.agoraUid ? `agora-${p.agoraUid}` : (p.userId ? `user-${p.userId}` : `part-${i}`)}
                       participant={p}
                       videoTrack={isVideo ? vTrack : null}
                       isSpeaking={speaking}

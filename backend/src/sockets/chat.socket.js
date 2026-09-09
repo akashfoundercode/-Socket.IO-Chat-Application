@@ -414,7 +414,7 @@ module.exports = (io) => {
             });
         });
 
-        socket.on("group_call_response", async ({ groupId, channelName, accepted, userName, userAvatar }) => {
+        socket.on("group_call_response", async ({ groupId, channelName, accepted, userName, userAvatar, agoraUid }) => {
             const from = socket.data.userId;
             const cleanGroupId = String(groupId || "").replace(/^group:/, "");
             if (!from || !cleanGroupId) return;
@@ -447,8 +447,23 @@ module.exports = (io) => {
                 channelName,
                 name: userName || from,
                 avatar: userAvatar || null,
+                agoraUid: agoraUid || null,
                 accepted: Boolean(accepted),
                 joinedCount: session ? session.participants.size : 1
+            });
+        });
+
+        socket.on("group_call_user_joined", ({ groupId, channelName, agoraUid, userName, userAvatar }) => {
+            const from = socket.data.userId;
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (!from || !cleanGroupId) return;
+            socket.to(`group:${cleanGroupId}`).emit("group_call_user_joined", {
+                from,
+                groupId: cleanGroupId,
+                channelName,
+                agoraUid,
+                name: userName || from,
+                avatar: userAvatar || null
             });
         });
 
