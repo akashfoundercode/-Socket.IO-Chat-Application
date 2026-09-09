@@ -962,7 +962,7 @@ export default function ChatList({
             </div>
             <div className="wa-item-bottom">
               {isGroup ? (
-                <span className="wa-item-msg">{item.lastMessage || `${item.memberCount || 0} members`}</span>
+                <span className="wa-item-msg">{lastMsg || `${item.memberCount || 0} members`}</span>
               ) : isContactTyping(phoneDisplay) ? (
                 <span className="wa-item-typing">
                   typing
