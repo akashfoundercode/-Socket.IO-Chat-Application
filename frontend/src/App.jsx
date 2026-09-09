@@ -880,6 +880,7 @@ export default function App() {
             if (mediaType === 'video' && user.videoTrack) {
               setRemoteVideoTrack(user.videoTrack);
             }
+            if (isGroupCall) return;
             setCallParticipants((prev) => {
               const strUid = String(user.uid);
               if (prev.some((p) => String(p.uid) === strUid || String(p.userId) === strUid)) return prev;
@@ -942,19 +943,28 @@ export default function App() {
       });
       setCallParticipants((prev) => {
         const selfExists = prev.some((p) => p.isSelf || p.userId === userId);
-        if (selfExists) return prev;
-        return [
-          {
-            uid: 'self',
-            userId: userId,
-            name: currentUser?.name || currentUser?.fullPhone || 'You',
-            avatar: currentUser?.avatar || null,
-            isSelf: true,
+        const next = selfExists ? [...prev] : [{
+          uid: 'self',
+          userId: userId,
+          name: currentUser?.name || currentUser?.fullPhone || 'You',
+          avatar: currentUser?.avatar || null,
+          isSelf: true,
+          isMuted: false,
+          volume: 0
+        }, ...prev];
+        const callerAlreadyAdded = next.some((p) => p.userId === callState.callerId || p.uid === callState.callerId);
+        if (callState.callerId && !callerAlreadyAdded) {
+          next.push({
+            uid: callState.callerId,
+            userId: callState.callerId,
+            name: callState.callerName || callState.callerId,
+            avatar: callState.callerAvatar || null,
+            isSelf: false,
             isMuted: false,
             volume: 0
-          },
-          ...prev
-        ];
+          });
+        }
+        return next;
       });
     } else {
       socket.emit('answer_call', { to: callState.peerId, channelName });
@@ -987,6 +997,9 @@ export default function App() {
             if (mediaType === 'video' && user.videoTrack) {
               setRemoteVideoTrack(user.videoTrack);
             }
+            // In group calls the socket acceptance event is authoritative.
+            // Do not create tiles for arbitrary/stale Agora users.
+            if (callState.groupId) return;
             setCallParticipants((prev) => {
               const strUid = String(user.uid);
               if (prev.some((p) => String(p.uid) === strUid || String(p.userId) === strUid)) return prev;

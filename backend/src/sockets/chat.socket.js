@@ -414,12 +414,23 @@ module.exports = (io) => {
             });
         });
 
-        socket.on("group_call_response", ({ groupId, channelName, accepted, userName, userAvatar }) => {
+        socket.on("group_call_response", async ({ groupId, channelName, accepted, userName, userAvatar }) => {
             const from = socket.data.userId;
             const cleanGroupId = String(groupId || "").replace(/^group:/, "");
             if (!from || !cleanGroupId) return;
 
             const session = channelName ? activeGroupCalls.get(channelName) : null;
+            const isValidSession = session && session.groupId === cleanGroupId;
+            const group = isValidSession ? await chatModel.getGroup(cleanGroupId, from) : null;
+            if (!isValidSession || !group) {
+                socket.emit("group_call_rejected", {
+                    groupId: cleanGroupId,
+                    channelName,
+                    reason: "You are not a member of this group call."
+                });
+                return;
+            }
+
             if (session && accepted) {
                 session.participants.add(from);
                 session.acceptedMembers.add(from);
@@ -445,6 +456,10 @@ module.exports = (io) => {
             const from = socket.data.userId;
             const cleanGroupId = String(groupId || "").replace(/^group:/, "");
             if (!from || !cleanGroupId) return;
+            const session = Array.from(activeGroupCalls.values()).find((call) => (
+                call.groupId === cleanGroupId && call.participants.has(from)
+            ));
+            if (!session) return;
             socket.to(`group:${cleanGroupId}`).emit("group_call_peer_media_status", {
                 from,
                 groupId: cleanGroupId,
@@ -458,6 +473,7 @@ module.exports = (io) => {
             const cleanGroupId = String(groupId || "").replace(/^group:/, "");
             if (cleanGroupId) {
                 const session = channelName ? activeGroupCalls.get(channelName) : null;
+                if (!session || session.groupId !== cleanGroupId || !session.participants.has(from)) return;
                 if (session) {
                     session.participants.delete(from);
                     session.acceptedMembers.delete(from);
