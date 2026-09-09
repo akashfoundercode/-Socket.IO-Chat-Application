@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { chatApi } from '../services/api';
 import QRCode from 'qrcode';
+import Avatar from './Avatar';
 
 export default function ContactInfoModal({
   recipientProfile,
@@ -217,16 +218,17 @@ export default function ContactInfoModal({
         <div className="wa-contact-info-body">
           {/* Large Avatar Header */}
           <div className="wa-contact-avatar-section">
-            <div className="wa-contact-avatar-circle">
-              {avatar ? (
-                avatar.length <= 4 ? (
-                  <span style={{ fontSize: '72px' }}>{avatar}</span>
-                ) : (
-                  <img src={avatar} alt="Contact Avatar" />
-                )
-              ) : (
-                <i className="fa-solid fa-user" style={{ fontSize: '52px', color: 'rgba(255,255,255,0.6)' }}></i>
-              )}
+            <div style={{ position: 'relative', display: 'inline-block', marginBottom: '14px' }}>
+              <Avatar
+                src={avatar}
+                name={displayName}
+                isGroup={isGroup}
+                size={110}
+                style={{
+                  border: '3px solid rgba(255,255,255,0.35)',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.25)'
+                }}
+              />
               {isGroup && isGroupAdmin && (
                 <label className="wa-group-avatar-edit" title="Change group logo">
                   <i className="fa-solid fa-camera"></i>
@@ -456,11 +458,12 @@ export default function ContactInfoModal({
                 {groupDetails?.members?.map((member) => (
                   <div className="wa-group-info-member" key={member.userId}>
                     <div className="wa-group-info-member-main">
-                      <div className="wa-group-info-member-avatar">
-                        {member.avatar ? (
-                          member.avatar.length <= 4 ? <span>{member.avatar}</span> : <img src={member.avatar} alt="" />
-                        ) : <i className="fa-solid fa-user"></i>}
-                      </div>
+                      <Avatar
+                        src={member.avatar}
+                        name={member.name || member.fullPhone || member.userId}
+                        size={40}
+                        showOnline={false}
+                      />
                       <div>
                         <strong className="wa-group-member-name-line">
                           {member.name || member.fullPhone || member.userId}

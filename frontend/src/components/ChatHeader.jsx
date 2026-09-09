@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ContactInfoModal from './ContactInfoModal';
+import Avatar from './Avatar';
 
 export default function ChatHeader({
   userId,
@@ -110,44 +111,16 @@ export default function ChatHeader({
             <i className="fa-solid fa-arrow-left"></i>
           </button>
 
-          <div
-            className="wa-avatar"
-            style={{ position: 'relative', cursor: 'pointer' }}
+          <Avatar
+            src={isGroup ? groupDetails?.avatar : effectiveAvatar}
+            name={displayName}
+            isGroup={isGroup}
+            size={38}
+            showOnline={!isGroup}
+            isOnline={effectiveOnline}
             onClick={() => setShowContactInfo(true)}
-            title="View Contact Info"
-          >
-            {isGroup ? (
-              groupDetails?.avatar ? <img src={groupDetails.avatar} alt="Group" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} /> : <i className="fa-solid fa-users"></i>
-            ) : effectiveAvatar ? (
-              effectiveAvatar.length <= 4 ? (
-                <span style={{ fontSize: '20px', lineHeight: 1 }}>{effectiveAvatar}</span>
-              ) : (
-                <img
-                  src={effectiveAvatar}
-                  alt="Avatar"
-                  style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                />
-              )
-            ) : (
-              <i className="fa-solid fa-user"></i>
-            )}
-            {/* Online Green Dot Badge */}
-            {!isGroup && effectiveOnline && (
-              <span
-                style={{
-                  position: 'absolute',
-                  bottom: '0',
-                  right: '0',
-                  width: '10px',
-                  height: '10px',
-                  backgroundColor: '#f97316',
-                  borderRadius: '50%',
-                  border: '2px solid #ffffff'
-                }}
-                title="Online"
-              />
-            )}
-          </div>
+            style={{ cursor: 'pointer' }}
+          />
 
           <div className="wa-chat-title-wrap">
             <div className="wa-chat-name-row" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

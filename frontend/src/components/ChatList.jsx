@@ -3,6 +3,7 @@ import { chatApi, callApi } from '../services/api';
 import { socket } from '../socket/socket';
 import StatusTab from './StatusTab';
 import QrScanner from 'qr-scanner';
+import Avatar from './Avatar';
 
 const COUNTRY_OPTIONS = [
   { code: '+91', name: 'India', flag: '🇮🇳', digits: 10 },
@@ -907,50 +908,14 @@ export default function ChatList({
             handleSelectUser(phoneDisplay, item);
           }}
         >
-          <div className="wa-item-avatar" style={{ position: 'relative' }}>
-            {isGroup ? (
-              item.avatar ? (
-                item.avatar.length <= 4 ? (
-                  <span style={{ fontSize: '22px', lineHeight: 1 }}>{item.avatar}</span>
-                ) : (
-                  <img
-                    src={item.avatar}
-                    alt="Group"
-                    style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                  />
-                )
-              ) : (
-                <i className="fa-solid fa-users"></i>
-              )
-            ) : item.avatar ? (
-              item.avatar.length <= 4 ? (
-                <span style={{ fontSize: '22px', lineHeight: 1 }}>{item.avatar}</span>
-              ) : (
-                <img
-                  src={item.avatar}
-                  alt="Avatar"
-                  style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                />
-              )
-            ) : (
-              <i className="fa-solid fa-user"></i>
-            )}
-            {online && (
-              <span
-                style={{
-                  position: 'absolute',
-                  bottom: '2px',
-                  right: '2px',
-                  width: '10px',
-                  height: '10px',
-                  backgroundColor: '#f97316',
-                  borderRadius: '50%',
-                  border: '2px solid #ffffff'
-                }}
-                title="Online"
-              />
-            )}
-          </div>
+          <Avatar
+            src={item.avatar}
+            isGroup={isGroup}
+            name={displayName}
+            size={46}
+            showOnline={!isGroup && online}
+            isOnline={online}
+          />
           <div className="wa-item-center">
             <div className="wa-item-top">
               <span className={`wa-item-name ${item.unreadCount > 0 ? 'unread' : ''}`}>{displayName}</span>
@@ -1017,21 +982,11 @@ export default function ChatList({
           title="My Profile & Settings"
           style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
         >
-          <div className="wa-avatar" style={{ width: '36px', height: '36px', fontSize: '18px' }}>
-            {currentUser?.avatar ? (
-              currentUser.avatar.length <= 4 ? (
-                <span>{currentUser.avatar}</span>
-              ) : (
-                <img
-                  src={currentUser.avatar}
-                  alt="My Avatar"
-                  style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                />
-              )
-            ) : (
-              <i className="fa-solid fa-user"></i>
-            )}
-          </div>
+          <Avatar
+            src={currentUser?.avatar}
+            name={currentUser?.name || 'My Profile'}
+            size={36}
+          />
           <div className="wa-inbox-user-name" style={{ fontWeight: '600', fontSize: '15px', color: '#ffffff' }}>
             {currentUser?.name || 'WhatsApp'}
           </div>
@@ -1306,19 +1261,12 @@ export default function ChatList({
                           handleSelectUser(phoneDisplay, item);
                         }}
                       >
-                        <div className="wa-item-avatar" style={{ position: 'relative' }}>
-                          {isGroup ? (
-                            item.avatar ? (
-                              item.avatar.length <= 4 ? (
-                                <span style={{ fontSize: '22px', lineHeight: 1 }}>{item.avatar}</span>
-                              ) : (
-                                <img src={item.avatar} alt="Group" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                              )
-                            ) : <i className="fa-solid fa-users"></i>
-                          ) : (
-                            <i className="fa-solid fa-user"></i>
-                          )}
-                        </div>
+                        <Avatar
+                          src={item.avatar}
+                          isGroup={true}
+                          name={displayName}
+                          size={46}
+                        />
                         <div className="wa-item-center">
                           <div className="wa-item-top">
                             <span className={`wa-item-name ${item.unreadCount > 0 ? 'unread' : ''}`}>{displayName}</span>
@@ -1389,17 +1337,12 @@ export default function ChatList({
                           handleSelectUser(phoneDisplay, item);
                         }}
                       >
-                        <div className="wa-item-avatar" style={{ position: 'relative' }}>
-                          {item.avatar ? (
-                            item.avatar.length <= 4 ? (
-                              <span style={{ fontSize: '22px', lineHeight: 1 }}>{item.avatar}</span>
-                            ) : (
-                              <img src={item.avatar} alt="Group" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                            )
-                          ) : (
-                            <i className="fa-solid fa-users"></i>
-                          )}
-                        </div>
+                        <Avatar
+                          src={item.avatar}
+                          isGroup={Boolean(item.isGroup)}
+                          name={displayName}
+                          size={46}
+                        />
                         <div className="wa-item-center">
                           <div className="wa-item-top">
                             <span className={`wa-item-name ${item.unreadCount > 0 ? 'unread' : ''}`}>{displayName}</span>
@@ -1487,36 +1430,14 @@ export default function ChatList({
                       onClick={() => handleSelectUser(isGroupCall ? `group:${call.groupId}` : peerPhoneDisplay)}
                       title="Tap to open conversation"
                     >
-                      <div className="wa-item-avatar" style={{ position: 'relative' }}>
-                        {call.peerAvatar ? (
-                          call.peerAvatar.length <= 4 ? (
-                            <span style={{ fontSize: '22px', lineHeight: 1 }}>{call.peerAvatar}</span>
-                          ) : (
-                            <img
-                              src={call.peerAvatar}
-                              alt="Avatar"
-                              style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                            />
-                          )
-                        ) : (
-                          <i className="fa-solid fa-user"></i>
-                        )}
-                        {isOnline && (
-                          <span
-                            style={{
-                              position: 'absolute',
-                              bottom: '2px',
-                              right: '2px',
-                              width: '10px',
-                              height: '10px',
-                              backgroundColor: '#f97316',
-                              borderRadius: '50%',
-                              border: '2px solid #ffffff'
-                            }}
-                            title="Online"
-                          />
-                        )}
-                      </div>
+                      <Avatar
+                        src={call.peerAvatar}
+                        isGroup={isGroupCall}
+                        name={displayName}
+                        size={46}
+                        showOnline={!isGroupCall && isOnline}
+                        isOnline={isOnline}
+                      />
 
                       <div className="wa-item-center">
                         <div className="wa-item-top">
@@ -1653,36 +1574,14 @@ export default function ChatList({
                         className="wa-chat-item-row search-match"
                         onClick={() => handleSelectUser(phoneDisplay, user)}
                       >
-                        <div className="wa-item-avatar search-avatar" style={{ position: 'relative' }}>
-                          {user.avatar ? (
-                            user.avatar.length <= 4 ? (
-                              <span style={{ fontSize: '22px', lineHeight: 1 }}>{user.avatar}</span>
-                            ) : (
-                              <img
-                                src={user.avatar}
-                                alt="Avatar"
-                                style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                              />
-                            )
-                          ) : (
-                            <i className="fa-solid fa-user"></i>
-                          )}
-                          {online && (
-                            <span
-                              style={{
-                                position: 'absolute',
-                                bottom: '2px',
-                                right: '2px',
-                                width: '10px',
-                                height: '10px',
-                                backgroundColor: '#f97316',
-                                borderRadius: '50%',
-                                border: '2px solid #ffffff'
-                              }}
-                              title="Online"
-                            />
-                          )}
-                        </div>
+                        <Avatar
+                          src={user.avatar}
+                          name={displayName}
+                          size={46}
+                          showOnline={online}
+                          isOnline={online}
+                          className="search-avatar"
+                        />
                         <div className="wa-item-center">
                           <div className="wa-item-top">
                             <span className="wa-item-name">{displayName}</span>

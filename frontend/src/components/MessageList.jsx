@@ -1,28 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import VoiceNotePlayer from './VoiceNotePlayer';
 import { resolveMediaUrl } from '../services/api';
+import Avatar from './Avatar';
 
 function MessageAvatar({ avatar, label }) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const avatarValue = String(avatar || '').trim();
-  const isEmojiAvatar = avatarValue && avatarValue.length <= 4 && !avatarValue.startsWith('/') && !avatarValue.startsWith('data:') && !avatarValue.startsWith('http');
-
   return (
-    <div className="wa-message-avatar" title={label}>
-      {avatarValue && !imageFailed ? (
-        isEmojiAvatar ? (
-          <span className="wa-message-avatar-emoji">{avatarValue}</span>
-        ) : (
-          <img
-            src={avatarValue}
-            alt={label}
-            onError={() => setImageFailed(true)}
-          />
-        )
-      ) : (
-        <i className="fa-brands fa-whatsapp" aria-label="Default avatar"></i>
-      )}
-    </div>
+    <Avatar
+      src={avatar}
+      name={label}
+      size={28}
+      className="wa-message-avatar-container"
+    />
   );
 }
 

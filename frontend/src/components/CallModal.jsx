@@ -22,17 +22,18 @@ const getAvatarColor = (str) => {
 function CallAvatar({ avatar, name, size = 'default' }) {
   const [imageFailed, setImageFailed] = useState(false);
   const value = String(avatar || '').trim();
-  const isEmoji = value && value.length <= 4 && !value.startsWith('/') && !value.startsWith('data:') && !value.startsWith('http');
+  const isInvalid = !value || value === 'null' || value === 'undefined' || value.toLowerCase() === 'avatar' || value.toLowerCase() === 'contact avatar';
+  const isEmoji = !isInvalid && value.length <= 4 && !value.startsWith('/') && !value.startsWith('data:') && !value.startsWith('http');
 
-  if (value && !imageFailed && isEmoji) {
+  if (!isInvalid && !imageFailed && isEmoji) {
     return <span className={`wa-call-emoji-avatar ${size}`}>{value}</span>;
   }
 
-  if (value && !imageFailed) {
+  if (!isInvalid && !imageFailed) {
     return (
       <img
         src={value}
-        alt={name || 'Call participant'}
+        alt=""
         className={`wa-call-img-avatar ${size}`}
         onError={() => setImageFailed(true)}
       />

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { profileApi } from '../services/api';
 import { socket } from '../socket/socket';
+import Avatar from './Avatar';
 
 const PRESET_ABOUTS = [
   'Available',
@@ -254,13 +255,7 @@ export default function ProfileSettings({ userId, onBack, onProfileUpdated }) {
             onClick={() => setShowAvatarModal(true)}
             title="Change Profile Photo"
           >
-            {profile.avatar && profile.avatar.length <= 4 ? (
-              <span className="wa-avatar-emoji">{profile.avatar}</span>
-            ) : profile.avatar ? (
-              <img src={profile.avatar} alt="Avatar" className="wa-avatar-img" />
-            ) : (
-              <i className="fa-solid fa-user" style={{ fontSize: '48px', color: '#9ca3af' }}></i>
-            )}
+            <Avatar src={profile.avatar} name={profile.name} size={124} />
             <div className="wa-avatar-overlay">
               <i className="fa-solid fa-camera"></i>
             </div>

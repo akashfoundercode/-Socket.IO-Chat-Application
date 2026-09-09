@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { statusApi, resolveMediaUrl } from '../services/api';
 import { socket } from '../socket/socket';
+import Avatar from './Avatar';
 
 const BG_COLORS = [
   '#c2410c', '#ea580c', '#f97316', '#1a1a2e', '#16213e',
@@ -24,15 +25,7 @@ const FONT_MAP = {
 const REACTION_EMOJIS = ['❤️', '😂', '😮', '😢', '😡', '👍', '🔥', '🎉', '😍', '👏'];
 
 function AvatarCircle({ avatar, size = 46 }) {
-  return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-      {avatar
-        ? avatar.length <= 4
-          ? <span style={{ fontSize: size * 0.48 }}>{avatar}</span>
-          : <img src={avatar} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-        : <i className="fa-solid fa-user" style={{ color: '#9ca3af', fontSize: size * 0.4 }}></i>}
-    </div>
-  );
+  return <Avatar src={avatar} size={size} />;
 }
 
 function StatusRing({ avatar, hasNew, size = 52 }) {
