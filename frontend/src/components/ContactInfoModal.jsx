@@ -225,7 +225,7 @@ export default function ContactInfoModal({
                   <img src={avatar} alt="Contact Avatar" />
                 )
               ) : (
-                <i className="fa-solid fa-user" style={{ fontSize: '48px', color: 'rgba(255,255,255,0.7)' }}></i>
+                <i className="fa-solid fa-user" style={{ fontSize: '52px', color: 'rgba(255,255,255,0.6)' }}></i>
               )}
               {isGroup && isGroupAdmin && (
                 <label className="wa-group-avatar-edit" title="Change group logo">
