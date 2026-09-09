@@ -6388,6 +6388,39 @@ body {
   font-size: 12px;
 }
 
+.wa-group-invite-btn.secondary {
+  background: #f3f4f6;
+  color: var(--wa-green-header);
+}
+
+.wa-group-scan-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.wa-qr-scanner-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.wa-qr-scanner-video {
+  width: min(100%, 260px);
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: #111827;
+  object-fit: cover;
+}
+
+.wa-qr-scan-error {
+  color: #dc2626;
+  text-align: center;
+}
+
 /* Orange WhatsApp accent theme */
 .wa-web-top-strip,
 .wa-inbox-header,

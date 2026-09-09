@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { chatApi } from '../services/api';
 import QRCode from 'qrcode';
+import QrScanner from 'qr-scanner';
 
 export default function ContactInfoModal({
   recipientProfile,
@@ -31,6 +32,10 @@ export default function ContactInfoModal({
   const [isSavingGroup, setIsSavingGroup] = useState(false);
   const [groupUpdateMessage, setGroupUpdateMessage] = useState('');
   const [inviteQr, setInviteQr] = useState('');
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const [qrScanError, setQrScanError] = useState('');
+  const qrVideoRef = React.useRef(null);
+  const qrScannerRef = React.useRef(null);
 
   const cleanGroupId = String(recipientId || '').replace(/^group:/, '');
   const groupInviteName = String(groupDetails?.name || 'Group').trim();
@@ -60,6 +65,68 @@ export default function ContactInfoModal({
       await copyInviteLink();
     }
   };
+
+  const shareInviteQr = async () => {
+    if (!inviteQr) return;
+    try {
+      const blob = await (await fetch(inviteQr)).blob();
+      const file = new File([blob], `${groupInviteName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-invite.png`, { type: 'image/png' });
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+        await navigator.share({ title: `Join ${groupInviteName}`, text: inviteLink, files: [file] });
+      } else {
+        const link = document.createElement('a');
+        link.href = inviteQr;
+        link.download = file.name;
+        link.click();
+      }
+    } catch (error) {
+      setGroupUpdateMessage('Could not share QR code');
+      window.setTimeout(() => setGroupUpdateMessage(''), 2500);
+    }
+  };
+
+  const handleQrResult = (result) => {
+    const scannedUrl = typeof result === 'string' ? result : result?.data;
+    if (!scannedUrl) return;
+    try {
+      const url = new URL(scannedUrl);
+      const groupId = url.searchParams.get('joinGroup');
+      if (!groupId) throw new Error('This QR is not a group invite');
+      setShowQrScanner(false);
+      window.location.href = scannedUrl;
+    } catch (error) {
+      setQrScanError('This QR is not a valid group invitation.');
+    }
+  };
+
+  const handleQrFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setQrScanError('');
+    try {
+      const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true });
+      handleQrResult(result);
+    } catch (error) {
+      setQrScanError('QR code could not be read. Try a clearer image.');
+    }
+    event.target.value = '';
+  };
+
+  React.useEffect(() => {
+    if (!showQrScanner || !qrVideoRef.current) return undefined;
+    const scanner = new QrScanner(qrVideoRef.current, (result) => handleQrResult(result), {
+      preferredCamera: 'environment',
+      highlightScanRegion: true,
+      highlightCodeOutline: true
+    });
+    qrScannerRef.current = scanner;
+    scanner.start().catch(() => setQrScanError('Camera permission is required to scan QR.'));
+    return () => {
+      scanner.stop();
+      scanner.destroy();
+      qrScannerRef.current = null;
+    };
+  }, [showQrScanner]);
 
   if (!recipientProfile && !recipientId) return null;
 
@@ -356,7 +423,26 @@ export default function ContactInfoModal({
                   <button type="button" className="wa-group-invite-btn" onClick={shareInviteLink}>
                     <i className="fa-solid fa-share-nodes"></i> Share
                   </button>
+                  <button type="button" className="wa-group-invite-btn" onClick={shareInviteQr}>
+                    <i className="fa-solid fa-qrcode"></i> Share QR
+                  </button>
                 </div>
+                <div className="wa-group-scan-actions">
+                  <button type="button" className="wa-group-invite-btn secondary" onClick={() => { setQrScanError(''); setShowQrScanner(true); }}>
+                    <i className="fa-solid fa-camera"></i> Scan QR
+                  </button>
+                  <label className="wa-group-invite-btn secondary">
+                    <i className="fa-regular fa-image"></i> Scan image
+                    <input type="file" accept="image/*" onChange={handleQrFile} hidden />
+                  </label>
+                </div>
+                {showQrScanner && (
+                  <div className="wa-qr-scanner-panel">
+                    <video ref={qrVideoRef} className="wa-qr-scanner-video" muted playsInline />
+                    {qrScanError && <small className="wa-qr-scan-error">{qrScanError}</small>}
+                    <button type="button" className="wa-group-invite-btn secondary" onClick={() => setShowQrScanner(false)}>Close scanner</button>
+                  </div>
+                )}
               </div>
 
               <div className="wa-group-message-permission">
