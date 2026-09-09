@@ -4725,8 +4725,8 @@ body {
   height: 34px;
   border-radius: 50%;
   border: none;
-  background: #f0f2f5;
-  color: #54656f;
+  background: var(--wa-soft-bg);
+  color: var(--wa-green-dark);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4740,21 +4740,21 @@ body {
 }
 
 .wa-call-action-btn-small.voice {
-  color: #00a884;
+  color: var(--wa-green);
 }
 
 .wa-call-action-btn-small.voice:hover {
-  background-color: #dcf8c6;
-  color: #075e54;
+  background-color: var(--wa-green);
+  color: #ffffff;
 }
 
 .wa-call-action-btn-small.video {
-  color: #00a884;
+  color: var(--wa-green);
 }
 
 .wa-call-action-btn-small.video:hover {
-  background-color: #dcf8c6;
-  color: #075e54;
+  background-color: var(--wa-green);
+  color: #ffffff;
 }
 
 .wa-call-action-btn-small.delete {
@@ -6359,8 +6359,20 @@ body {
 }
 
 .wa-group-member-online-text {
-  color: #008f5a !important;
+  color: var(--wa-green-dark) !important;
   font-weight: 600;
+}
+
+.wa-group-info-member:has(.wa-group-online-dot) {
+  margin: 0 -8px;
+  padding: 9px 8px;
+  border-radius: 8px;
+  background: var(--wa-soft-bg);
+}
+
+.wa-group-info-member:has(.wa-group-online-dot) .wa-group-info-member-avatar {
+  background: var(--wa-green);
+  color: #ffffff;
 }
 
 .wa-group-member-meta {
@@ -7345,4 +7357,61 @@ body {
     box-shadow: none;
     transform: scale(1);
   }
+}
+
+/* WhatsApp System Announcement Badges */
+.wa-system-message-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 10px auto;
+  width: 100%;
+  padding: 0 16px;
+}
+
+.wa-system-message-pill {
+  background-color: rgba(255, 255, 255, 0.95);
+  color: #54656f;
+  font-size: 12.5px;
+  line-height: 1.4;
+  padding: 5px 14px;
+  border-radius: 8px;
+  max-width: 85%;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(11, 20, 26, 0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  word-break: break-word;
+  gap: 6px;
+  font-weight: 500;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.dark .wa-system-message-pill,
+[data-theme="dark"] .wa-system-message-pill {
+  background-color: #18222d;
+  color: #8696a0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.wa-group-remove-btn {
+  background: transparent;
+  color: #ea4335;
+  border: 1px solid rgba(234, 67, 53, 0.3);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.wa-group-remove-btn:hover {
+  background: rgba(234, 67, 53, 0.1);
+  border-color: #ea4335;
 }

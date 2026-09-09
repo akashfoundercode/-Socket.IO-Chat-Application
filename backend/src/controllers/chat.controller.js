@@ -487,12 +487,15 @@ const addGroupMember = async (req, res) => {
         const requesterId = normalizeId(req.body.requesterId || req.body.userId);
         const memberId = normalizeId(req.body.memberId);
         const groupId = req.params.groupId;
-        const group = await chatModel.addGroupMember(groupId, requesterId, memberId);
+        const { group, systemMsg } = await chatModel.addGroupMember(groupId, requesterId, memberId);
 
         // Notify group and new member via socket
         const io = req.app.get('io');
         if (io) {
             io.to(`group:${groupId}`).emit('group_details', group);
+            if (systemMsg) {
+                io.to(`group:${groupId}`).emit('group_message_received', systemMsg);
+            }
             const variants = chatModel.getPhoneVariants(memberId);
             variants.forEach((v) => {
                 io.to(v).emit('group_created', { group });
@@ -500,7 +503,61 @@ const addGroupMember = async (req, res) => {
             });
         }
 
-        return res.json({ success: true, group });
+        return res.json({ success: true, group, systemMsg });
+    } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+const removeGroupMember = async (req, res) => {
+    try {
+        const requesterId = normalizeId(req.body.requesterId || req.query.requesterId || req.body.userId);
+        const memberId = normalizeId(req.params.memberId || req.body.memberId);
+        const groupId = req.params.groupId;
+        const { group, systemMsg } = await chatModel.removeGroupMember(groupId, requesterId, memberId);
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`group:${groupId}`).emit('group_details', group);
+            if (systemMsg) {
+                io.to(`group:${groupId}`).emit('group_message_received', systemMsg);
+            }
+            const variants = chatModel.getPhoneVariants(memberId);
+            variants.forEach((v) => {
+                io.to(v).emit('group_member_removed', { groupId, memberId });
+                io.to(v).emit('conversation_refresh');
+            });
+        }
+
+        return res.json({ success: true, group, systemMsg });
+    } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+const leaveGroup = async (req, res) => {
+    try {
+        const userId = normalizeId(req.body.userId || req.query.userId);
+        const groupId = req.params.groupId;
+        const { success, systemMsg } = await chatModel.leaveGroup(groupId, userId);
+
+        const io = req.app.get('io');
+        if (io) {
+            const group = await chatModel.getGroup(groupId, null);
+            if (group) {
+                io.to(`group:${groupId}`).emit('group_details', group);
+            }
+            if (systemMsg) {
+                io.to(`group:${groupId}`).emit('group_message_received', systemMsg);
+            }
+            const variants = chatModel.getPhoneVariants(userId);
+            variants.forEach((v) => {
+                io.to(v).emit('group_member_left', { groupId, userId });
+                io.to(v).emit('conversation_refresh');
+            });
+        }
+
+        return res.json({ success: true });
     } catch (error) {
         return res.status(400).json({ success: false, message: error.message });
     }
@@ -509,16 +566,22 @@ const addGroupMember = async (req, res) => {
 const joinGroupByInvite = async (req, res) => {
     try {
         const userId = normalizeId(req.body.userId || req.query.userId);
-        const group = await chatModel.joinGroupByInvite(req.params.groupId, userId);
+        const joinMethod = req.body.joinMethod || req.query.joinMethod || 'link';
+        const { group, alreadyMember, systemMsg } = await chatModel.joinGroupByInvite(req.params.groupId, userId, joinMethod);
         const io = req.app.get('io');
         if (io) {
             io.to(`group:${req.params.groupId}`).emit('group_details', group);
-            chatModel.getPhoneVariants(userId).forEach((variant) => {
-                io.to(variant).emit('group_created', { group });
-                io.to(variant).emit('conversation_refresh');
-            });
+            if (systemMsg) {
+                io.to(`group:${req.params.groupId}`).emit('group_message_received', systemMsg);
+            }
+            if (!alreadyMember) {
+                chatModel.getPhoneVariants(userId).forEach((variant) => {
+                    io.to(variant).emit('group_created', { group });
+                    io.to(variant).emit('conversation_refresh');
+                });
+            }
         }
-        return res.json({ success: true, group });
+        return res.json({ success: true, group, alreadyMember });
     } catch (error) {
         return res.status(400).json({ success: false, message: error.message });
     }
@@ -618,6 +681,8 @@ module.exports = {
     getGroups,
     getGroup,
     addGroupMember,
+    removeGroupMember,
+    leaveGroup,
     joinGroupByInvite,
     updateGroup,
     updateGroupMemberRole,

@@ -26,6 +26,97 @@ function MessageAvatar({ avatar, label }) {
   );
 }
 
+function formatSystemMessage(msg, currentUserId) {
+  let sysPayload = null;
+  if (typeof msg.text === 'string' && (msg.text.startsWith('{') || msg.text.startsWith('['))) {
+    try {
+      sysPayload = JSON.parse(msg.text);
+    } catch (e) {
+      sysPayload = null;
+    }
+  } else if (typeof msg.text === 'object' && msg.text !== null) {
+    sysPayload = msg.text;
+  }
+
+  if (!sysPayload || typeof sysPayload !== 'object') {
+    return typeof msg.text === 'string' ? msg.text : 'System announcement';
+  }
+
+  const cleanMyId = String(currentUserId || '').replace(/\D/g, '');
+  const isMe = (id) => {
+    if (!id || !cleanMyId) return false;
+    return String(id).replace(/\D/g, '') === cleanMyId;
+  };
+
+  const action = sysPayload.action;
+
+  if (action === 'create_group') {
+    const creatorIsMe = isMe(sysPayload.creatorId);
+    const groupName = sysPayload.groupName || 'this group';
+    if (creatorIsMe) {
+      return `You created group "${groupName}"`;
+    }
+    const name = sysPayload.creatorName || sysPayload.creatorId || 'Someone';
+    return `${name} created group "${groupName}"`;
+  }
+
+  if (action === 'join_link') {
+    if (isMe(sysPayload.userId || sysPayload.phone)) {
+      return "You joined using this group's invite link";
+    }
+    const name = sysPayload.name || sysPayload.phone || sysPayload.userId || 'A user';
+    return `${name} joined using this group's invite link`;
+  }
+
+  if (action === 'join_qr') {
+    if (isMe(sysPayload.userId || sysPayload.phone)) {
+      return "You joined using group QR code";
+    }
+    const name = sysPayload.name || sysPayload.phone || sysPayload.userId || 'A user';
+    return `${name} joined using group QR code`;
+  }
+
+  if (action === 'add_member') {
+    const actorIsMe = isMe(sysPayload.actorId);
+    const targetIsMe = isMe(sysPayload.targetId);
+    const actorName = actorIsMe ? 'You' : (sysPayload.actorName || sysPayload.actorId || 'Admin');
+    const targetName = targetIsMe ? 'you' : (sysPayload.targetName || sysPayload.targetId || 'user');
+
+    if (actorIsMe) {
+      return `You added ${targetName}`;
+    }
+    if (targetIsMe) {
+      return `${actorName} added you`;
+    }
+    return `${actorName} added ${targetName}`;
+  }
+
+  if (action === 'remove_member') {
+    const actorIsMe = isMe(sysPayload.actorId);
+    const targetIsMe = isMe(sysPayload.targetId);
+    const actorName = actorIsMe ? 'You' : (sysPayload.actorName || sysPayload.actorId || 'Admin');
+    const targetName = targetIsMe ? 'you' : (sysPayload.targetName || sysPayload.targetId || 'user');
+
+    if (actorIsMe) {
+      return `You removed ${targetName}`;
+    }
+    if (targetIsMe) {
+      return `${actorName} removed you`;
+    }
+    return `${actorName} removed ${targetName}`;
+  }
+
+  if (action === 'leave_group') {
+    if (isMe(sysPayload.userId || sysPayload.phone)) {
+      return 'You left';
+    }
+    const name = sysPayload.name || sysPayload.phone || sysPayload.userId || 'A member';
+    return `${name} left`;
+  }
+
+  return typeof msg.text === 'string' ? msg.text : 'System announcement';
+}
+
 export default function MessageList({
   messages,
   currentUserId,
@@ -365,6 +456,18 @@ export default function MessageList({
         </div>
       ) : (
         orderedMessages.map((msg, index) => {
+          if (msg.type === 'system') {
+            const systemText = formatSystemMessage(msg, currentUserId);
+            return (
+              <div key={msg.id || index} className="wa-system-message-row">
+                <div className="wa-system-message-pill">
+                  <i className="fa-solid fa-circle-info" style={{ fontSize: '11px', opacity: 0.7 }}></i>
+                  <span>{systemText}</span>
+                </div>
+              </div>
+            );
+          }
+
           const fromId = String(msg.from || '').trim();
           const myId = String(currentUserId || '').trim();
           const isSent = fromId === myId ||
@@ -694,10 +797,10 @@ export default function MessageList({
                   {isCall && (
                     <div
                       className={`wa-call-message ${callData?.status === 'not_accepted' ||
-                          callData?.status === 'missed' ||
-                          (isGroup && callData?.joinedCount <= 1 && callData?.status !== 'completed')
-                          ? 'missed'
-                          : ''
+                        callData?.status === 'missed' ||
+                        (isGroup && callData?.joinedCount <= 1 && callData?.status !== 'completed')
+                        ? 'missed'
+                        : ''
                         }`}
                     >
                       <i className={`fa-solid ${callData?.callType === 'video' ? 'fa-video' : 'fa-phone'}`}></i>

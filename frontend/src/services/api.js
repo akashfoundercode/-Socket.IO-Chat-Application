@@ -225,9 +225,19 @@ export const chatApi = {
     body: JSON.stringify({ requesterId, memberId })
   }),
 
-  joinGroupByInvite: (groupId, userId) => request(`/api/chat/groups/${encodeURIComponent(groupId)}/join`, {
+  removeGroupMember: (groupId, requesterId, memberId) => request(`/api/chat/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ requesterId })
+  }),
+
+  leaveGroup: (groupId, userId) => request(`/api/chat/groups/${encodeURIComponent(groupId)}/leave`, {
     method: 'POST',
     body: JSON.stringify({ userId })
+  }),
+
+  joinGroupByInvite: (groupId, userId, joinMethod = 'link') => request(`/api/chat/groups/${encodeURIComponent(groupId)}/join`, {
+    method: 'POST',
+    body: JSON.stringify({ userId, joinMethod })
   }),
 
   updateGroup: (groupId, requesterId, changes) => request(`/api/chat/groups/${encodeURIComponent(groupId)}`, {

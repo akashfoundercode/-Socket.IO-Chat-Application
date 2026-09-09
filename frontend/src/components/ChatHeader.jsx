@@ -23,7 +23,9 @@ export default function ChatHeader({
   groupDetails = null,
   onUpdateGroup,
   onAddGroupMember,
-  onUpdateGroupMemberRole
+  onUpdateGroupMemberRole,
+  onRemoveGroupMember,
+  onLeaveGroup
 }) {
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -267,7 +269,21 @@ export default function ChatHeader({
                   <i className="fa-solid fa-user-pen"></i> Edit contact name
                 </button>}
 
-                {!isGroup && (isBlockedByMe ? (
+                {isGroup ? (
+                  <button
+                    type="button"
+                    className="wa-menu-item"
+                    style={{ color: '#ea4335' }}
+                    onClick={async () => {
+                      setShowMenu(false);
+                      if (window.confirm(`Exit "${displayName}" group? You will no longer be able to send or receive messages in this group.`)) {
+                        await onLeaveGroup?.(recipientId);
+                      }
+                    }}
+                  >
+                    <i className="fa-solid fa-arrow-right-from-bracket"></i> Exit group
+                  </button>
+                ) : (isBlockedByMe ? (
                   <button
                     type="button"
                     className="wa-menu-item"
@@ -339,6 +355,8 @@ export default function ChatHeader({
           onUpdateGroup={onUpdateGroup}
           onAddGroupMember={onAddGroupMember}
           onUpdateGroupMemberRole={onUpdateGroupMemberRole}
+          onRemoveGroupMember={onRemoveGroupMember}
+          onLeaveGroup={onLeaveGroup}
         />
       )}
 

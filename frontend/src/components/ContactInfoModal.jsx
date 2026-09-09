@@ -19,7 +19,9 @@ export default function ContactInfoModal({
   currentUserId = '',
   onUpdateGroup,
   onAddGroupMember,
-  onUpdateGroupMemberRole
+  onUpdateGroupMemberRole,
+  onRemoveGroupMember,
+  onLeaveGroup
 }) {
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
@@ -35,15 +37,18 @@ export default function ContactInfoModal({
   const cleanGroupId = String(recipientId || '').replace(/^group:/, '');
   const groupInviteName = String(groupDetails?.name || 'Group').trim();
   const inviteLink = typeof window !== 'undefined'
-    ? `${window.location.origin}/?joinGroup=${encodeURIComponent(cleanGroupId)}&groupName=${encodeURIComponent(groupInviteName)}`
+    ? `${window.location.origin}/?joinGroup=${encodeURIComponent(cleanGroupId)}&groupName=${encodeURIComponent(groupInviteName)}&via=link`
+    : '';
+  const qrInviteLink = typeof window !== 'undefined'
+    ? `${window.location.origin}/?joinGroup=${encodeURIComponent(cleanGroupId)}&groupName=${encodeURIComponent(groupInviteName)}&via=qr`
     : '';
 
   React.useEffect(() => {
-    if (!isGroup || !inviteLink) return;
-    QRCode.toDataURL(inviteLink, { width: 220, margin: 2 })
+    if (!isGroup || !qrInviteLink) return;
+    QRCode.toDataURL(qrInviteLink, { width: 220, margin: 2 })
       .then(setInviteQr)
       .catch(() => setInviteQr(''));
-  }, [isGroup, inviteLink]);
+  }, [isGroup, qrInviteLink]);
 
   const copyInviteLink = async () => {
     if (!inviteLink) return;
@@ -472,22 +477,54 @@ export default function ContactInfoModal({
                     {isGroupAdmin &&
                       String(member.userId).replace(/^\+/, '') !== String(currentUserId).replace(/^\+/, '') &&
                       String(member.userId).replace(/^\+/, '') !== String(groupDetails?.creatorId || '').replace(/^\+/, '') && (
-                        <button
-                          type="button"
-                          className="wa-group-role-btn"
-                          onClick={async () => {
-                            const nextRole = member.role === 'admin' ? 'member' : 'admin';
-                            const action = nextRole === 'admin' ? 'make this member an admin' : 'remove admin rights from this member';
-                            if (window.confirm(`Are you sure you want to ${action}?`)) {
-                              await onUpdateGroupMemberRole?.(recipientId, member.userId, nextRole);
-                            }
-                          }}
-                        >
-                          {member.role === 'admin' ? 'Remove admin' : 'Make admin'}
-                        </button>
+                        <div className="wa-group-member-action-btns" style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="wa-group-role-btn"
+                            onClick={async () => {
+                              const nextRole = member.role === 'admin' ? 'member' : 'admin';
+                              const action = nextRole === 'admin' ? 'make this member an admin' : 'remove admin rights from this member';
+                              if (window.confirm(`Are you sure you want to ${action}?`)) {
+                                await onUpdateGroupMemberRole?.(recipientId, member.userId, nextRole);
+                              }
+                            }}
+                          >
+                            {member.role === 'admin' ? 'Remove admin' : 'Make admin'}
+                          </button>
+                          <button
+                            type="button"
+                            className="wa-group-remove-btn"
+                            onClick={async () => {
+                              const memberDisplayName = member.name || member.fullPhone || member.userId;
+                              if (window.confirm(`Are you sure you want to remove ${memberDisplayName} from "${displayName}"?`)) {
+                                await onRemoveGroupMember?.(recipientId, member.userId);
+                              }
+                            }}
+                            title="Remove member"
+                          >
+                            <i className="fa-solid fa-user-xmark"></i> Remove
+                          </button>
+                        </div>
                       )}
                   </div>
                 ))}
+              </div>
+
+              {/* Exit / Leave Group Section */}
+              <div className="wa-contact-card danger-card" style={{ marginTop: '16px' }}>
+                <button
+                  type="button"
+                  className="wa-contact-danger-btn block-btn"
+                  onClick={async () => {
+                    if (window.confirm(`Exit "${displayName}" group? You will no longer be able to send or receive messages in this group.`)) {
+                      onClose && onClose();
+                      await onLeaveGroup?.(recipientId);
+                    }
+                  }}
+                >
+                  <i className="fa-solid fa-arrow-right-from-bracket"></i>
+                  <span>Exit group</span>
+                </button>
               </div>
             </div>
           ) : (
