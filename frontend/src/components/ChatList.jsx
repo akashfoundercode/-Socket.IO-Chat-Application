@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { chatApi, callApi } from '../services/api';
 import { socket } from '../socket/socket';
 import StatusTab from './StatusTab';
+import QrScanner from 'qr-scanner';
 
 const COUNTRY_OPTIONS = [
   { code: '+91', name: 'India', flag: '🇮🇳', digits: 10 },
@@ -31,7 +32,8 @@ export default function ChatList({
   recentMessages,
   drafts = {},
   theme = 'orange',
-  onThemeChange
+  onThemeChange,
+  onJoinGroupInvite
 }) {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +48,51 @@ export default function ChatList({
   const [creatingGroup, setCreatingGroup] = useState(false);
   const conversationsOwnerRef = useRef('');
   const menuRef = useRef(null);
+  const qrVideoRef = useRef(null);
+  const qrScannerRef = useRef(null);
+  const qrFileInputRef = useRef(null);
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const [qrScanError, setQrScanError] = useState('');
+
+  useEffect(() => {
+    if (!showQrScanner || !qrVideoRef.current) return undefined;
+    const scanner = new QrScanner(qrVideoRef.current, (result) => {
+      const scannedUrl = typeof result === 'string' ? result : result?.data;
+      try {
+        const url = new URL(scannedUrl);
+        const groupId = url.searchParams.get('joinGroup');
+        if (!groupId) throw new Error('Invalid invite');
+        setShowQrScanner(false);
+        onJoinGroupInvite?.(groupId, scannedUrl);
+      } catch {
+        setQrScanError('This QR is not a valid group invitation.');
+      }
+    }, { preferredCamera: 'environment', highlightScanRegion: true, highlightCodeOutline: true });
+    qrScannerRef.current = scanner;
+    scanner.start().catch(() => setQrScanError('Camera permission is required.'));
+    return () => {
+      scanner.stop();
+      scanner.destroy();
+      qrScannerRef.current = null;
+    };
+  }, [showQrScanner, onJoinGroupInvite]);
+
+  const handleQrImageScan = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setQrScanError('');
+    try {
+      const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true });
+      const scannedUrl = typeof result === 'string' ? result : result?.data;
+      const url = new URL(scannedUrl);
+      const groupId = url.searchParams.get('joinGroup');
+      if (!groupId) throw new Error('Invalid invite');
+      onJoinGroupInvite?.(groupId, scannedUrl);
+    } catch {
+      setQrScanError('This QR is not a valid group invitation.');
+    }
+    event.target.value = '';
+  };
 
   // Call Logs state
   const [callLogs, setCallLogs] = useState([]);
@@ -742,11 +789,21 @@ export default function ChatList({
       try {
         const callData = typeof item.lastMessage === 'string' ? JSON.parse(item.lastMessage) : item.lastMessage;
         const callLabel = callData?.callType === 'video' ? 'Video call' : 'Voice call';
-        lastMsg = callData?.status === 'missed'
-          ? `📞 Missed ${callLabel.toLowerCase()}`
-          : callData?.status === 'declined'
-            ? `📞 ${callLabel} declined`
-            : `📞 ${callLabel} ended`;
+        if (isGroup) {
+          if (callData?.status === 'not_accepted' || callData?.status === 'missed' || (callData?.joinedCount <= 1 && callData?.status !== 'completed')) {
+            lastMsg = '📞 Group call • Not accepted';
+          } else if (callData?.joinedCount > 1) {
+            lastMsg = `📞 Group call • ${callData.joinedCount} joined`;
+          } else {
+            lastMsg = '📞 Group call ended';
+          }
+        } else {
+          lastMsg = callData?.status === 'missed'
+            ? `📞 Missed ${callLabel.toLowerCase()}`
+            : callData?.status === 'declined'
+              ? `📞 ${callLabel} declined`
+              : `📞 ${callLabel} ended`;
+        }
       } catch (e) {
         lastMsg = '📞 Call';
       }
@@ -980,6 +1037,23 @@ export default function ChatList({
           <button
             type="button"
             className="wa-inbox-icon"
+            title="Scan Group QR"
+            onClick={() => { setQrScanError(''); setShowQrScanner(true); }}
+          >
+            <i className="fa-solid fa-qrcode"></i>
+          </button>
+          <button
+            type="button"
+            className="wa-inbox-icon"
+            title="Scan QR image"
+            onClick={() => qrFileInputRef.current?.click()}
+          >
+            <i className="fa-regular fa-image"></i>
+          </button>
+          <input ref={qrFileInputRef} type="file" accept="image/*" onChange={handleQrImageScan} hidden />
+          <button
+            type="button"
+            className="wa-inbox-icon"
             title="Search"
             onClick={() => {
               const el = document.getElementById('chat-search');
@@ -1079,6 +1153,17 @@ export default function ChatList({
           </div>
         </div>
       </div>
+
+      {showQrScanner && (
+        <div className="wa-qr-scanner-overlay" onClick={() => setShowQrScanner(false)}>
+          <div className="wa-qr-scanner-dialog" onClick={(event) => event.stopPropagation()}>
+            <h3>Scan group QR</h3>
+            <video ref={qrVideoRef} className="wa-qr-scanner-video" muted playsInline />
+            {qrScanError && <small className="wa-qr-scan-error">{qrScanError}</small>}
+            <button type="button" className="wa-group-invite-btn secondary" onClick={() => setShowQrScanner(false)}>Close</button>
+          </div>
+        </div>
+      )}
 
       {/* WhatsApp Tabs Bar */}
       <div className="wa-tabs-bar">
@@ -1428,19 +1513,39 @@ export default function ChatList({
                         </div>
                         <div className="wa-item-bottom">
                           <span className="wa-call-subtitle-info">
-                            {isMissed ? (
+                            {isGroupCall ? (
+                              isMissed || call.status === 'not_accepted' ? (
+                                <>
+                                  <i className="fa-solid fa-arrow-down-left" style={{ color: '#ef4444', marginRight: '5px', fontSize: '13px' }}></i>
+                                  <span style={{ color: '#ef4444', fontWeight: '600' }}>Not accepted</span>
+                                  <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <i className="fa-solid fa-arrow-up-right" style={{ color: '#f97316', marginRight: '5px', fontSize: '13px' }}></i>
+                                  <span style={{ color: '#f97316', fontWeight: '600' }}>
+                                    {call.joinedCount > 0 ? `${call.joinedCount} joined` : 'Completed'}
+                                  </span>
+                                  {call.duration > 0 && (
+                                    <span style={{ color: '#8696a0', marginLeft: '5px' }}>({formatDuration(call.duration)})</span>
+                                  )}
+                                  <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
+                                  {call.groupMembers?.length > 0 && (
+                                    <small className="wa-call-members-preview">• {call.groupMembers.slice(0, 3).join(', ')}</small>
+                                  )}
+                                </>
+                              )
+                            ) : isMissed ? (
                               <>
                                 <i className="fa-solid fa-arrow-down-left" style={{ color: '#ef4444', marginRight: '5px', fontSize: '13px' }}></i>
                                 <span style={{ color: '#ef4444', fontWeight: '600' }}>Missed</span>
                                 <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
-                                {isGroupCall && call.groupMembers?.length > 0 && <small className="wa-call-members-preview">• {call.groupMembers.slice(0, 3).join(', ')}</small>}
                               </>
                             ) : isDeclined ? (
                               <>
                                 <i className="fa-solid fa-arrow-down-left" style={{ color: '#ef4444', marginRight: '5px', fontSize: '13px' }}></i>
                                 <span style={{ color: '#ef4444' }}>Declined</span>
                                 <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
-                                {isGroupCall && call.groupMembers?.length > 0 && <small className="wa-call-members-preview">• {call.groupMembers.slice(0, 3).join(', ')}</small>}
                               </>
                             ) : isOutgoing ? (
                               <>
@@ -1452,7 +1557,6 @@ export default function ChatList({
                                   <span style={{ color: '#8696a0', marginLeft: '5px' }}>• Unanswered</span>
                                 )}
                                 <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
-                                {isGroupCall && call.groupMembers?.length > 0 && <small className="wa-call-members-preview">• {call.groupMembers.slice(0, 3).join(', ')}</small>}
                               </>
                             ) : (
                               <>
@@ -1462,7 +1566,6 @@ export default function ChatList({
                                   <span style={{ color: '#8696a0', marginLeft: '5px' }}>({formatDuration(call.duration)})</span>
                                 )}
                                 <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
-                                {isGroupCall && call.groupMembers?.length > 0 && <small className="wa-call-members-preview">• {call.groupMembers.slice(0, 3).join(', ')}</small>}
                               </>
                             )}
                           </span>

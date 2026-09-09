@@ -354,7 +354,10 @@ module.exports = (io) => {
                     channelName: cName,
                     groupId: cleanGroupId,
                     groupName: group.name || 'Group',
-                    memberNames: (group.members || []).map((member) => member.name || member.fullPhone || member.userId)
+                    memberNames: {
+                        joinedCount: 1,
+                        members: [callerName || from]
+                    }
                 });
             } catch (err) {
                 console.error('create group call log error:', err.message);
@@ -363,9 +366,14 @@ module.exports = (io) => {
                 callId: callLog?.id,
                 groupId: cleanGroupId,
                 callerId: from,
+                callerName: callerName || from,
                 callType: callType || "voice",
                 groupName: group.name || "Group",
-                memberNames: (group.members || []).slice(0, 3).map((member) => member.name || member.fullPhone || member.userId),
+                groupAvatar: group.avatar || null,
+                participants: new Set([from]),
+                participantNames: new Map([[from, callerName || from]]),
+                acceptedMembers: new Set(),
+                startedAt: Date.now(),
                 ended: false
             });
             socket.join(`group:${cleanGroupId}`);
@@ -373,6 +381,8 @@ module.exports = (io) => {
             socket.to(`group:${cleanGroupId}`).emit("incoming_group_call", {
                 from,
                 groupId: cleanGroupId,
+                groupName: group.name || "Group",
+                groupAvatar: group.avatar || null,
                 callerName: callerName || from,
                 callerAvatar: callerAvatar || null,
                 callType: callType || "voice",
@@ -384,6 +394,14 @@ module.exports = (io) => {
             const from = socket.data.userId;
             const cleanGroupId = String(groupId || "").replace(/^group:/, "");
             if (!from || !cleanGroupId) return;
+
+            const session = channelName ? activeGroupCalls.get(channelName) : null;
+            if (session && accepted) {
+                session.participants.add(from);
+                session.acceptedMembers.add(from);
+                session.participantNames.set(from, userName || from);
+            }
+
             if (accepted) {
                 socket.join(`group:${cleanGroupId}`);
             }
@@ -393,7 +411,8 @@ module.exports = (io) => {
                 channelName,
                 name: userName || from,
                 avatar: userAvatar || null,
-                accepted: Boolean(accepted)
+                accepted: Boolean(accepted),
+                joinedCount: session ? session.participants.size : 1
             });
         });
 
@@ -424,8 +443,21 @@ module.exports = (io) => {
             const session = channelName ? activeGroupCalls.get(channelName) : null;
             if (session && !session.ended) {
                 session.ended = true;
+                const totalJoined = session.participants.size;
+                const hasAccepted = session.acceptedMembers.size > 0;
+                const finalStatus = hasAccepted ? 'completed' : 'not_accepted';
+                const callDuration = hasAccepted ? Math.max(1, Math.round((Date.now() - session.startedAt) / 1000)) : 0;
+                const memberNamesList = Array.from(session.participantNames.values());
+
                 if (session.callId) {
-                    chatModel.updateCallLog(session.callId, { status: 'completed', duration: 0 }).catch((err) => {
+                    chatModel.updateCallLog(session.callId, {
+                        status: finalStatus,
+                        duration: callDuration,
+                        memberNames: {
+                            joinedCount: totalJoined,
+                            members: memberNamesList
+                        }
+                    }).catch((err) => {
                         console.error('update group call log error:', err.message);
                     });
                 }
@@ -434,15 +466,19 @@ module.exports = (io) => {
                     senderId: session.callerId,
                     text: JSON.stringify({
                         callType: session.callType,
-                        status: 'completed',
+                        status: finalStatus,
+                        joinedCount: totalJoined,
+                        duration: callDuration,
                         groupName: session.groupName,
-                        memberNames: session.memberNames
+                        callerName: session.callerName,
+                        memberNames: memberNamesList
                     }),
                     type: 'call'
                 }).then((message) => {
                     io.to(`group:${cleanGroupId}`).emit('group_message_received', message);
                     io.to(`group:${cleanGroupId}`).emit('conversation_refresh');
                 }).catch((err) => console.error('group call message error:', err.message));
+
                 activeGroupCalls.delete(channelName);
                 io.to(`group:${cleanGroupId}`).emit('call_log_updated');
             }

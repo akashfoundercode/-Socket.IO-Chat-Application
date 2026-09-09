@@ -6421,6 +6421,28 @@ body {
   text-align: center;
 }
 
+.wa-qr-scanner-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(17, 24, 39, 0.62);
+}
+
+.wa-qr-scanner-dialog {
+  width: min(100%, 340px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
 /* Orange WhatsApp accent theme */
 .wa-web-top-strip,
 .wa-inbox-header,

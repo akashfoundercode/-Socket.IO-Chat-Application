@@ -1174,21 +1174,28 @@ const reactToGroupMessage = async (groupId, messageId, userId, emoji) => {
 };
 
 /**
- * 9. Update an existing call log entry (e.g. status, duration)
+ * 9. Update an existing call log entry (e.g. status, duration, memberNames)
  */
-const updateCallLog = async (callId, { status, duration }) => {
+const updateCallLog = async (callId, { status, duration, memberNames }) => {
     const pool = getPool();
     const cleanId = Number(callId);
     if (!cleanId) return null;
 
+    let memberNamesStr = null;
+    if (memberNames !== undefined) {
+        memberNamesStr = typeof memberNames === 'string' ? memberNames : JSON.stringify(memberNames);
+    }
+
     await pool.execute(
         `UPDATE call_logs 
          SET status = COALESCE(?, status),
-             duration = COALESCE(?, duration)
+             duration = COALESCE(?, duration),
+             member_names = COALESCE(?, member_names)
          WHERE id = ?`,
         [
             status !== undefined ? status : null,
             duration !== undefined ? Number(duration) : null,
+            memberNamesStr,
             cleanId
         ]
     );
@@ -1305,25 +1312,46 @@ const getCallLogs = async (userId) => {
         };
     });
 
-    const groupCalls = groupRows.map((r) => ({
-        id: Number(r.id),
-        callerId: r.callerId,
-        receiverId: `group:${r.groupId}`,
-        peerId: `group:${r.groupId}`,
-        peerName: r.groupName,
-        groupName: r.groupName,
-        groupId: String(r.groupId),
-        groupMembers: r.memberNames ? JSON.parse(r.memberNames) : [],
-        peerPhone: `group:${r.groupId}`,
-        peerAvatar: null,
-        callType: r.callType || 'voice',
-        direction: userVars.includes(String(r.callerId)) ? 'outgoing' : 'incoming',
-        isMissed: r.rawStatus === 'missed',
-        status: r.rawStatus,
-        duration: Number(r.duration || 0),
-        createdAt: r.createdAt,
-        isGroup: true
-    }));
+    const groupCalls = groupRows.map((r) => {
+        let parsedMembers = [];
+        let joinedCount = 0;
+        if (r.memberNames) {
+            try {
+                const parsed = JSON.parse(r.memberNames);
+                if (Array.isArray(parsed)) {
+                    parsedMembers = parsed;
+                } else if (parsed && typeof parsed === 'object') {
+                    parsedMembers = parsed.members || [];
+                    joinedCount = parsed.joinedCount || 0;
+                }
+            } catch (e) {
+                parsedMembers = [];
+            }
+        }
+
+        const isNotAccepted = r.rawStatus === 'not_accepted' || r.rawStatus === 'missed' || (r.duration === 0 && joinedCount <= 1 && r.rawStatus !== 'completed');
+
+        return {
+            id: Number(r.id),
+            callerId: r.callerId,
+            receiverId: `group:${r.groupId}`,
+            peerId: `group:${r.groupId}`,
+            peerName: r.groupName,
+            groupName: r.groupName,
+            groupId: String(r.groupId),
+            groupMembers: parsedMembers,
+            joinedCount: joinedCount,
+            peerPhone: `group:${r.groupId}`,
+            peerAvatar: null,
+            callType: r.callType || 'voice',
+            direction: userVars.includes(String(r.callerId)) ? 'outgoing' : 'incoming',
+            isMissed: isNotAccepted,
+            status: isNotAccepted ? 'not_accepted' : r.rawStatus,
+            duration: Number(r.duration || 0),
+            createdAt: r.createdAt,
+            isGroup: true
+        };
+    });
 
     return [...personalCalls, ...groupCalls].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };

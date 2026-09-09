@@ -192,7 +192,7 @@ export default function CallModal({
         <div className="wa-incoming-call-card">
           <div className="wa-call-header-tag">
             <i className={`fa-solid ${isVideo ? 'fa-video' : 'fa-phone'}`}></i>
-            <span>{isGroup ? 'Incoming Group' : 'Incoming WhatsApp'} {isVideo ? 'Video' : 'Voice'} Call</span>
+            <span>{isGroup ? 'Group' : 'Incoming'} {isVideo ? 'Video' : 'Voice'} Call</span>
           </div>
 
           <div className="wa-incoming-avatar-wrap">
@@ -201,13 +201,11 @@ export default function CallModal({
           </div>
 
           <h3 className="wa-incoming-name">{peerName}</h3>
-          <p className="wa-incoming-status">
-            {callState.isCallWaiting
-              ? 'Incoming Call Waiting...'
-              : isGroup
-                ? 'Group Call Invitation'
-                : 'Ringing...'}
-          </p>
+          {isGroup && callState.callerName && (
+            <p className="wa-incoming-status" style={{ fontSize: '13px', opacity: 0.85 }}>
+              from {callState.callerName}
+            </p>
+          )}
 
           <div className="wa-incoming-actions">
             {/* Decline Call Button */}
@@ -226,10 +224,10 @@ export default function CallModal({
               type="button"
               className="wa-call-action-btn accept"
               onClick={onAcceptCall}
-              title="Accept Call"
+              title={isGroup ? 'Join Call' : 'Accept Call'}
             >
               <i className={`fa-solid ${isVideo ? 'fa-video' : 'fa-phone'}`}></i>
-              <span>Join Call</span>
+              <span>{isGroup ? 'Join' : 'Accept'}</span>
             </button>
           </div>
         </div>

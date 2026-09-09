@@ -362,7 +362,7 @@ export default function App() {
       startIncomingRingtone();
     }
 
-    function onIncomingGroupCall({ from, groupId, callerName, callerAvatar, callType, channelName }) {
+    function onIncomingGroupCall({ from, groupId, groupName, groupAvatar, callerName, callerAvatar, callType, channelName }) {
       setCallState({
         isIncoming: true,
         isAccepted: false,
@@ -372,8 +372,9 @@ export default function App() {
         peerId: `group:${groupId}`,
         groupId: String(groupId),
         callerId: from,
-        peerName: `${callerName || from} (group call)`,
-        peerAvatar: callerAvatar || null
+        peerName: groupName || 'Group Call',
+        callerName: callerName || from,
+        peerAvatar: groupAvatar || callerAvatar || null
       });
       setCallParticipants([
         {
@@ -1114,6 +1115,18 @@ export default function App() {
     }
   };
 
+  const handleJoinGroupInvite = (groupId, inviteUrl) => {
+    if (!groupId || !userId) return;
+    chatApi.joinGroupByInvite(groupId, userId)
+      .then((data) => {
+        if (data?.group?.id) {
+          handleSelectChat(`group:${data.group.id}`, { ...data.group, isGroup: true, groupId: data.group.id });
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      })
+      .catch((error) => window.alert(error.message || 'Could not join group'));
+  };
+
   useEffect(() => {
     const groupId = new URLSearchParams(window.location.search).get('joinGroup');
     if (!groupId || !userId) return;
@@ -1357,6 +1370,7 @@ export default function App() {
                 drafts={drafts}
                 theme={theme}
                 onThemeChange={handleThemeChange}
+                onJoinGroupInvite={handleJoinGroupInvite}
               />
             )}
           </aside>

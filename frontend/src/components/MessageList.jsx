@@ -692,18 +692,43 @@ export default function MessageList({
                   )}
 
                   {isCall && (
-                    <div className={`wa-call-message ${callData?.status === 'missed' ? 'missed' : ''}`}>
+                    <div
+                      className={`wa-call-message ${
+                        callData?.status === 'not_accepted' ||
+                        callData?.status === 'missed' ||
+                        (isGroup && callData?.joinedCount <= 1 && callData?.status !== 'completed')
+                          ? 'missed'
+                          : ''
+                      }`}
+                    >
                       <i className={`fa-solid ${callData?.callType === 'video' ? 'fa-video' : 'fa-phone'}`}></i>
-                      <span>
-                        {callData?.status === 'missed'
-                          ? 'Missed call'
-                          : callData?.status === 'declined'
-                            ? 'Call declined'
-                            : `Call ended${callData?.duration ? ` • ${Math.floor(callData.duration / 60)}:${String(callData.duration % 60).padStart(2, '0')}` : ''}`}
-                        {isGroup && callData?.memberNames?.length > 0 && (
-                          <small className="wa-group-call-members">{callData.memberNames.join(', ')}</small>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{ fontWeight: '500' }}>
+                          {isGroup ? (
+                            callData?.status === 'not_accepted' ||
+                            callData?.status === 'missed' ||
+                            (callData?.joinedCount <= 1 && callData?.status !== 'completed')
+                              ? 'Group voice call • Not accepted'
+                              : `Group voice call • ${callData?.joinedCount || 2} joined`
+                          ) : callData?.status === 'missed' ? (
+                            `Missed ${callData?.callType === 'video' ? 'video' : 'voice'} call`
+                          ) : callData?.status === 'declined' ? (
+                            `${callData?.callType === 'video' ? 'Video' : 'Voice'} call declined`
+                          ) : (
+                            `${callData?.callType === 'video' ? 'Video' : 'Voice'} call ended`
+                          )}
+                          {callData?.duration > 0 && (
+                            <span style={{ marginLeft: '6px', fontSize: '12px', opacity: 0.85 }}>
+                              ({Math.floor(callData.duration / 60)}:{String(callData.duration % 60).padStart(2, '0')})
+                            </span>
+                          )}
+                        </span>
+                        {isGroup && Array.isArray(callData?.memberNames) && callData.memberNames.length > 0 && (
+                          <small className="wa-group-call-members" style={{ fontSize: '11px', opacity: 0.75 }}>
+                            {callData.memberNames.slice(0, 4).join(', ')}
+                          </small>
                         )}
-                      </span>
+                      </div>
                     </div>
                   )}
 
