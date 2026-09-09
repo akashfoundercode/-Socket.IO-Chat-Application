@@ -22,9 +22,13 @@ export default function App() {
     }
   });
 
-  const [activeChat, setActiveChat] = useState(null); // recipient phone e.g. "+919876543210"
+  const [activeChat, setActiveChat] = useState(() => {
+    try { return localStorage.getItem('wa_active_chat') || null; } catch { return null; }
+  });
   const [recipientProfile, setRecipientProfile] = useState(null);
-  const [currentView, setCurrentView] = useState('inbox'); // 'inbox' | 'chat' | 'profile'
+  const [currentView, setCurrentView] = useState(() => {
+    try { return localStorage.getItem('wa_active_chat') ? 'chat' : 'inbox'; } catch { return 'inbox'; }
+  });
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
   const [typingUsers, setTypingUsers] = useState(new Set());
@@ -148,6 +152,7 @@ export default function App() {
         setGroupDetails(null);
         setMessages([]);
         setCurrentView('inbox');
+        try { localStorage.removeItem('wa_active_chat'); } catch {}
       }
       setRecentMessageEvent({ type: 'group_member_removed', groupId, memberId, timestamp: Date.now() });
     }
@@ -160,6 +165,7 @@ export default function App() {
         setGroupDetails(null);
         setMessages([]);
         setCurrentView('inbox');
+        try { localStorage.removeItem('wa_active_chat'); } catch {}
       }
       setRecentMessageEvent({ type: 'group_member_left', groupId, userId: leftUserId, timestamp: Date.now() });
     }
@@ -1163,6 +1169,7 @@ export default function App() {
     }
     setActiveChat(recipientPhone);
     setCurrentView('chat');
+    try { localStorage.setItem('wa_active_chat', recipientPhone); } catch {}
     if (userId && recipientPhone) {
       chatApi.markSeen(userId, recipientPhone).catch(() => { });
       socket.emit('mark_seen', { otherUserId: recipientPhone });
@@ -1217,6 +1224,7 @@ export default function App() {
     setRecipientProfile(null);
     setMessages([]);
     setCurrentView('inbox');
+    try { localStorage.removeItem('wa_active_chat'); } catch {}
   };
 
   // Open Profile Settings
@@ -1291,6 +1299,7 @@ export default function App() {
     socket.emit('logout');
     socket.emit('close_chat');
     localStorage.removeItem('wa_session');
+    localStorage.removeItem('wa_active_chat');
     setCurrentUser(null);
     setActiveChat(null);
     setRecipientProfile(null);
