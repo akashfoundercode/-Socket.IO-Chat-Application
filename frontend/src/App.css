@@ -156,7 +156,7 @@ body {
   align-items: center;
   justify-content: center;
   background-color: #f0f2f5;
-  border-bottom: 6px solid #25d366;
+  border-bottom: 6px solid var(--wa-online);
   border-bottom: none;
   padding: 24px;
   text-align: center;
@@ -178,7 +178,7 @@ body {
   width: 90px;
   height: 90px;
   border-radius: 50%;
-  background: #25d366;
+  background: var(--wa-online);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1161,7 +1161,7 @@ body {
 }
 
 .wa-tab-badge {
-  background: #25d366;
+  background: var(--wa-online);
   color: #000000;
   font-size: 10px;
   font-weight: 800;
@@ -1770,7 +1770,7 @@ body {
   font-size: 10.5px;
   font-weight: 700;
   color: #047857;
-  background: #d1fae5;
+  background: var(--wa-accent-border);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -2918,7 +2918,7 @@ body {
 }
 
 .wa-item-typing {
-  color: #25d366 !important;
+  color: var(--wa-online) !important;
   font-weight: 600;
   font-size: 12.5px;
   font-style: italic;
@@ -2969,7 +2969,7 @@ body {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #25d366;
+  color: var(--wa-online);
   font-weight: 600;
   margin-bottom: 24px;
   text-transform: uppercase;
@@ -3011,7 +3011,7 @@ body {
   left: -6px;
   right: -6px;
   bottom: -6px;
-  border: 2px solid #25d366;
+  border: 2px solid var(--wa-online);
   border-radius: 50%;
   animation: pulseRing 1.6s infinite ease-out;
 }
@@ -3076,7 +3076,7 @@ body {
 }
 
 .wa-call-action-btn.accept i {
-  background: #25d366;
+  background: var(--wa-online);
 }
 
 .wa-call-action-btn:hover i {
@@ -3127,7 +3127,7 @@ body {
 
 .wa-active-call-status {
   font-size: 14px;
-  color: #25d366;
+  color: var(--wa-online);
   font-weight: 500;
 }
 
@@ -3280,7 +3280,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  border: 2px solid #25d366;
+  border: 2px solid var(--wa-online);
   border-radius: 50%;
   opacity: 0;
   animation: voiceWave 2s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
@@ -3793,7 +3793,7 @@ body {
 }
 
 .wa-attach-circle.location {
-  background: linear-gradient(135deg, #008069 0%, #25d366 100%);
+  background: linear-gradient(135deg, var(--wa-green-header) 0%, var(--wa-green) 100%);
 }
 
 /* =========================================================
@@ -4592,7 +4592,7 @@ body {
 
 /* Circular Green Notification Badge in Chat List */
 .wa-unread-badge {
-  background-color: #25d366;
+  background-color: var(--wa-online);
   /* WhatsApp Green */
   color: #ffffff;
   font-size: 11px;
@@ -4619,7 +4619,7 @@ body {
 
 /* Unread Time (Green Highlight) */
 .wa-item-time.unread {
-  color: #25d366 !important;
+  color: var(--wa-online) !important;
   font-weight: 600;
 }
 
@@ -4631,7 +4631,7 @@ body {
 
 /* CHATS Tab Top Green Badge */
 .wa-tab-badge.unread-pill {
-  background-color: #25d366 !important;
+  background-color: var(--wa-online) !important;
   color: #ffffff !important;
   font-weight: 700;
   animation: pulseBadge 2s infinite ease-in-out;
@@ -5683,7 +5683,7 @@ body {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #25d366;
+  background: var(--wa-online);
   border: none;
   color: #fff;
   font-size: 14px;
@@ -5850,7 +5850,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-left: 3px solid #00a884;
+  border-left: 3px solid var(--wa-green);
   background: rgba(0, 168, 132, 0.08);
   color: #54656f;
   padding: 6px 8px;
@@ -6422,8 +6422,8 @@ body {
   height: 7px;
   display: inline-block;
   border-radius: 50%;
-  background: #25d366;
-  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px #25d366;
+  background: var(--wa-online);
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px var(--wa-online);
 }
 
 .wa-group-member-online-text {
@@ -6494,7 +6494,7 @@ body {
 }
 
 .wa-group-invite-btn {
-  border: 1.5px solid #008069;
+  border: 1.5px solid var(--wa-green-header);
   border-radius: 20px;
   padding: 7px 16px;
   background: transparent;
@@ -7308,7 +7308,7 @@ body {
 
 .wa-bubble.sent .wa-message-reply-quote {
   background: rgba(0, 128, 105, 0.12);
-  border-left: 4px solid #008069;
+  border-left: 4px solid var(--wa-green-header);
 }
 
 .wa-bubble.received .wa-message-reply-quote {
@@ -7355,7 +7355,7 @@ body {
   align-items: center;
   justify-content: space-between;
   background: #f0f2f5;
-  border-left: 4px solid #00a884;
+  border-left: 4px solid var(--wa-green);
   border-radius: 6px;
   padding: 6px 12px;
   margin: 0 12px 6px;
