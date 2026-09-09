@@ -12,8 +12,14 @@ build/
 .env.local
 *.env
 
-# OS / Logs
+# OS / Logs / Archives
 .DS_Store
+*.zip
+*.tar.gz
+uploads/
+*/uploads/
+.vite/
+*/.vite/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

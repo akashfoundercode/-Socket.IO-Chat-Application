@@ -7415,3 +7415,107 @@ body {
   background: rgba(234, 67, 53, 0.1);
   border-color: #ea4335;
 }
+
+/* Professional In-App WhatsApp Confirmation Dialog */
+.wa-confirm-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  background-color: rgba(11, 20, 26, 0.65);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 99999;
+  backdrop-filter: blur(3px);
+  animation: fadeIn 0.15s ease-out;
+  padding: 16px;
+}
+
+.wa-confirm-dialog-box {
+  background: #ffffff;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 380px;
+  padding: 22px 24px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  animation: modalScaleUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.dark .wa-confirm-dialog-box,
+[data-theme="dark"] .wa-confirm-dialog-box {
+  background: #202c33;
+  color: #e9edef;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.wa-confirm-dialog-title {
+  font-size: 16.5px;
+  font-weight: 600;
+  color: #111b21;
+  margin: 0 0 10px 0;
+  line-height: 1.35;
+}
+
+.dark .wa-confirm-dialog-title,
+[data-theme="dark"] .wa-confirm-dialog-title {
+  color: #e9edef;
+}
+
+.wa-confirm-dialog-desc {
+  font-size: 14px;
+  line-height: 1.45;
+  color: #667781;
+  margin: 0 0 22px 0;
+}
+
+.dark .wa-confirm-dialog-desc,
+[data-theme="dark"] .wa-confirm-dialog-desc {
+  color: #8696a0;
+}
+
+.wa-confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.wa-confirm-dialog-btn {
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.wa-confirm-dialog-btn.cancel {
+  background: transparent;
+  color: #00a884;
+  border: 1px solid #e9edef;
+}
+
+.dark .wa-confirm-dialog-btn.cancel,
+[data-theme="dark"] .wa-confirm-dialog-btn.cancel {
+  border-color: #374248;
+  color: #00a884;
+}
+
+.wa-confirm-dialog-btn.cancel:hover {
+  background: rgba(0, 168, 132, 0.08);
+}
+
+.wa-confirm-dialog-btn.confirm {
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.wa-confirm-dialog-btn.confirm:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}

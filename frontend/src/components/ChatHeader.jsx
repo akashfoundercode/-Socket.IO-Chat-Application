@@ -32,6 +32,7 @@ export default function ChatHeader({
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [customNameInput, setCustomNameInput] = useState('');
   const [isSavingRename, setIsSavingRename] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   const displayPhone = recipientProfile?.fullPhone || recipientProfile?.phone || recipientId || '';
   const customName = recipientProfile?.customName;
@@ -274,11 +275,18 @@ export default function ChatHeader({
                     type="button"
                     className="wa-menu-item"
                     style={{ color: '#ea4335' }}
-                    onClick={async () => {
+                    onClick={() => {
                       setShowMenu(false);
-                      if (window.confirm(`Exit "${displayName}" group? You will no longer be able to send or receive messages in this group.`)) {
-                        await onLeaveGroup?.(recipientId);
-                      }
+                      setConfirmDialog({
+                        title: `Exit "${displayName}" group?`,
+                        message: 'You will no longer be able to send or receive messages in this group.',
+                        confirmText: 'Exit group',
+                        confirmColor: '#ea4335',
+                        onConfirm: async () => {
+                          setConfirmDialog(null);
+                          await onLeaveGroup?.(recipientId);
+                        }
+                      });
                     }}
                   >
                     <i className="fa-solid fa-arrow-right-from-bracket"></i> Exit group
@@ -287,10 +295,19 @@ export default function ChatHeader({
                   <button
                     type="button"
                     className="wa-menu-item"
-                    style={{ color: '#f97316' }}
+                    style={{ color: '#00a884' }}
                     onClick={() => {
                       setShowMenu(false);
-                      onUnblock && onUnblock(recipientId);
+                      setConfirmDialog({
+                        title: `Unblock ${displayName}?`,
+                        message: 'This contact will be able to send you messages and call you.',
+                        confirmText: 'Unblock',
+                        confirmColor: '#00a884',
+                        onConfirm: async () => {
+                          setConfirmDialog(null);
+                          onUnblock && onUnblock(recipientId);
+                        }
+                      });
                     }}
                   >
                     <i className="fa-solid fa-unlock"></i> Unblock contact
@@ -302,9 +319,16 @@ export default function ChatHeader({
                     style={{ color: '#ea4335' }}
                     onClick={() => {
                       setShowMenu(false);
-                      if (window.confirm(`Block ${displayName}? Blocked contacts will no longer be able to call you or send you messages.`)) {
-                        onBlock && onBlock(recipientId);
-                      }
+                      setConfirmDialog({
+                        title: `Block ${displayName}?`,
+                        message: 'Blocked contacts will no longer be able to call you or send you messages.',
+                        confirmText: 'Block',
+                        confirmColor: '#ea4335',
+                        onConfirm: async () => {
+                          setConfirmDialog(null);
+                          onBlock && onBlock(recipientId);
+                        }
+                      });
                     }}
                   >
                     <i className="fa-solid fa-ban"></i> Block contact
@@ -433,6 +457,35 @@ export default function ChatHeader({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Professional In-App Confirmation Modal */}
+      {confirmDialog && (
+        <div className="wa-confirm-dialog-overlay" onClick={() => setConfirmDialog(null)}>
+          <div className="wa-confirm-dialog-box" onClick={(e) => e.stopPropagation()}>
+            <h3 className="wa-confirm-dialog-title">{confirmDialog.title}</h3>
+            {confirmDialog.message && (
+              <p className="wa-confirm-dialog-desc">{confirmDialog.message}</p>
+            )}
+            <div className="wa-confirm-dialog-actions">
+              <button
+                type="button"
+                className="wa-confirm-dialog-btn cancel"
+                onClick={() => setConfirmDialog(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="wa-confirm-dialog-btn confirm"
+                style={{ backgroundColor: confirmDialog.confirmColor || '#ea4335' }}
+                onClick={confirmDialog.onConfirm}
+              >
+                {confirmDialog.confirmText || 'Confirm'}
+              </button>
+            </div>
           </div>
         </div>
       )}

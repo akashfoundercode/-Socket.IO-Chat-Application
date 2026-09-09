@@ -33,6 +33,7 @@ export default function ContactInfoModal({
   const [isSavingGroup, setIsSavingGroup] = useState(false);
   const [groupUpdateMessage, setGroupUpdateMessage] = useState('');
   const [inviteQr, setInviteQr] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   const cleanGroupId = String(recipientId || '').replace(/^group:/, '');
   const groupInviteName = String(groupDetails?.name || 'Group').trim();
@@ -481,12 +482,22 @@ export default function ContactInfoModal({
                           <button
                             type="button"
                             className="wa-group-role-btn"
-                            onClick={async () => {
+                            onClick={() => {
                               const nextRole = member.role === 'admin' ? 'member' : 'admin';
-                              const action = nextRole === 'admin' ? 'make this member an admin' : 'remove admin rights from this member';
-                              if (window.confirm(`Are you sure you want to ${action}?`)) {
-                                await onUpdateGroupMemberRole?.(recipientId, member.userId, nextRole);
-                              }
+                              const isMake = nextRole === 'admin';
+                              const memberDisplayName = member.name || member.fullPhone || member.userId;
+                              setConfirmDialog({
+                                title: isMake ? `Make ${memberDisplayName} admin?` : `Dismiss ${memberDisplayName} as admin?`,
+                                message: isMake
+                                  ? `This member will be able to edit group info, add or remove members.`
+                                  : `This member will no longer have admin rights.`,
+                                confirmText: isMake ? 'Make admin' : 'Dismiss admin',
+                                confirmColor: isMake ? '#00a884' : '#ea4335',
+                                onConfirm: async () => {
+                                  setConfirmDialog(null);
+                                  await onUpdateGroupMemberRole?.(recipientId, member.userId, nextRole);
+                                }
+                              });
                             }}
                           >
                             {member.role === 'admin' ? 'Remove admin' : 'Make admin'}
@@ -494,11 +505,18 @@ export default function ContactInfoModal({
                           <button
                             type="button"
                             className="wa-group-remove-btn"
-                            onClick={async () => {
+                            onClick={() => {
                               const memberDisplayName = member.name || member.fullPhone || member.userId;
-                              if (window.confirm(`Are you sure you want to remove ${memberDisplayName} from "${displayName}"?`)) {
-                                await onRemoveGroupMember?.(recipientId, member.userId);
-                              }
+                              setConfirmDialog({
+                                title: `Remove ${memberDisplayName}?`,
+                                message: `Remove ${memberDisplayName} from "${displayName}"? They will no longer be able to send or view messages.`,
+                                confirmText: 'Remove',
+                                confirmColor: '#ea4335',
+                                onConfirm: async () => {
+                                  setConfirmDialog(null);
+                                  await onRemoveGroupMember?.(recipientId, member.userId);
+                                }
+                              });
                             }}
                             title="Remove member"
                           >
@@ -515,11 +533,18 @@ export default function ContactInfoModal({
                 <button
                   type="button"
                   className="wa-contact-danger-btn block-btn"
-                  onClick={async () => {
-                    if (window.confirm(`Exit "${displayName}" group? You will no longer be able to send or receive messages in this group.`)) {
-                      onClose && onClose();
-                      await onLeaveGroup?.(recipientId);
-                    }
+                  onClick={() => {
+                    setConfirmDialog({
+                      title: `Exit "${displayName}" group?`,
+                      message: 'You will no longer be able to send or receive messages in this group.',
+                      confirmText: 'Exit group',
+                      confirmColor: '#ea4335',
+                      onConfirm: async () => {
+                        setConfirmDialog(null);
+                        onClose && onClose();
+                        await onLeaveGroup?.(recipientId);
+                      }
+                    });
                   }}
                 >
                   <i className="fa-solid fa-arrow-right-from-bracket"></i>
@@ -587,9 +612,16 @@ export default function ContactInfoModal({
                     type="button"
                     className="wa-contact-danger-btn unblock-btn"
                     onClick={() => {
-                      if (window.confirm(`Unblock ${displayName}?`)) {
-                        onUnblock && onUnblock(recipientId);
-                      }
+                      setConfirmDialog({
+                        title: `Unblock ${displayName}?`,
+                        message: 'This contact will be able to send you messages and call you.',
+                        confirmText: 'Unblock',
+                        confirmColor: '#00a884',
+                        onConfirm: async () => {
+                          setConfirmDialog(null);
+                          onUnblock && onUnblock(recipientId);
+                        }
+                      });
                     }}
                   >
                     <i className="fa-solid fa-unlock"></i>
@@ -600,9 +632,16 @@ export default function ContactInfoModal({
                     type="button"
                     className="wa-contact-danger-btn block-btn"
                     onClick={() => {
-                      if (window.confirm(`Block ${displayName}? Blocked contacts will no longer be able to call you or send you messages.`)) {
-                        onBlock && onBlock(recipientId);
-                      }
+                      setConfirmDialog({
+                        title: `Block ${displayName}?`,
+                        message: 'Blocked contacts will no longer be able to call you or send you messages.',
+                        confirmText: 'Block',
+                        confirmColor: '#ea4335',
+                        onConfirm: async () => {
+                          setConfirmDialog(null);
+                          onBlock && onBlock(recipientId);
+                        }
+                      });
                     }}
                   >
                     <i className="fa-solid fa-ban"></i>
@@ -614,6 +653,35 @@ export default function ContactInfoModal({
           )}
         </div>
       </div>
+
+      {/* Professional In-App Confirmation Modal */}
+      {confirmDialog && (
+        <div className="wa-confirm-dialog-overlay" onClick={() => setConfirmDialog(null)}>
+          <div className="wa-confirm-dialog-box" onClick={(e) => e.stopPropagation()}>
+            <h3 className="wa-confirm-dialog-title">{confirmDialog.title}</h3>
+            {confirmDialog.message && (
+              <p className="wa-confirm-dialog-desc">{confirmDialog.message}</p>
+            )}
+            <div className="wa-confirm-dialog-actions">
+              <button
+                type="button"
+                className="wa-confirm-dialog-btn cancel"
+                onClick={() => setConfirmDialog(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="wa-confirm-dialog-btn confirm"
+                style={{ backgroundColor: confirmDialog.confirmColor || '#ea4335' }}
+                onClick={confirmDialog.onConfirm}
+              >
+                {confirmDialog.confirmText || 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

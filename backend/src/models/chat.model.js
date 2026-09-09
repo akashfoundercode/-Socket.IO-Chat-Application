@@ -981,21 +981,28 @@ const createCallLog = async ({ callerId, receiverId, callType = 'voice', status 
     };
 };
 
+const toGroupId = (id) => {
+    const clean = String(id || '').replace(/^group:/, '').trim();
+    return Number(clean) || 0;
+};
+
 const isGroupMember = async (groupId, userId) => {
+    const cleanId = toGroupId(groupId);
     const variants = getPhoneVariants(userId);
     const placeholders = variants.map(() => "?").join(",");
     const [rows] = await getPool().execute(
         `SELECT role, user_id AS userId FROM group_members WHERE group_id = ? AND user_id IN (${placeholders}) LIMIT 1`,
-        [Number(groupId), ...variants]
+        [cleanId, ...variants]
     );
     return rows[0] || null;
 };
 
 const addGroupSystemMessage = async (groupId, payload) => {
+    const cleanId = toGroupId(groupId);
     const text = typeof payload === 'string' ? payload : JSON.stringify(payload);
     const [result] = await getPool().execute(
         "INSERT INTO group_messages (group_id, sender_id, text, type, mentions) VALUES (?, 'system', ?, 'system', '[]')",
-        [Number(groupId), text]
+        [cleanId, text]
     );
     const [rows] = await getPool().execute("SELECT * FROM group_messages WHERE id = ?", [result.insertId]);
     return mapGroupMessage(rows[0]);
@@ -1031,13 +1038,14 @@ const createGroup = async ({ name, creatorId, memberIds = [] }) => {
 };
 
 const getGroup = async (groupId, viewerId = null) => {
+    const cleanId = toGroupId(groupId);
     const [rows] = await getPool().execute(
         `SELECT g.id, g.name, g.creator_id AS creatorId, g.avatar,
             g.message_permission AS messagePermission, g.created_at AS createdAt,
                 (SELECT COUNT(*) FROM group_members gm WHERE gm.group_id = g.id) AS memberCount
          FROM chat_groups g
          WHERE g.id = ? LIMIT 1`,
-        [Number(groupId)]
+        [cleanId]
     );
     if (!rows[0]) return null;
     if (viewerId && !(await isGroupMember(groupId, viewerId))) return null;
@@ -1045,7 +1053,7 @@ const getGroup = async (groupId, viewerId = null) => {
         `SELECT gm.user_id AS userId, gm.role, u.name, u.full_phone AS fullPhone, u.avatar
          FROM group_members gm LEFT JOIN users u ON (u.full_phone = gm.user_id OR u.phone = gm.user_id OR CAST(u.id AS CHAR) = gm.user_id)
          WHERE gm.group_id = ? ORDER BY gm.role DESC, gm.joined_at ASC`,
-        [Number(groupId)]
+        [cleanId]
     );
     return { ...rows[0], id: String(rows[0].id), memberCount: Number(rows[0].memberCount), members };
 };
@@ -1068,11 +1076,11 @@ const listGroups = async (userId) => {
                       AND gm2.id > COALESCE(mine.last_seen_message_id, 0)
                       AND gm2.sender_id NOT IN (${notPlaceholders})
                 ) AS unreadCount
-         FROM chat_groups g
-         INNER JOIN group_members mine ON mine.group_id = g.id AND mine.user_id IN (${placeholders})
-         LEFT JOIN group_messages m ON m.id = (SELECT MAX(m2.id) FROM group_messages m2 WHERE m2.group_id = g.id)
-         GROUP BY g.id, mine.last_seen_message_id, m.id
-         ORDER BY COALESCE(m.id, g.id) DESC`,
+          FROM chat_groups g
+          INNER JOIN group_members mine ON mine.group_id = g.id AND mine.user_id IN (${placeholders})
+          LEFT JOIN group_messages m ON m.id = (SELECT MAX(m2.id) FROM group_messages m2 WHERE m2.group_id = g.id)
+          GROUP BY g.id, mine.last_seen_message_id, m.id
+          ORDER BY COALESCE(m.id, g.id) DESC`,
         [...variants, ...variants]
     );
     return rows.map((row) => ({
@@ -1086,39 +1094,40 @@ const listGroups = async (userId) => {
 };
 
 const markGroupMessagesAsSeen = async (groupId, userId) => {
-    const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+    const cleanId = toGroupId(groupId);
     const cleanUserId = String(userId || "").trim();
-    if (!cleanGroupId || !cleanUserId) return 0;
+    if (!cleanId || !cleanUserId) return 0;
     const variants = getPhoneVariants(cleanUserId);
     const placeholders = variants.map(() => '?').join(', ');
 
     const [maxRows] = await getPool().execute(
         "SELECT COALESCE(MAX(id), 0) AS maxId FROM group_messages WHERE group_id = ?",
-        [Number(cleanGroupId)]
+        [cleanId]
     );
     const maxId = maxRows[0]?.maxId || 0;
     if (maxId > 0) {
         await getPool().execute(
             `UPDATE group_members SET last_seen_message_id = ? WHERE group_id = ? AND user_id IN (${placeholders})`,
-            [maxId, Number(cleanGroupId), ...variants]
+            [maxId, cleanId, ...variants]
         );
     }
     return maxId;
 };
 
 const addGroupMember = async (groupId, requesterId, memberId) => {
+    const cleanId = toGroupId(groupId);
     const requester = await isGroupMember(groupId, requesterId);
     if (!requester || requester.role !== "admin") throw new Error("Only group admins can add members");
     const user = await getUser(memberId);
     if (!user) throw new Error("User not found");
     const finalMemberId = user.fullPhone || user.phone || memberId;
-    await getPool().execute("INSERT IGNORE INTO group_members (group_id, user_id, role) VALUES (?, ?, 'member')", [Number(groupId), String(finalMemberId).trim()]);
+    await getPool().execute("INSERT IGNORE INTO group_members (group_id, user_id, role) VALUES (?, ?, 'member')", [cleanId, String(finalMemberId).trim()]);
 
     const requesterUser = await getUser(requesterId);
     const actorName = requesterUser?.name || requesterId;
     const targetName = user?.name || user?.fullPhone || memberId;
 
-    const systemMsg = await addGroupSystemMessage(groupId, {
+    const systemMsg = await addGroupSystemMessage(cleanId, {
         action: 'add_member',
         actorId: requesterId,
         actorName,
@@ -1126,15 +1135,16 @@ const addGroupMember = async (groupId, requesterId, memberId) => {
         targetName
     });
 
-    const group = await getGroup(groupId, requesterId);
+    const group = await getGroup(cleanId, requesterId);
     return { group, systemMsg };
 };
 
 const removeGroupMember = async (groupId, requesterId, memberId) => {
+    const cleanId = toGroupId(groupId);
     const requester = await isGroupMember(groupId, requesterId);
     if (!requester || requester.role !== "admin") throw new Error("Only group admins can remove members");
 
-    const [groupRows] = await getPool().execute("SELECT creator_id AS creatorId FROM chat_groups WHERE id = ? LIMIT 1", [Number(groupId)]);
+    const [groupRows] = await getPool().execute("SELECT creator_id AS creatorId FROM chat_groups WHERE id = ? LIMIT 1", [cleanId]);
     const creatorId = groupRows[0]?.creatorId;
     if (creatorId && getPhoneVariants(memberId).includes(String(creatorId))) {
         throw new Error("The group creator cannot be removed");
@@ -1144,7 +1154,7 @@ const removeGroupMember = async (groupId, requesterId, memberId) => {
     const placeholders = memberVariants.map(() => "?").join(",");
     await getPool().execute(
         `DELETE FROM group_members WHERE group_id = ? AND user_id IN (${placeholders})`,
-        [Number(groupId), ...memberVariants]
+        [cleanId, ...memberVariants]
     );
 
     const requesterUser = await getUser(requesterId);
@@ -1152,7 +1162,7 @@ const removeGroupMember = async (groupId, requesterId, memberId) => {
     const actorName = requesterUser?.name || requesterId;
     const targetName = targetUser?.name || targetUser?.fullPhone || memberId;
 
-    const systemMsg = await addGroupSystemMessage(groupId, {
+    const systemMsg = await addGroupSystemMessage(cleanId, {
         action: 'remove_member',
         actorId: requesterId,
         actorName,
@@ -1160,42 +1170,43 @@ const removeGroupMember = async (groupId, requesterId, memberId) => {
         targetName
     });
 
-    const updatedGroup = await getGroup(groupId, requesterId);
+    const updatedGroup = await getGroup(cleanId, requesterId);
     return { group: updatedGroup, systemMsg };
 };
 
 const leaveGroup = async (groupId, userId) => {
-    const member = await isGroupMember(groupId, userId);
+    const cleanId = toGroupId(groupId);
+    const member = await isGroupMember(cleanId, userId);
     if (!member) throw new Error("You are not a member of this group");
 
     const userVariants = getPhoneVariants(userId);
     const placeholders = userVariants.map(() => "?").join(",");
     await getPool().execute(
         `DELETE FROM group_members WHERE group_id = ? AND user_id IN (${placeholders})`,
-        [Number(groupId), ...userVariants]
+        [cleanId, ...userVariants]
     );
 
     // If remaining members exist and no admin left, promote the oldest member to admin
     const [remainingAdmins] = await getPool().execute(
         "SELECT user_id FROM group_members WHERE group_id = ? AND role = 'admin' LIMIT 1",
-        [Number(groupId)]
+        [cleanId]
     );
     if (remainingAdmins.length === 0) {
         const [oldest] = await getPool().execute(
             "SELECT user_id FROM group_members WHERE group_id = ? ORDER BY joined_at ASC LIMIT 1",
-            [Number(groupId)]
+            [cleanId]
         );
         if (oldest[0]) {
             await getPool().execute(
                 "UPDATE group_members SET role = 'admin' WHERE group_id = ? AND user_id = ?",
-                [Number(groupId), oldest[0].user_id]
+                [cleanId, oldest[0].user_id]
             );
         }
     }
 
     const user = await getUser(userId);
     const name = user?.name || user?.fullPhone || userId;
-    const systemMsg = await addGroupSystemMessage(groupId, {
+    const systemMsg = await addGroupSystemMessage(cleanId, {
         action: 'leave_group',
         userId,
         name,
@@ -1206,15 +1217,16 @@ const leaveGroup = async (groupId, userId) => {
 };
 
 const joinGroupByInvite = async (groupId, memberId, joinMethod = 'link') => {
+    const cleanId = toGroupId(groupId);
     const user = await getUser(memberId);
     if (!user) throw new Error("User not found");
-    const [groupRows] = await getPool().execute("SELECT id FROM chat_groups WHERE id = ? LIMIT 1", [Number(groupId)]);
+    const [groupRows] = await getPool().execute("SELECT id FROM chat_groups WHERE id = ? LIMIT 1", [cleanId]);
     if (!groupRows[0]) throw new Error("Group not found");
     const memberVariants = getPhoneVariants(memberId);
     const placeholders = memberVariants.map(() => "?").join(",");
     const [existingRows] = await getPool().execute(
         `SELECT user_id FROM group_members WHERE group_id = ? AND user_id IN (${placeholders}) LIMIT 1`,
-        [Number(groupId), ...memberVariants]
+        [cleanId, ...memberVariants]
     );
     const alreadyMember = existingRows.length > 0;
     const finalMemberId = user.fullPhone || user.phone || memberId;
@@ -1222,21 +1234,22 @@ const joinGroupByInvite = async (groupId, memberId, joinMethod = 'link') => {
     if (!alreadyMember) {
         await getPool().execute(
             "INSERT IGNORE INTO group_members (group_id, user_id, role) VALUES (?, ?, 'member')",
-            [Number(groupId), String(finalMemberId).trim()]
+            [cleanId, String(finalMemberId).trim()]
         );
         const action = joinMethod === 'qr' ? 'join_qr' : 'join_link';
-        systemMsg = await addGroupSystemMessage(groupId, {
+        systemMsg = await addGroupSystemMessage(cleanId, {
             action,
             userId: finalMemberId,
             name: user.name || user.fullPhone || memberId,
             phone: user.fullPhone || memberId
         });
     }
-    return { group: await getGroup(groupId, memberId), alreadyMember, systemMsg };
+    return { group: await getGroup(cleanId, memberId), alreadyMember, systemMsg };
 };
 
 const updateGroup = async (groupId, requesterId, { name, avatar, messagePermission }) => {
-    const requester = await isGroupMember(groupId, requesterId);
+    const cleanId = toGroupId(groupId);
+    const requester = await isGroupMember(cleanId, requesterId);
     if (!requester || requester.role !== "admin") throw new Error("Only group admins can change group settings");
     const cleanPermission = messagePermission === "admins" ? "admins" : messagePermission === "everyone" ? "everyone" : null;
     await getPool().execute(
@@ -1245,14 +1258,15 @@ const updateGroup = async (groupId, requesterId, { name, avatar, messagePermissi
             avatar = COALESCE(?, avatar),
             message_permission = COALESCE(?, message_permission)
          WHERE id = ?`,
-        [name !== undefined ? String(name).trim() || null : null, avatar !== undefined ? avatar : null, cleanPermission, Number(groupId)]
+        [name !== undefined ? String(name).trim() || null : null, avatar !== undefined ? avatar : null, cleanPermission, cleanId]
     );
-    return getGroup(groupId, requesterId);
+    return getGroup(cleanId, requesterId);
 };
 
 const updateGroupMemberRole = async (groupId, requesterId, memberId, role) => {
-    const requester = await isGroupMember(groupId, requesterId);
-    const [groupRows] = await getPool().execute("SELECT creator_id AS creatorId FROM chat_groups WHERE id = ? LIMIT 1", [Number(groupId)]);
+    const cleanId = toGroupId(groupId);
+    const requester = await isGroupMember(cleanId, requesterId);
+    const [groupRows] = await getPool().execute("SELECT creator_id AS creatorId FROM chat_groups WHERE id = ? LIMIT 1", [cleanId]);
     const creatorId = groupRows[0]?.creatorId;
     if (!requester || !creatorId || !['admin'].includes(requester.role)) {
         throw new Error("Only group admins can manage group admins");
@@ -1260,45 +1274,48 @@ const updateGroupMemberRole = async (groupId, requesterId, memberId, role) => {
     if (getPhoneVariants(memberId).includes(String(creatorId))) {
         throw new Error("The super admin role cannot be removed");
     }
-    const target = await isGroupMember(groupId, memberId);
+    const target = await isGroupMember(cleanId, memberId);
     if (!target) throw new Error("User is not a group member");
     const nextRole = role === "admin" ? "admin" : "member";
-    await getPool().execute("UPDATE group_members SET role = ? WHERE group_id = ? AND user_id = ?", [nextRole, Number(groupId), String(memberId).trim()]);
-    return getGroup(groupId, requesterId);
+    await getPool().execute("UPDATE group_members SET role = ? WHERE group_id = ? AND user_id = ?", [nextRole, cleanId, String(memberId).trim()]);
+    return getGroup(cleanId, requesterId);
 };
 
 const getGroupMessages = async (groupId, userId) => {
-    if (!(await isGroupMember(groupId, userId))) return [];
-    const [rows] = await getPool().execute("SELECT * FROM group_messages WHERE group_id = ? ORDER BY is_pinned DESC, id ASC", [Number(groupId)]);
+    const cleanId = toGroupId(groupId);
+    if (!(await isGroupMember(cleanId, userId))) return [];
+    const [rows] = await getPool().execute("SELECT * FROM group_messages WHERE group_id = ? ORDER BY is_pinned DESC, id ASC", [cleanId]);
     return rows.map(mapGroupMessage);
 };
 
 const addGroupMessage = async ({ groupId, senderId, text, type = "text", mediaUrl = null, replyToId = null, mentions = [] }) => {
-    const membership = await isGroupMember(groupId, senderId);
+    const cleanId = toGroupId(groupId);
+    const membership = await isGroupMember(cleanId, senderId);
     if (!membership) throw new Error("You are not a member of this group");
-    const [groupRows] = await getPool().execute("SELECT message_permission AS messagePermission FROM chat_groups WHERE id = ? LIMIT 1", [Number(groupId)]);
+    const [groupRows] = await getPool().execute("SELECT message_permission AS messagePermission FROM chat_groups WHERE id = ? LIMIT 1", [cleanId]);
     if (groupRows[0]?.messagePermission === "admins" && membership.role !== "admin") {
         throw new Error("Only group admins can send messages in this group");
     }
     const savedMediaUrl = await saveMediaBase64(mediaUrl, type);
     const [result] = await getPool().execute(
         "INSERT INTO group_messages (group_id, sender_id, text, type, media_url, reply_to_id, mentions) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [Number(groupId), String(senderId).trim(), String(text || ""), type, savedMediaUrl, replyToId ? Number(replyToId) : null, JSON.stringify(Array.isArray(mentions) ? mentions : [])]
+        [cleanId, String(senderId).trim(), String(text || ""), type, savedMediaUrl, replyToId ? Number(replyToId) : null, JSON.stringify(Array.isArray(mentions) ? mentions : [])]
     );
     const [rows] = await getPool().execute("SELECT * FROM group_messages WHERE id = ?", [result.insertId]);
     return mapGroupMessage(rows[0]);
 };
 
 const reactToGroupMessage = async (groupId, messageId, userId, emoji) => {
-    if (!(await isGroupMember(groupId, userId))) throw new Error("You are not a member of this group");
-    const [rows] = await getPool().execute("SELECT reactions FROM group_messages WHERE id = ? AND group_id = ?", [Number(messageId), Number(groupId)]);
+    const cleanId = toGroupId(groupId);
+    if (!(await isGroupMember(cleanId, userId))) throw new Error("You are not a member of this group");
+    const [rows] = await getPool().execute("SELECT reactions FROM group_messages WHERE id = ? AND group_id = ?", [Number(messageId), cleanId]);
     if (!rows[0]) throw new Error("Message not found");
     const reactions = rows[0].reactions ? JSON.parse(rows[0].reactions) : {};
     const cleanEmoji = String(emoji || "👍");
     reactions[cleanEmoji] = Array.isArray(reactions[cleanEmoji]) ? reactions[cleanEmoji] : [];
     reactions[cleanEmoji] = reactions[cleanEmoji].filter((id) => id !== String(userId));
     reactions[cleanEmoji].push(String(userId));
-    await getPool().execute("UPDATE group_messages SET reactions = ? WHERE id = ? AND group_id = ?", [JSON.stringify(reactions), Number(messageId), Number(groupId)]);
+    await getPool().execute("UPDATE group_messages SET reactions = ? WHERE id = ? AND group_id = ?", [JSON.stringify(reactions), Number(messageId), cleanId]);
     return reactions;
 };
 
