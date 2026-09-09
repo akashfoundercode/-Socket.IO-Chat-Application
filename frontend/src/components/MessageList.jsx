@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import VoiceNotePlayer from './VoiceNotePlayer';
+import { resolveMediaUrl } from '../services/api';
 
 function MessageAvatar({ avatar, label }) {
   const [imageFailed, setImageFailed] = useState(false);
@@ -166,7 +167,7 @@ export default function MessageList({
             >
               ✕
             </button>
-            <img src={lightboxImage} alt="Fullscreen View" className="wa-lightbox-img" />
+            <img src={resolveMediaUrl(lightboxImage)} alt="Fullscreen View" className="wa-lightbox-img" />
           </div>
         </div>
       )}
@@ -430,7 +431,7 @@ export default function MessageList({
             try {
               callData = typeof msg.text === 'string' ? JSON.parse(msg.text) : msg.text;
             } catch (e) {
-              callData = { callType: 'voice', status: 'completed', duration: 0 };
+              callData = { callType: 'voice', status: 'completed', duration: 0, memberNames: [] };
             }
           }
 
@@ -640,7 +641,7 @@ export default function MessageList({
                           <span>Status update</span>
                         </div>
                         {statusData.mediaUrl ? (
-                          <img src={statusData.mediaUrl} alt="Status Thumbnail" className="wa-status-tag-thumb" />
+                          <img src={resolveMediaUrl(statusData.mediaUrl)} alt="Status Thumbnail" className="wa-status-tag-thumb" />
                         ) : (
                           <div
                             className="wa-status-tag-text-bg"
@@ -660,8 +661,21 @@ export default function MessageList({
 
                   {/* Image / Media Display */}
                   {isImage && (
-                    <div className="wa-bubble-media" onClick={() => setLightboxImage(msg.mediaUrl)}>
-                      <img src={msg.mediaUrl} alt="Attachment" className="wa-media-img" loading="lazy" />
+                    <div className="wa-bubble-media" onClick={() => setLightboxImage(resolveMediaUrl(msg.mediaUrl))}>
+                      <img
+                        src={resolveMediaUrl(msg.mediaUrl)}
+                        alt="Photo"
+                        className="wa-media-img"
+                        loading="lazy"
+                        onError={(e) => {
+                          const currentSrc = e.currentTarget.src || '';
+                          const fallbackHost = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'https://whatsapp.siberiancrane.tech';
+                          if (msg.mediaUrl && fallbackHost && !currentSrc.startsWith(fallbackHost)) {
+                            const clean = msg.mediaUrl.startsWith('/') ? msg.mediaUrl : `/${msg.mediaUrl}`;
+                            e.currentTarget.src = `${fallbackHost.replace(/\/$/, '')}${clean}`;
+                          }
+                        }}
+                      />
                     </div>
                   )}
 
@@ -686,6 +700,9 @@ export default function MessageList({
                           : callData?.status === 'declined'
                             ? 'Call declined'
                             : `Call ended${callData?.duration ? ` • ${Math.floor(callData.duration / 60)}:${String(callData.duration % 60).padStart(2, '0')}` : ''}`}
+                        {isGroup && callData?.memberNames?.length > 0 && (
+                          <small className="wa-group-call-members">{callData.memberNames.join(', ')}</small>
+                        )}
                       </span>
                     </div>
                   )}

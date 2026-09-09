@@ -33,8 +33,9 @@ export default function ContactInfoModal({
   const [inviteQr, setInviteQr] = useState('');
 
   const cleanGroupId = String(recipientId || '').replace(/^group:/, '');
+  const groupInviteName = String(groupDetails?.name || 'Group').trim();
   const inviteLink = typeof window !== 'undefined'
-    ? `${window.location.origin}/?joinGroup=${encodeURIComponent(cleanGroupId)}`
+    ? `${window.location.origin}/?joinGroup=${encodeURIComponent(cleanGroupId)}&groupName=${encodeURIComponent(groupInviteName)}`
     : '';
 
   React.useEffect(() => {

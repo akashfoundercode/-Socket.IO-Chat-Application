@@ -3,7 +3,7 @@
  * Any URL or API changes made in this file automatically reflect across all frontend components.
  */
 
-const getApiBaseUrl = () => {
+export const getApiBaseUrl = () => {
   const productionBackendUrl = 'https://whatsapp.siberiancrane.tech';
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
@@ -17,6 +17,23 @@ const getApiBaseUrl = () => {
       : productionBackendUrl;
   }
   return productionBackendUrl;
+};
+
+export const resolveMediaUrl = (url) => {
+  if (!url || typeof url !== 'string') return '';
+  if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  let cleanPath = url;
+  if (cleanPath.startsWith('/uploads/')) {
+    cleanPath = cleanPath.replace('/uploads/', '/api/chat/media/');
+  } else if (cleanPath.startsWith('/api/chat/uploads/')) {
+    cleanPath = cleanPath.replace('/api/chat/uploads/', '/api/chat/media/');
+  }
+
+  const baseUrl = getApiBaseUrl();
+  if (!baseUrl) return cleanPath;
+  return `${baseUrl.replace(/\/$/, '')}${cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`}`;
 };
 
 const API_BASE_URL = getApiBaseUrl();

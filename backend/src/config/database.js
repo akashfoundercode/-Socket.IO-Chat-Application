@@ -238,6 +238,9 @@ const initializeDatabase = async () => {
             call_type VARCHAR(20) NOT NULL DEFAULT 'voice',
             status VARCHAR(20) NOT NULL DEFAULT 'missed',
             channel_name VARCHAR(255) NULL,
+            group_id BIGINT UNSIGNED NULL,
+            group_name VARCHAR(120) NULL,
+            member_names TEXT NULL,
             duration INT UNSIGNED NOT NULL DEFAULT 0,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_caller (caller_id),
@@ -245,6 +248,14 @@ const initializeDatabase = async () => {
             INDEX idx_created_at (created_at)
         )
     `);
+
+    for (const statement of [
+        "ALTER TABLE call_logs ADD COLUMN group_id BIGINT UNSIGNED NULL",
+        "ALTER TABLE call_logs ADD COLUMN group_name VARCHAR(120) NULL",
+        "ALTER TABLE call_logs ADD COLUMN member_names TEXT NULL"
+    ]) {
+        try { await pool.query(statement); } catch (e) { if (e.code !== "ER_DUP_FIELDNAME") { /* ignore */ } }
+    }
 
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_groups (

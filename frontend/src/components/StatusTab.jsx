@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { statusApi } from '../services/api';
+import { statusApi, resolveMediaUrl } from '../services/api';
 import { socket } from '../socket/socket';
 
 const BG_COLORS = [
@@ -203,8 +203,8 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
               {current.content}
             </div>
           )}
-          {current.type === 'image' && <img src={current.content} alt="" className="wa-sv-media" />}
-          {current.type === 'video' && <video src={current.content} autoPlay muted loop className="wa-sv-media" />}
+          {current.type === 'image' && <img src={resolveMediaUrl(current.content)} alt="" className="wa-sv-media" />}
+          {current.type === 'video' && <video src={resolveMediaUrl(current.content)} autoPlay muted loop className="wa-sv-media" />}
           {current.type === 'link' && (
             <div className="wa-sv-text-content" style={{ background: current.bgColor, flexDirection: 'column', gap: 12 }}>
               <i className="fa-solid fa-link" style={{ fontSize: 28, opacity: 0.7 }}></i>

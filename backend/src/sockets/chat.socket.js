@@ -7,6 +7,7 @@ const onlineUsers = new Map();
 const activeCalls = new Map();
 // Track which user is currently on an active call: userId -> channelName
 const userCallSessions = new Map();
+const activeGroupCalls = new Map();
 
 const saveCallChatMessage = async (io, session, status, duration = 0) => {
     if (!session?.callerId || !session?.receiverId) return;
@@ -136,9 +137,11 @@ module.exports = (io) => {
 
             try {
                 await chatModel.markMessagesAsSeen(otherUserId, userId);
-                io.to(otherUserId).emit("messages_seen", {
-                    seenBy: userId,
-                    conversationWith: userId
+                chatModel.getPhoneVariants(otherUserId).forEach((variant) => {
+                    io.to(variant).emit("messages_seen", {
+                        seenBy: userId,
+                        conversationWith: userId
+                    });
                 });
             } catch (err) {
                 console.error("markMessagesAsSeen error:", err);
@@ -158,9 +161,11 @@ module.exports = (io) => {
 
             try {
                 await chatModel.markMessagesAsSeen(targetId, userId);
-                io.to(targetId).emit("messages_seen", {
-                    seenBy: userId,
-                    conversationWith: userId
+                chatModel.getPhoneVariants(targetId).forEach((variant) => {
+                    io.to(variant).emit("messages_seen", {
+                        seenBy: userId,
+                        conversationWith: userId
+                    });
                 });
             } catch (err) {
                 console.error("mark_seen error:", err);
@@ -339,7 +344,32 @@ module.exports = (io) => {
             const group = await chatModel.getGroup(cleanGroupId, from);
             if (!group) return;
             const cName = channelName || `group_call_${cleanGroupId}_${Date.now()}`;
+            let callLog = null;
+            try {
+                callLog = await chatModel.createCallLog({
+                    callerId: from,
+                    receiverId: `group:${cleanGroupId}`,
+                    callType: callType || 'voice',
+                    status: 'missed',
+                    channelName: cName,
+                    groupId: cleanGroupId,
+                    groupName: group.name || 'Group',
+                    memberNames: (group.members || []).map((member) => member.name || member.fullPhone || member.userId)
+                });
+            } catch (err) {
+                console.error('create group call log error:', err.message);
+            }
+            activeGroupCalls.set(cName, {
+                callId: callLog?.id,
+                groupId: cleanGroupId,
+                callerId: from,
+                callType: callType || "voice",
+                groupName: group.name || "Group",
+                memberNames: (group.members || []).slice(0, 3).map((member) => member.name || member.fullPhone || member.userId),
+                ended: false
+            });
             socket.join(`group:${cleanGroupId}`);
+            io.to(`group:${cleanGroupId}`).emit('call_log_updated');
             socket.to(`group:${cleanGroupId}`).emit("incoming_group_call", {
                 from,
                 groupId: cleanGroupId,
@@ -389,7 +419,35 @@ module.exports = (io) => {
 
         socket.on("group_call_end", ({ groupId, channelName }) => {
             const cleanGroupId = String(groupId || "").replace(/^group:/, "");
-            if (cleanGroupId) socket.to(`group:${cleanGroupId}`).emit("group_call_ended", { channelName });
+            if (!cleanGroupId) return;
+
+            const session = channelName ? activeGroupCalls.get(channelName) : null;
+            if (session && !session.ended) {
+                session.ended = true;
+                if (session.callId) {
+                    chatModel.updateCallLog(session.callId, { status: 'completed', duration: 0 }).catch((err) => {
+                        console.error('update group call log error:', err.message);
+                    });
+                }
+                chatModel.addGroupMessage({
+                    groupId: cleanGroupId,
+                    senderId: session.callerId,
+                    text: JSON.stringify({
+                        callType: session.callType,
+                        status: 'completed',
+                        groupName: session.groupName,
+                        memberNames: session.memberNames
+                    }),
+                    type: 'call'
+                }).then((message) => {
+                    io.to(`group:${cleanGroupId}`).emit('group_message_received', message);
+                    io.to(`group:${cleanGroupId}`).emit('conversation_refresh');
+                }).catch((err) => console.error('group call message error:', err.message));
+                activeGroupCalls.delete(channelName);
+                io.to(`group:${cleanGroupId}`).emit('call_log_updated');
+            }
+
+            socket.to(`group:${cleanGroupId}`).emit("group_call_ended", { channelName });
         });
 
 

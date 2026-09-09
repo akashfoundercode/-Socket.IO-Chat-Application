@@ -200,7 +200,18 @@ export default function App() {
     function onMessageReceived(msg) {
       setRecentMessageEvent(msg);
 
-      const isCurrentChat = activeChat && (msg.from === activeChat || msg.to === activeChat);
+      const cleanMsgFrom = String(msg.from || '').replace(/\D/g, '');
+      const cleanActive = String(activeChat || '').replace(/\D/g, '');
+      const isGroup = String(activeChat || '').startsWith('group:');
+
+      const isCurrentChat = Boolean(
+        activeChat &&
+        !isGroup &&
+        cleanActive &&
+        cleanMsgFrom &&
+        cleanMsgFrom === cleanActive
+      );
+
       if (!isCurrentChat || document.hidden) {
         playMessageNotification();
       }
@@ -222,18 +233,41 @@ export default function App() {
 
     // Real-time Double Blue Tick update (when recipient opens chat)
     function onMessagesSeen(payload) {
-      setMessages((prev) =>
-        prev.map((m) => (m.from === userId ? { ...m, status: 'seen' } : m))
-      );
+      const cleanSeenBy = String(payload?.seenBy || payload?.conversationWith || '').replace(/\D/g, '');
+      const cleanActive = String(activeChat || '').replace(/\D/g, '');
+
+      // Only update ticks if the currently open chat is with the user who viewed the messages
+      if (cleanSeenBy && cleanActive && cleanSeenBy === cleanActive) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            const cleanMsgFrom = String(m.from || '').replace(/\D/g, '');
+            const cleanSelf = String(userId || '').replace(/\D/g, '');
+            if (cleanMsgFrom === cleanSelf && m.status !== 'seen') {
+              return { ...m, status: 'seen' };
+            }
+            return m;
+          })
+        );
+      }
     }
 
     // Real-time Double Gray Tick update (when recipient comes online)
     function onMessagesDelivered(payload) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.from === userId && m.status === 'sent' ? { ...m, status: 'delivered' } : m
-        )
-      );
+      const cleanDeliveredTo = String(payload?.to || payload?.recipientId || '').replace(/\D/g, '');
+      const cleanActive = String(activeChat || '').replace(/\D/g, '');
+
+      if (!cleanDeliveredTo || (cleanActive && cleanDeliveredTo === cleanActive)) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            const cleanMsgFrom = String(m.from || '').replace(/\D/g, '');
+            const cleanSelf = String(userId || '').replace(/\D/g, '');
+            if (cleanMsgFrom === cleanSelf && m.status === 'sent') {
+              return { ...m, status: 'delivered' };
+            }
+            return m;
+          })
+        );
+      }
     }
 
     // Real-time Message Deleted Handler (Delete for everyone / Delete for me)
@@ -341,6 +375,17 @@ export default function App() {
         peerName: `${callerName || from} (group call)`,
         peerAvatar: callerAvatar || null
       });
+      setCallParticipants([
+        {
+          uid: from,
+          userId: from,
+          name: callerName || from,
+          avatar: callerAvatar || null,
+          isSelf: false,
+          isMuted: false,
+          volume: 0
+        }
+      ]);
       startIncomingRingtone();
     }
 
@@ -388,9 +433,38 @@ export default function App() {
       setRemotePeerMediaStatus({ isMuted: Boolean(isMuted), isVideoOff: Boolean(isVideoOff) });
     }
 
-    function onGroupCallAccepted() {
+    function onGroupCallAccepted(data) {
       stopCallSounds();
       setCallState((prev) => (prev ? { ...prev, isAccepted: true, isRinging: false } : null));
+      if (data && data.from && data.from !== userId) {
+        setCallParticipants((prev) => {
+          if (prev.some((p) => p.userId === data.from || p.uid === data.from)) return prev;
+          return [
+            ...prev,
+            {
+              uid: data.from,
+              userId: data.from,
+              name: data.name || data.from,
+              avatar: data.avatar || null,
+              isSelf: false,
+              isMuted: false,
+              volume: 0
+            }
+          ];
+        });
+      }
+    }
+
+    function onGroupCallUserLeft({ from }) {
+      setCallParticipants((prev) => prev.filter((p) => p.userId !== from && p.uid !== from));
+    }
+
+    function onGroupCallPeerMediaStatus({ from, isMuted, isVideoOff }) {
+      setCallParticipants((prev) =>
+        prev.map((p) =>
+          p.userId === from || p.uid === from ? { ...p, isMuted: Boolean(isMuted), isVideoOff: Boolean(isVideoOff) } : p
+        )
+      );
     }
 
     // Real-Time Cross-User Profile Update Sync
@@ -540,6 +614,8 @@ export default function App() {
     socket.on('call_log_updated', onCallLogUpdated);
     socket.on('call_media_status', onCallMediaStatus);
     socket.on('group_call_accepted', onGroupCallAccepted);
+    socket.on('group_call_user_left', onGroupCallUserLeft);
+    socket.on('group_call_peer_media_status', onGroupCallPeerMediaStatus);
     socket.on('group_call_ended', onCallEnded);
 
     if (socket.connected && userId) {
@@ -586,6 +662,8 @@ export default function App() {
       socket.off('call_log_updated', onCallLogUpdated);
       socket.off('call_media_status', onCallMediaStatus);
       socket.off('group_call_accepted', onGroupCallAccepted);
+      socket.off('group_call_user_left', onGroupCallUserLeft);
+      socket.off('group_call_peer_media_status', onGroupCallPeerMediaStatus);
       socket.off('group_call_ended', onCallEnded);
     };
   }, [userId, activeChat, cleanupCall]);
@@ -706,6 +784,20 @@ export default function App() {
       });
     }
 
+    if (isGroupCall) {
+      setCallParticipants([
+        {
+          uid: 'self',
+          userId: userId,
+          name: currentUser?.name || currentUser?.fullPhone || 'You',
+          avatar: currentUser?.avatar || null,
+          isSelf: true,
+          isMuted: false,
+          volume: 0
+        }
+      ]);
+    }
+
     setCallState({
       isIncoming: false,
       isAccepted: false,
@@ -731,10 +823,36 @@ export default function App() {
           channelName,
           token,
           callType,
+          onVolumeIndicator: (volumes) => {
+            const volMap = {};
+            if (Array.isArray(volumes)) {
+              volumes.forEach((v) => {
+                volMap[v.uid] = v.level;
+                if (v.uid === 0) volMap['self'] = v.level;
+              });
+            }
+            setSpeakingVolumes(volMap);
+          },
           onRemoteUserPublished: (user, mediaType) => {
             if (mediaType === 'video' && user.videoTrack) {
               setRemoteVideoTrack(user.videoTrack);
             }
+            setCallParticipants((prev) => {
+              const strUid = String(user.uid);
+              if (prev.some((p) => String(p.uid) === strUid || String(p.userId) === strUid)) return prev;
+              return [
+                ...prev,
+                {
+                  uid: user.uid,
+                  userId: strUid,
+                  name: `Participant ${user.uid}`,
+                  avatar: null,
+                  isSelf: false,
+                  isMuted: false,
+                  volume: 0
+                }
+              ];
+            });
           },
           onRemoteUserUnpublished: (user, mediaType) => {
             if (mediaType === 'video') {
@@ -743,7 +861,10 @@ export default function App() {
           },
           onUserLeft: (user) => {
             console.log('[Agora] Remote user left call:', user);
-            cleanupCall();
+            setCallParticipants((prev) => prev.filter((p) => String(p.uid) !== String(user.uid) && String(p.userId) !== String(user.uid)));
+            if (!isGroupCall) {
+              cleanupCall();
+            }
           }
         });
 
@@ -769,7 +890,29 @@ export default function App() {
     // Immediately update call state to accepted & signal caller via socket
     setCallState((prev) => (prev ? { ...prev, isAccepted: true, isRinging: false } : null));
     if (callState.groupId) {
-      socket.emit('group_call_response', { groupId: callState.groupId, channelName, accepted: true });
+      socket.emit('group_call_response', {
+        groupId: callState.groupId,
+        channelName,
+        accepted: true,
+        userName: currentUser?.name || userId,
+        userAvatar: currentUser?.avatar || null
+      });
+      setCallParticipants((prev) => {
+        const selfExists = prev.some((p) => p.isSelf || p.userId === userId);
+        if (selfExists) return prev;
+        return [
+          {
+            uid: 'self',
+            userId: userId,
+            name: currentUser?.name || currentUser?.fullPhone || 'You',
+            avatar: currentUser?.avatar || null,
+            isSelf: true,
+            isMuted: false,
+            volume: 0
+          },
+          ...prev
+        ];
+      });
     } else {
       socket.emit('answer_call', { to: callState.peerId, channelName });
     }
@@ -787,10 +930,36 @@ export default function App() {
           channelName,
           token,
           callType: callState.callType,
+          onVolumeIndicator: (volumes) => {
+            const volMap = {};
+            if (Array.isArray(volumes)) {
+              volumes.forEach((v) => {
+                volMap[v.uid] = v.level;
+                if (v.uid === 0) volMap['self'] = v.level;
+              });
+            }
+            setSpeakingVolumes(volMap);
+          },
           onRemoteUserPublished: (user, mediaType) => {
             if (mediaType === 'video' && user.videoTrack) {
               setRemoteVideoTrack(user.videoTrack);
             }
+            setCallParticipants((prev) => {
+              const strUid = String(user.uid);
+              if (prev.some((p) => String(p.uid) === strUid || String(p.userId) === strUid)) return prev;
+              return [
+                ...prev,
+                {
+                  uid: user.uid,
+                  userId: strUid,
+                  name: `Participant ${user.uid}`,
+                  avatar: null,
+                  isSelf: false,
+                  isMuted: false,
+                  volume: 0
+                }
+              ];
+            });
           },
           onRemoteUserUnpublished: (user, mediaType) => {
             if (mediaType === 'video') {
@@ -799,7 +968,10 @@ export default function App() {
           },
           onUserLeft: (user) => {
             console.log('[Agora] Remote user left call:', user);
-            cleanupCall();
+            setCallParticipants((prev) => prev.filter((p) => String(p.uid) !== String(user.uid) && String(p.userId) !== String(user.uid)));
+            if (!callState?.groupId) {
+              cleanupCall();
+            }
           }
         });
 
@@ -814,7 +986,12 @@ export default function App() {
   const handleRejectCall = () => {
     if (callState?.peerId) {
       if (callState.groupId) {
-        socket.emit('group_call_response', { groupId: callState.groupId, channelName: callState.channelName, accepted: false });
+        socket.emit('group_call_response', {
+          groupId: callState.groupId,
+          channelName: callState.channelName,
+          accepted: false,
+          userName: currentUser?.name || userId
+        });
       } else {
         socket.emit('reject_call', {
           to: callState.peerId,
@@ -830,7 +1007,7 @@ export default function App() {
   const handleEndCall = () => {
     if (callState?.peerId) {
       if (callState.groupId) {
-        socket.emit('group_call_end', { groupId: callState.groupId, channelName: callState.channelName });
+        socket.emit('group_call_leave', { groupId: callState.groupId, channelName: callState.channelName });
       } else {
         socket.emit('end_call', {
           to: callState.peerId,
@@ -844,11 +1021,21 @@ export default function App() {
   // 5. Mute Audio Control
   const handleToggleMute = (isMuted) => {
     agoraService.toggleAudio(isMuted);
+    if (callState?.groupId) {
+      socket.emit('group_call_media_status', { groupId: callState.groupId, isMuted, isVideoOff: false });
+    } else if (callState?.peerId) {
+      socket.emit('call_media_status', { to: callState.peerId, isMuted, isVideoOff: false });
+    }
   };
 
   // 6. Toggle Video Camera Control
   const handleToggleVideo = (isVideoDisabled) => {
     agoraService.toggleVideo(isVideoDisabled);
+    if (callState?.groupId) {
+      socket.emit('group_call_media_status', { groupId: callState.groupId, isMuted: false, isVideoOff: isVideoDisabled });
+    } else if (callState?.peerId) {
+      socket.emit('call_media_status', { to: callState.peerId, isMuted: false, isVideoOff: isVideoDisabled });
+    }
   };
 
   // 5. Emit Typing Indicator
@@ -1125,6 +1312,10 @@ export default function App() {
           remoteVideoTrack={remoteVideoTrack}
           onToggleMute={handleToggleMute}
           onToggleVideo={handleToggleVideo}
+          participants={callParticipants}
+          speakingVolumes={speakingVolumes}
+          currentUserId={userId}
+          currentUser={currentUser}
         />
       )}
 

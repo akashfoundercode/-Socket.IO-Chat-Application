@@ -957,16 +957,16 @@ const getUnreadCount = async (userId) => {
 /**
  * 8. Create a new call log entry
  */
-const createCallLog = async ({ callerId, receiverId, callType = 'voice', status = 'missed', channelName = null }) => {
+const createCallLog = async ({ callerId, receiverId, callType = 'voice', status = 'missed', channelName = null, groupId = null, groupName = null, memberNames = [] }) => {
     const pool = getPool();
     const cleanCaller = String(callerId || "").trim();
     const cleanReceiver = String(receiverId || "").trim();
     if (!cleanCaller || !cleanReceiver) return null;
 
     const [result] = await pool.execute(
-        `INSERT INTO call_logs (caller_id, receiver_id, call_type, status, channel_name, duration, created_at)
-         VALUES (?, ?, ?, ?, ?, 0, NOW())`,
-        [cleanCaller, cleanReceiver, callType, status, channelName]
+        `INSERT INTO call_logs (caller_id, receiver_id, call_type, status, channel_name, group_id, group_name, member_names, duration, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
+        [cleanCaller, cleanReceiver, callType, status, channelName, groupId ? Number(groupId) : null, groupName || null, JSON.stringify(Array.isArray(memberNames) ? memberNames.slice(0, 3) : [])]
     );
 
     return {
@@ -1253,7 +1253,7 @@ const getCallLogs = async (userId) => {
                  OR c.contact_id = u.phone
              )
          )
-         WHERE cl.caller_id IN (${placeholders}) OR cl.receiver_id IN (${placeholders})
+         WHERE cl.group_id IS NULL AND (cl.caller_id IN (${placeholders}) OR cl.receiver_id IN (${placeholders}))
          ORDER BY cl.id DESC
          LIMIT 100`,
         [
@@ -1271,7 +1271,20 @@ const getCallLogs = async (userId) => {
         ]
     );
 
-    return rows.map((r) => {
+    const [groupRows] = await getPool().execute(
+        `SELECT cl.id, cl.caller_id AS callerId, cl.call_type AS callType, cl.status AS rawStatus,
+                cl.duration, cl.created_at AS createdAt, cl.group_id AS groupId,
+                COALESCE(cl.group_name, g.name, CONCAT('Group ', cl.group_id)) AS groupName,
+                cl.member_names AS memberNames
+         FROM call_logs cl
+         JOIN group_members gm ON gm.group_id = cl.group_id AND gm.user_id IN (${placeholders})
+         LEFT JOIN chat_groups g ON g.id = cl.group_id
+         WHERE cl.group_id IS NOT NULL
+         ORDER BY cl.id DESC LIMIT 100`,
+        userVars
+    );
+
+    const personalCalls = rows.map((r) => {
         const isMissed = r.direction === 'missed' || (r.direction === 'incoming' && r.rawStatus === 'missed');
         return {
             id: Number(r.id),
@@ -1291,6 +1304,28 @@ const getCallLogs = async (userId) => {
             createdAt: r.createdAt
         };
     });
+
+    const groupCalls = groupRows.map((r) => ({
+        id: Number(r.id),
+        callerId: r.callerId,
+        receiverId: `group:${r.groupId}`,
+        peerId: `group:${r.groupId}`,
+        peerName: r.groupName,
+        groupName: r.groupName,
+        groupId: String(r.groupId),
+        groupMembers: r.memberNames ? JSON.parse(r.memberNames) : [],
+        peerPhone: `group:${r.groupId}`,
+        peerAvatar: null,
+        callType: r.callType || 'voice',
+        direction: userVars.includes(String(r.callerId)) ? 'outgoing' : 'incoming',
+        isMissed: r.rawStatus === 'missed',
+        status: r.rawStatus,
+        duration: Number(r.duration || 0),
+        createdAt: r.createdAt,
+        isGroup: true
+    }));
+
+    return [...personalCalls, ...groupCalls].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
 
 /**
