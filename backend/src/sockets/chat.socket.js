@@ -542,7 +542,7 @@ module.exports = (io) => {
 
                 socket.to(`group:${cleanGroupId}`).emit("group_call_user_left", { from, groupId: cleanGroupId, channelName });
 
-                if (session.participants.size === 0) {
+                if ((session.hadAcceptedMember && session.participants.size <= 1) || session.participants.size === 0) {
                     endGroupCallSession(channelName, cleanGroupId);
                 }
             }

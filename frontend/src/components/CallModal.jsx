@@ -251,10 +251,10 @@ export default function CallModal({
                   const muted = p.isSelf ? isMuted : Boolean(p.isMuted);
                   const vTrack = p.isSelf
                     ? (isVideo ? localVideoTrack : null)
-                    : (isVideo ? (remoteVideoTracks[p.agoraUid] || remoteVideoTracks[p.uid] || remoteVideoTracks[p.userId] || (allParticipants.filter(x => !x.isSelf).length === 1 ? Object.values(remoteVideoTracks)[0] : null) || remoteVideoTrack) : null);
+                    : (isVideo ? (remoteVideoTracks[p.agoraUid] || remoteVideoTracks[p.uid] || remoteVideoTracks[String(p.agoraUid)] || remoteVideoTracks[String(p.uid)] || remoteVideoTracks[p.userId] || null) : null);
                   return (
                     <VideoTile
-                      key={p.agoraUid ? `agora-${p.agoraUid}` : (p.userId ? `user-${p.userId}` : `part-${i}`)}
+                      key={p.isSelf ? 'self-tile' : `remote-${p.agoraUid || p.uid || p.userId || i}`}
                       participant={p}
                       videoTrack={isVideo ? vTrack : null}
                       isSpeaking={speaking}

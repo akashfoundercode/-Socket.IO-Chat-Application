@@ -68,11 +68,17 @@ export default function App() {
   const [callParticipants, setCallParticipants] = useState([]);
   const [speakingVolumes, setSpeakingVolumes] = useState({});
   const callUserMetadataRef = useRef(new Map());
+  const isEndingCallRef = useRef(false);
+  const callStateRef = useRef(callState);
+  useEffect(() => {
+    callStateRef.current = callState;
+  }, [callState]);
 
   const userId = currentUser ? (currentUser.fullPhone || currentUser.id) : '';
 
   // Cleanup helper for Agora Calling
   const cleanupCall = useCallback(() => {
+    isEndingCallRef.current = false;
     stopCallSounds();
     agoraService.leaveChannel();
     setLocalVideoTrack(null);
@@ -543,7 +549,17 @@ export default function App() {
         delete next[String(from)];
         return next;
       });
-      setCallParticipants((prev) => prev.filter((p) => p.userId !== from && p.uid !== from));
+      setCallParticipants((prev) => {
+        const remaining = prev.filter((p) => p.userId !== from && p.uid !== from);
+        if (callStateRef.current?.isAccepted && remaining.length === 0 && !isEndingCallRef.current) {
+          console.log('[Socket] Last remote participant left group call, ending call');
+          isEndingCallRef.current = true;
+          setTimeout(() => {
+            handleEndCall();
+          }, 250);
+        }
+        return remaining;
+      });
     }
 
     function onGroupCallPeerMediaStatus({ from, isMuted, isVideoOff }) {
@@ -1011,7 +1027,17 @@ export default function App() {
               delete next[String(user.uid)];
               return next;
             });
-            setCallParticipants((prev) => prev.filter((p) => String(p.agoraUid || p.uid) !== String(user.uid)));
+            setCallParticipants((prev) => {
+              const remaining = prev.filter((p) => String(p.agoraUid || p.uid) !== String(user.uid));
+              if (callStateRef.current?.isAccepted && remaining.length === 0 && !isEndingCallRef.current) {
+                console.log('[Agora] Only 1 active participant remaining, auto ending call');
+                isEndingCallRef.current = true;
+                setTimeout(() => {
+                  handleEndCall();
+                }, 250);
+              }
+              return remaining;
+            });
             if (!isGroupCall) {
               cleanupCall();
             }
@@ -1179,7 +1205,17 @@ export default function App() {
               delete next[String(user.uid)];
               return next;
             });
-            setCallParticipants((prev) => prev.filter((p) => String(p.agoraUid || p.uid) !== String(user.uid)));
+            setCallParticipants((prev) => {
+              const remaining = prev.filter((p) => String(p.agoraUid || p.uid) !== String(user.uid));
+              if (callStateRef.current?.isAccepted && remaining.length === 0 && !isEndingCallRef.current) {
+                console.log('[Agora] Only 1 active participant remaining, auto ending call');
+                isEndingCallRef.current = true;
+                setTimeout(() => {
+                  handleEndCall();
+                }, 250);
+              }
+              return remaining;
+            });
             if (!callState?.groupId) {
               cleanupCall();
             }
@@ -1236,6 +1272,7 @@ export default function App() {
 
   // 4. End Active Call
   const handleEndCall = () => {
+    isEndingCallRef.current = true;
     if (callState?.peerId) {
       if (callState.groupId) {
         socket.emit('group_call_leave', { groupId: callState.groupId, channelName: callState.channelName });
