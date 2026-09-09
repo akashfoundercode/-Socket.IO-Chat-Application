@@ -120,11 +120,16 @@ export default function App() {
 
     function onGroupMessageReceived(message) {
       const isCurrentGroup = activeChat === `group:${message.groupId}`;
+      // Auto-detect system messages if type is missing
+      const normalizedMessage = message.type ? message : {
+        ...message,
+        type: (typeof message.text === 'string' && message.text.startsWith('{') && (() => { try { return JSON.parse(message.text)?.action; } catch(e) { return false; } })()) ? 'system' : (message.type || 'text')
+      };
       if (!isCurrentGroup || document.hidden) {
-        playMessageNotification();
+        if (normalizedMessage.type !== 'system') playMessageNotification();
       }
       if (activeChat === `group:${message.groupId}`) {
-        setMessages((prev) => [...prev, message]);
+        setMessages((prev) => [...prev, normalizedMessage]);
       }
       setRecentMessageEvent({ type: 'group_message', timestamp: Date.now() });
     }

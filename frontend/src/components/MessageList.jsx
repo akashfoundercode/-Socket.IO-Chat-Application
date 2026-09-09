@@ -492,9 +492,17 @@ export default function MessageList({
           }
           const hasReactions = reactionsObj && typeof reactionsObj === 'object' && Object.keys(reactionsObj).length > 0;
 
-          // Safe text extraction — prevent [object Object]
+          // Safe text extraction — prevent [object Object] and raw JSON system payloads
           const rawText = msg.text;
-          const msgText = rawText && typeof rawText === 'object' ? JSON.stringify(rawText) : String(rawText || '');
+          let msgText = rawText && typeof rawText === 'object' ? JSON.stringify(rawText) : String(rawText || '');
+          if (msgText.startsWith('{') || msgText.startsWith('[')) {
+            try {
+              const parsed = JSON.parse(msgText);
+              if (parsed && parsed.action) {
+                msgText = formatSystemMessage(msg, currentUserId);
+              }
+            } catch (e) { /* not JSON, keep as-is */ }
+          }
           let locationData = null;
           if (isLocation && msg.text) {
             try {
