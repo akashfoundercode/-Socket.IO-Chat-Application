@@ -1263,7 +1263,15 @@ body {
 }
 
 .wa-chat-item-row:hover {
-  background: #f5f6f6;
+  background: var(--wa-hover-bg);
+  color: var(--wa-hover-text);
+}
+
+.wa-chat-item-row:hover .wa-item-name,
+.wa-chat-item-row:hover .wa-item-msg,
+.wa-chat-item-row:hover .wa-item-time,
+.wa-chat-item-row:hover .wa-call-subtitle-info {
+  color: var(--wa-hover-text);
 }
 
 .wa-chat-item-row.active {
@@ -1350,14 +1358,37 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
 }
 
 .wa-item-msg {
+  display: -webkit-box;
+  max-width: 100%;
   font-size: 13px;
   color: #6b7280;
-  white-space: nowrap;
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.wa-chat-item-row:hover .wa-group-tag,
+.wa-chat-item-row:hover .wa-draft-tag {
+  background: color-mix(in srgb, var(--wa-green) 16%, #ffffff);
+  border-color: color-mix(in srgb, var(--wa-green) 32%, #ffffff);
+  color: var(--wa-green-dark);
+}
+
+.wa-menu-item:hover,
+.wa-dropdown-item:hover {
+  background: var(--wa-hover-bg);
+  color: var(--wa-hover-text);
+}
+
+.wa-menu-item:hover i,
+.wa-dropdown-item:hover i {
+  color: var(--wa-hover-text);
 }
 
 /* Swipe-to-Delete Container & Layout */

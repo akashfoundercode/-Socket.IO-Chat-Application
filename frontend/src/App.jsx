@@ -37,10 +37,10 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('wa_theme') || 'orange');
 
   const themes = {
-    green: { '--wa-green': '#00a884', '--wa-green-dark': '#008f72', '--wa-green-header': '#008f72', '--wa-green-hover': '#06b995', '--wa-online': '#25d366', '--wa-chat-bg': '#efeae2', '--wa-outgoing-bubble': '#d9fdd3' },
-    orange: { '--wa-green': '#f97316', '--wa-green-dark': '#c2410c', '--wa-green-header': '#ea580c', '--wa-green-hover': '#fb923c', '--wa-online': '#f97316', '--wa-chat-bg': '#fff7ed', '--wa-outgoing-bubble': '#ffedd5' },
-    blue: { '--wa-green': '#168aad', '--wa-green-dark': '#126782', '--wa-green-header': '#126782', '--wa-green-hover': '#2aa9cf', '--wa-online': '#168aad', '--wa-chat-bg': '#edf7fa', '--wa-outgoing-bubble': '#d9f1f8' },
-    charcoal: { '--wa-green': '#64748b', '--wa-green-dark': '#334155', '--wa-green-header': '#334155', '--wa-green-hover': '#7c8da3', '--wa-online': '#64748b', '--wa-chat-bg': '#eef1f4', '--wa-outgoing-bubble': '#e2e8f0' }
+    green: { '--wa-green': '#00a884', '--wa-green-dark': '#008f72', '--wa-green-header': '#008f72', '--wa-green-hover': '#06b995', '--wa-online': '#25d366', '--wa-hover-bg': '#e6f7f2', '--wa-hover-text': '#064e3b', '--wa-chat-bg': '#efeae2', '--wa-outgoing-bubble': '#d9fdd3' },
+    orange: { '--wa-green': '#f97316', '--wa-green-dark': '#c2410c', '--wa-green-header': '#ea580c', '--wa-green-hover': '#fb923c', '--wa-online': '#f97316', '--wa-hover-bg': '#fff7ed', '--wa-hover-text': '#7c2d12', '--wa-chat-bg': '#fff7ed', '--wa-outgoing-bubble': '#ffedd5' },
+    blue: { '--wa-green': '#168aad', '--wa-green-dark': '#126782', '--wa-green-header': '#126782', '--wa-green-hover': '#2aa9cf', '--wa-online': '#168aad', '--wa-hover-bg': '#edf7fa', '--wa-hover-text': '#164e63', '--wa-chat-bg': '#edf7fa', '--wa-outgoing-bubble': '#d9f1f8' },
+    charcoal: { '--wa-green': '#64748b', '--wa-green-dark': '#334155', '--wa-green-header': '#334155', '--wa-green-hover': '#7c8da3', '--wa-online': '#64748b', '--wa-hover-bg': '#eef1f4', '--wa-hover-text': '#1e293b', '--wa-chat-bg': '#eef1f4', '--wa-outgoing-bubble': '#e2e8f0' }
   };
 
   const handleThemeChange = useCallback((nextTheme) => {

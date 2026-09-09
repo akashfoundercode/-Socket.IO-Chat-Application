@@ -693,21 +693,20 @@ export default function MessageList({
 
                   {isCall && (
                     <div
-                      className={`wa-call-message ${
-                        callData?.status === 'not_accepted' ||
-                        callData?.status === 'missed' ||
-                        (isGroup && callData?.joinedCount <= 1 && callData?.status !== 'completed')
+                      className={`wa-call-message ${callData?.status === 'not_accepted' ||
+                          callData?.status === 'missed' ||
+                          (isGroup && callData?.joinedCount <= 1 && callData?.status !== 'completed')
                           ? 'missed'
                           : ''
-                      }`}
+                        }`}
                     >
                       <i className={`fa-solid ${callData?.callType === 'video' ? 'fa-video' : 'fa-phone'}`}></i>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         <span style={{ fontWeight: '500' }}>
                           {isGroup ? (
                             callData?.status === 'not_accepted' ||
-                            callData?.status === 'missed' ||
-                            (callData?.joinedCount <= 1 && callData?.status !== 'completed')
+                              callData?.status === 'missed' ||
+                              (callData?.joinedCount <= 1 && callData?.status !== 'completed')
                               ? 'Group voice call • Not accepted'
                               : `Group voice call • ${callData?.joinedCount || 2} joined`
                           ) : callData?.status === 'missed' ? (
