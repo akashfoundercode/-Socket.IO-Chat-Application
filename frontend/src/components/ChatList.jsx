@@ -54,16 +54,25 @@ export default function ChatList({
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [qrScanError, setQrScanError] = useState('');
 
+  const confirmQrJoin = (scannedUrl) => {
+    const url = new URL(scannedUrl);
+    const groupId = url.searchParams.get('joinGroup');
+    const groupName = url.searchParams.get('groupName') || 'this group';
+    if (!groupId) throw new Error('Invalid invite');
+
+    setShowQrScanner(false);
+    const shouldJoin = window.confirm(`Join group "${groupName}"?\n\nPress OK to join this group.`);
+    if (shouldJoin) {
+      onJoinGroupInvite?.(groupId, scannedUrl);
+    }
+  };
+
   useEffect(() => {
     if (!showQrScanner || !qrVideoRef.current) return undefined;
     const scanner = new QrScanner(qrVideoRef.current, (result) => {
       const scannedUrl = typeof result === 'string' ? result : result?.data;
       try {
-        const url = new URL(scannedUrl);
-        const groupId = url.searchParams.get('joinGroup');
-        if (!groupId) throw new Error('Invalid invite');
-        setShowQrScanner(false);
-        onJoinGroupInvite?.(groupId, scannedUrl);
+        confirmQrJoin(scannedUrl);
       } catch {
         setQrScanError('This QR is not a valid group invitation.');
       }
@@ -84,10 +93,7 @@ export default function ChatList({
     try {
       const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true });
       const scannedUrl = typeof result === 'string' ? result : result?.data;
-      const url = new URL(scannedUrl);
-      const groupId = url.searchParams.get('joinGroup');
-      if (!groupId) throw new Error('Invalid invite');
-      onJoinGroupInvite?.(groupId, scannedUrl);
+      confirmQrJoin(scannedUrl);
     } catch {
       setQrScanError('This QR is not a valid group invitation.');
     }
