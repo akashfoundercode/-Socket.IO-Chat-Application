@@ -923,6 +923,19 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    const groupId = new URLSearchParams(window.location.search).get('joinGroup');
+    if (!groupId || !userId) return;
+    chatApi.joinGroupByInvite(groupId, userId)
+      .then((data) => {
+        if (data?.group?.id) {
+          window.history.replaceState({}, '', window.location.pathname);
+          handleSelectChat(`group:${data.group.id}`, { ...data.group, isGroup: true, groupId: data.group.id });
+        }
+      })
+      .catch((error) => window.alert(error.message || 'Could not join group'));
+  }, [userId]);
+
   const isActiveGroup = String(activeChat || '').startsWith('group:');
   const activeGroupMember = groupDetails?.members?.find((member) => (
     String(member.userId) === String(userId) ||

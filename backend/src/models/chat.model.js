@@ -1094,6 +1094,18 @@ const addGroupMember = async (groupId, requesterId, memberId) => {
     return getGroup(groupId, requesterId);
 };
 
+const joinGroupByInvite = async (groupId, memberId) => {
+    const user = await getUser(memberId);
+    if (!user) throw new Error("User not found");
+    const [groupRows] = await getPool().execute("SELECT id FROM chat_groups WHERE id = ? LIMIT 1", [Number(groupId)]);
+    if (!groupRows[0]) throw new Error("Group not found");
+    await getPool().execute(
+        "INSERT IGNORE INTO group_members (group_id, user_id, role) VALUES (?, ?, 'member')",
+        [Number(groupId), String(memberId).trim()]
+    );
+    return getGroup(groupId, memberId);
+};
+
 const updateGroup = async (groupId, requesterId, { name, avatar, messagePermission }) => {
     const requester = await isGroupMember(groupId, requesterId);
     if (!requester || requester.role !== "admin") throw new Error("Only group admins can change group settings");
@@ -1528,6 +1540,7 @@ module.exports = {
     listGroups,
     markGroupMessagesAsSeen,
     addGroupMember,
+    joinGroupByInvite,
     updateGroup,
     updateGroupMemberRole,
     getGroupMessages,

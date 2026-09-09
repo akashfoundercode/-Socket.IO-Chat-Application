@@ -23,6 +23,7 @@ router.post("/groups", chatController.createGroup);
 router.get("/groups/:userId", chatController.getGroups);
 router.get("/groups/detail/:groupId", chatController.getGroup);
 router.post("/groups/:groupId/members", chatController.addGroupMember);
+router.post("/groups/:groupId/join", chatController.joinGroupByInvite);
 router.put("/groups/:groupId", chatController.updateGroup);
 router.patch("/groups/:groupId", chatController.updateGroup);
 router.put("/groups/:groupId/members/role", chatController.updateGroupMemberRole);

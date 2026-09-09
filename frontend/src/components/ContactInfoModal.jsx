@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { chatApi } from '../services/api';
+import QRCode from 'qrcode';
 
 export default function ContactInfoModal({
   recipientProfile,
@@ -29,6 +30,35 @@ export default function ContactInfoModal({
   const [groupMessagePermission, setGroupMessagePermission] = useState(groupDetails?.messagePermission || 'everyone');
   const [isSavingGroup, setIsSavingGroup] = useState(false);
   const [groupUpdateMessage, setGroupUpdateMessage] = useState('');
+  const [inviteQr, setInviteQr] = useState('');
+
+  const cleanGroupId = String(recipientId || '').replace(/^group:/, '');
+  const inviteLink = typeof window !== 'undefined'
+    ? `${window.location.origin}/?joinGroup=${encodeURIComponent(cleanGroupId)}`
+    : '';
+
+  React.useEffect(() => {
+    if (!isGroup || !inviteLink) return;
+    QRCode.toDataURL(inviteLink, { width: 220, margin: 2 })
+      .then(setInviteQr)
+      .catch(() => setInviteQr(''));
+  }, [isGroup, inviteLink]);
+
+  const copyInviteLink = async () => {
+    if (!inviteLink) return;
+    await navigator.clipboard?.writeText(inviteLink);
+    setGroupUpdateMessage('Invitation link copied');
+    window.setTimeout(() => setGroupUpdateMessage(''), 2500);
+  };
+
+  const shareInviteLink = async () => {
+    if (!inviteLink) return;
+    if (navigator.share) {
+      await navigator.share({ title: `Join ${displayName}`, text: `Join ${displayName} on WhatsApp`, url: inviteLink });
+    } else {
+      await copyInviteLink();
+    }
+  };
 
   if (!recipientProfile && !recipientId) return null;
 
@@ -312,6 +342,20 @@ export default function ContactInfoModal({
               <div className="wa-group-info-summary">
                 <span>{groupDetails?.memberCount || groupDetails?.members?.length || 0} members</span>
                 <span>{groupDetails?.messagePermission === 'admins' ? 'Admins can message' : 'All members can message'}</span>
+              </div>
+
+              <div className="wa-group-invite-card">
+                <div className="wa-group-info-section-title">Invite to group</div>
+                {inviteQr && <img src={inviteQr} alt="Group invitation QR code" className="wa-group-invite-qr" />}
+                <div className="wa-group-invite-link">{inviteLink}</div>
+                <div className="wa-group-invite-actions">
+                  <button type="button" className="wa-group-invite-btn" onClick={copyInviteLink}>
+                    <i className="fa-regular fa-copy"></i> Copy link
+                  </button>
+                  <button type="button" className="wa-group-invite-btn" onClick={shareInviteLink}>
+                    <i className="fa-solid fa-share-nodes"></i> Share
+                  </button>
+                </div>
               </div>
 
               <div className="wa-group-message-permission">

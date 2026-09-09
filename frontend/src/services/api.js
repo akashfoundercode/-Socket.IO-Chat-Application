@@ -208,6 +208,11 @@ export const chatApi = {
     body: JSON.stringify({ requesterId, memberId })
   }),
 
+  joinGroupByInvite: (groupId, userId) => request(`/api/chat/groups/${encodeURIComponent(groupId)}/join`, {
+    method: 'POST',
+    body: JSON.stringify({ userId })
+  }),
+
   updateGroup: (groupId, requesterId, changes) => request(`/api/chat/groups/${encodeURIComponent(groupId)}`, {
     method: 'PUT',
     body: JSON.stringify({ requesterId, ...changes })

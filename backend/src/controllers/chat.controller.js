@@ -506,6 +506,24 @@ const addGroupMember = async (req, res) => {
     }
 };
 
+const joinGroupByInvite = async (req, res) => {
+    try {
+        const userId = normalizeId(req.body.userId || req.query.userId);
+        const group = await chatModel.joinGroupByInvite(req.params.groupId, userId);
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`group:${req.params.groupId}`).emit('group_details', group);
+            chatModel.getPhoneVariants(userId).forEach((variant) => {
+                io.to(variant).emit('group_created', { group });
+                io.to(variant).emit('conversation_refresh');
+            });
+        }
+        return res.json({ success: true, group });
+    } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+};
+
 const updateGroup = async (req, res) => {
     try {
         const requesterId = normalizeId(req.body.requesterId || req.body.userId);
