@@ -35,8 +35,8 @@ function CallAvatar({ avatar, name, size = 'md' }) {
   );
 }
 
-// Video tile for group video calls — each participant gets their own video container
-function VideoTile({ participant, videoTrack, isSpeaking, isMuted, count }) {
+// Video tile for equal grid layout
+function VideoTile({ participant, videoTrack, isSpeaking, isMuted, count, onClick }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -51,7 +51,10 @@ function VideoTile({ participant, videoTrack, isSpeaking, isMuted, count }) {
   }, [videoTrack]);
 
   return (
-    <div className={`call-tile ${isSpeaking ? 'speaking' : ''} ${isMuted ? 'muted' : ''} ${count > 4 ? 'tile-sm' : ''}`}>
+    <div
+      className={`call-tile ${isSpeaking ? 'speaking' : ''} ${isMuted ? 'muted' : ''} ${count > 4 ? 'tile-sm' : ''}`}
+      onClick={onClick}
+    >
       {isSpeaking && <div className="tile-glow" />}
       <div ref={containerRef} className="tile-video-container" style={{ display: videoTrack ? 'block' : 'none' }} />
       {!videoTrack && (
@@ -75,11 +78,86 @@ function VideoTile({ participant, videoTrack, isSpeaking, isMuted, count }) {
   );
 }
 
+// Compact Video Thumbnail Tile for Stage View
+function VideoThumbnailTile({ participant, videoTrack, isSpeaking, isMuted, isSelected, onClick }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (containerRef.current && videoTrack) {
+      try {
+        containerRef.current.innerHTML = '';
+        videoTrack.play(containerRef.current);
+      } catch (e) {
+        console.warn('[VideoThumbnailTile] Play error:', e);
+      }
+    }
+  }, [videoTrack]);
+
+  return (
+    <div
+      className={`call-thumbnail-tile ${isSelected ? 'is-selected' : ''} ${isSpeaking ? 'speaking' : ''}`}
+      onClick={onClick}
+      title={`Click to focus on ${participant.name}`}
+    >
+      {isSpeaking && <div className="thumb-glow" />}
+      <div ref={containerRef} className="thumb-video-container" style={{ display: videoTrack ? 'block' : 'none' }} />
+      {!videoTrack && (
+        <div className="thumb-avatar-bg">
+          <CallAvatar avatar={participant.avatar} name={participant.name} size="sm" />
+        </div>
+      )}
+      <div className="thumb-footer">
+        <span className="thumb-name">{participant.name}{participant.isSelf ? ' (You)' : ''}</span>
+        {isMuted && <i className="fa-solid fa-microphone-slash thumb-mute-icon" />}
+        {isSpeaking && !isMuted && <i className="fa-solid fa-volume-high thumb-speak-icon" />}
+      </div>
+    </div>
+  );
+}
+
+// Main Video Stage for focused participant
+function MainVideoStage({ participant, videoTrack, isSpeaking, isMuted, isVideoOff }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (containerRef.current && videoTrack) {
+      try {
+        containerRef.current.innerHTML = '';
+        videoTrack.play(containerRef.current);
+      } catch (e) {
+        console.warn('[MainVideoStage] Play error:', e);
+      }
+    }
+  }, [videoTrack]);
+
+  return (
+    <div className={`main-stage-wrapper ${isSpeaking ? 'speaking' : ''}`}>
+      <div ref={containerRef} className="main-stage-video" style={{ display: videoTrack && !isVideoOff ? 'block' : 'none' }} />
+      {(!videoTrack || isVideoOff) && (
+        <div className="main-stage-avatar-bg">
+          <div className={`main-stage-avatar-ring ${isSpeaking ? 'ring-pulse' : ''}`}>
+            <CallAvatar avatar={participant?.avatar} name={participant?.name || 'User'} size="xl" />
+          </div>
+          <span className="main-stage-status">
+            {isVideoOff ? 'Camera is off' : 'Waiting for video...'}
+          </span>
+        </div>
+      )}
+      <div className="main-stage-badge">
+        <span className="main-stage-name">{participant?.name}{participant?.isSelf ? ' (You)' : ''}</span>
+        {isMuted && <i className="fa-solid fa-microphone-slash main-stage-mute" />}
+        {isSpeaking && !isMuted && <i className="fa-solid fa-volume-high main-stage-speak" />}
+      </div>
+    </div>
+  );
+}
+
 export default function CallModal({
   callState,
   onAcceptCall,
   onRejectCall,
   onEndCall,
+  onMinimize,
   localVideoTrack,
   remoteVideoTrack,
   remoteVideoTracks = {},
@@ -94,6 +172,9 @@ export default function CallModal({
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [duration, setDuration] = useState(0);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  const [selectedMainKey, setSelectedMainKey] = useState(null);
+  const [viewMode, setViewMode] = useState('stage'); // 'stage' | 'grid'
+  const [swap1on1, setSwap1on1] = useState(false);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -102,13 +183,13 @@ export default function CallModal({
     if (localVideoRef.current && localVideoTrack) {
       try { localVideoTrack.play(localVideoRef.current); } catch (e) { /* ignore */ }
     }
-  }, [localVideoTrack, callState?.callType]);
+  }, [localVideoTrack, callState?.callType, swap1on1]);
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteVideoTrack) {
       try { remoteVideoTrack.play(remoteVideoRef.current); } catch (e) { /* ignore */ }
     }
-  }, [remoteVideoTrack, callState?.callType]);
+  }, [remoteVideoTrack, callState?.callType, swap1on1]);
 
   useEffect(() => {
     let t = null;
@@ -148,7 +229,7 @@ export default function CallModal({
       ? 'User is on another call...'
       : callState.isRinging ? 'Ringing...' : 'Calling...';
 
-  // Build participants list for group call
+  // Build unified participants list for group call
   const allParticipants = React.useMemo(() => {
     if (!isGroup) return [];
     const self = {
@@ -162,7 +243,6 @@ export default function CallModal({
       volume: speakingVolumes['self'] || speakingVolumes[0] || 0
     };
 
-    // Deduplicate and filter out any invalid or self entries
     const seenKeys = new Set(['self', String(currentUserId)]);
     const remoteList = [];
 
@@ -183,7 +263,45 @@ export default function CallModal({
 
   const count = allParticipants.length;
 
-  // Grid layout class: 1, 2, 3-4, 5-6, 7+
+  // Find track for a participant
+  const getTrackForParticipant = (p) => {
+    if (!isVideo || !p) return null;
+    if (p.isSelf) return isVideoOff ? null : localVideoTrack;
+    return remoteVideoTracks[p.agoraUid] ||
+      remoteVideoTracks[p.uid] ||
+      remoteVideoTracks[String(p.agoraUid)] ||
+      remoteVideoTracks[String(p.uid)] ||
+      remoteVideoTracks[p.userId] ||
+      null;
+  };
+
+  // Determine main participant in group call
+  const mainParticipant = React.useMemo(() => {
+    if (allParticipants.length === 0) return null;
+    if (selectedMainKey) {
+      const match = allParticipants.find(p => {
+        const key = p.isSelf ? 'self' : String(p.agoraUid || p.uid || p.userId);
+        return key === selectedMainKey;
+      });
+      if (match) return match;
+    }
+    // Default to first remote participant with video or active speaker, else first remote, else self
+    const firstRemoteWithVideo = allParticipants.find(p => !p.isSelf && getTrackForParticipant(p));
+    if (firstRemoteWithVideo) return firstRemoteWithVideo;
+    const firstRemote = allParticipants.find(p => !p.isSelf);
+    return firstRemote || allParticipants[0];
+  }, [allParticipants, selectedMainKey, remoteVideoTracks, isVideoOff, localVideoTrack]);
+
+  // Thumbnails (all participants except main, or all participants including self)
+  const thumbnailParticipants = React.useMemo(() => {
+    if (allParticipants.length <= 1) return [];
+    const mainKey = mainParticipant?.isSelf ? 'self' : String(mainParticipant?.agoraUid || mainParticipant?.uid || mainParticipant?.userId);
+    return allParticipants.filter(p => {
+      const key = p.isSelf ? 'self' : String(p.agoraUid || p.uid || p.userId);
+      return key !== mainKey;
+    });
+  }, [allParticipants, mainParticipant]);
+
   const gridClass = count <= 1 ? 'grid-1' : count === 2 ? 'grid-2' : count <= 4 ? 'grid-4' : count <= 6 ? 'grid-6' : 'grid-many';
 
   return (
@@ -220,55 +338,163 @@ export default function CallModal({
 
           {/* Top bar */}
           <div className="call-topbar">
-            <div className="call-secure-tag">
-              <i className="fa-solid fa-lock" />
-              <span>End-to-end encrypted</span>
+            <div className="call-topbar-left">
+              {onMinimize && (
+                <button
+                  type="button"
+                  className="call-back-btn"
+                  onClick={onMinimize}
+                  title="Minimize Call / Return to chats"
+                >
+                  <i className="fa-solid fa-arrow-left" />
+                  <span>Back</span>
+                </button>
+              )}
+              <div className="call-secure-tag">
+                <i className="fa-solid fa-lock" />
+                <span>Encrypted</span>
+              </div>
             </div>
+
             <div className="call-peer-info">
               <span className="call-peer-name">{peerName}</span>
               <span className={`call-status-text ${callState.isAccepted ? 'connected' : 'ringing'}`}>
                 {statusText}
               </span>
             </div>
-            {isGroup && (
-              <div className="call-participants-pill">
-                <i className="fa-solid fa-users" />
-                <span>{count}</span>
-              </div>
-            )}
+
+            <div className="call-topbar-right">
+              {isGroup && (
+                <div className="call-participants-pill" title={`${count} active participants`}>
+                  <i className="fa-solid fa-users" />
+                  <span>{count}</span>
+                </div>
+              )}
+              {isGroup && isVideo && count >= 3 && (
+                <button
+                  type="button"
+                  className="call-view-toggle-btn"
+                  onClick={() => setViewMode(v => v === 'stage' ? 'grid' : 'stage')}
+                  title={viewMode === 'stage' ? 'Switch to Grid View' : 'Switch to Stage View'}
+                >
+                  <i className={`fa-solid ${viewMode === 'stage' ? 'fa-table-cells-large' : 'fa-chalkboard-user'}`} />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Body */}
           <div className="call-body">
             {isGroup ? (
-              /* ── GROUP CALL GRID ── */
-              <div className={`group-grid ${gridClass}`}>
-                {allParticipants.map((p, i) => {
-                  const vol = p.isSelf
-                    ? (isMuted ? 0 : (speakingVolumes['self'] || speakingVolumes[0] || 0))
-                    : (speakingVolumes[p.agoraUid] || speakingVolumes[p.uid] || speakingVolumes[p.userId] || 0);
-                  const speaking = vol > 6;
-                  const muted = p.isSelf ? isMuted : Boolean(p.isMuted);
-                  const vTrack = p.isSelf
-                    ? (isVideo ? localVideoTrack : null)
-                    : (isVideo ? (remoteVideoTracks[p.agoraUid] || remoteVideoTracks[p.uid] || remoteVideoTracks[String(p.agoraUid)] || remoteVideoTracks[String(p.uid)] || remoteVideoTracks[p.userId] || null) : null);
-                  return (
-                    <VideoTile
-                      key={p.isSelf ? 'self-tile' : `remote-${p.agoraUid || p.uid || p.userId || i}`}
-                      participant={p}
-                      videoTrack={isVideo ? vTrack : null}
-                      isSpeaking={speaking}
-                      isMuted={muted}
-                      count={count}
-                    />
-                  );
-                })}
-              </div>
+              /* ── GROUP CALL (VIDEO / VOICE) ── */
+              isVideo ? (
+                viewMode === 'stage' && count >= 3 ? (
+                  /* Modern Main Stage + Small Floating/Bottom Thumbnails Strip */
+                  <div className="stage-view-container">
+                    <div className="stage-main-area">
+                      {mainParticipant && (
+                        <MainVideoStage
+                          participant={mainParticipant}
+                          videoTrack={getTrackForParticipant(mainParticipant)}
+                          isSpeaking={
+                            mainParticipant.isSelf
+                              ? (isMuted ? false : (speakingVolumes['self'] || speakingVolumes[0] || 0) > 6)
+                              : ((speakingVolumes[mainParticipant.agoraUid] || speakingVolumes[mainParticipant.uid] || speakingVolumes[mainParticipant.userId] || 0) > 6)
+                          }
+                          isMuted={mainParticipant.isSelf ? isMuted : Boolean(mainParticipant.isMuted)}
+                          isVideoOff={mainParticipant.isSelf ? isVideoOff : false}
+                        />
+                      )}
+                    </div>
+
+                    {/* Small Thumbnails Strip */}
+                    {thumbnailParticipants.length > 0 && (
+                      <div className="call-thumbnails-strip">
+                        {thumbnailParticipants.map((p, i) => {
+                          const pKey = p.isSelf ? 'self' : String(p.agoraUid || p.uid || p.userId || i);
+                          const vol = p.isSelf
+                            ? (isMuted ? 0 : (speakingVolumes['self'] || speakingVolumes[0] || 0))
+                            : (speakingVolumes[p.agoraUid] || speakingVolumes[p.uid] || speakingVolumes[p.userId] || 0);
+                          const speaking = vol > 6;
+                          const muted = p.isSelf ? isMuted : Boolean(p.isMuted);
+                          const vTrack = getTrackForParticipant(p);
+
+                          return (
+                            <VideoThumbnailTile
+                              key={pKey}
+                              participant={p}
+                              videoTrack={vTrack}
+                              isSpeaking={speaking}
+                              isMuted={muted}
+                              isSelected={false}
+                              onClick={() => setSelectedMainKey(pKey)}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Equal Grid View (for 1-2 users or when toggled to grid) */
+                  <div className={`group-grid ${gridClass}`}>
+                    {allParticipants.map((p, i) => {
+                      const pKey = p.isSelf ? 'self' : String(p.agoraUid || p.uid || p.userId || i);
+                      const vol = p.isSelf
+                        ? (isMuted ? 0 : (speakingVolumes['self'] || speakingVolumes[0] || 0))
+                        : (speakingVolumes[p.agoraUid] || speakingVolumes[p.uid] || speakingVolumes[p.userId] || 0);
+                      const speaking = vol > 6;
+                      const muted = p.isSelf ? isMuted : Boolean(p.isMuted);
+                      const vTrack = getTrackForParticipant(p);
+                      return (
+                        <VideoTile
+                          key={pKey}
+                          participant={p}
+                          videoTrack={vTrack}
+                          isSpeaking={speaking}
+                          isMuted={muted}
+                          count={count}
+                          onClick={() => {
+                            if (count >= 3) {
+                              setSelectedMainKey(pKey);
+                              setViewMode('stage');
+                            }
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                )
+              ) : (
+                /* Group Voice Grid */
+                <div className={`group-grid ${gridClass}`}>
+                  {allParticipants.map((p, i) => {
+                    const pKey = p.isSelf ? 'self' : String(p.agoraUid || p.uid || p.userId || i);
+                    const vol = p.isSelf
+                      ? (isMuted ? 0 : (speakingVolumes['self'] || speakingVolumes[0] || 0))
+                      : (speakingVolumes[p.agoraUid] || speakingVolumes[p.uid] || speakingVolumes[p.userId] || 0);
+                    const speaking = vol > 6;
+                    const muted = p.isSelf ? isMuted : Boolean(p.isMuted);
+                    return (
+                      <VideoTile
+                        key={pKey}
+                        participant={p}
+                        videoTrack={null}
+                        isSpeaking={speaking}
+                        isMuted={muted}
+                        count={count}
+                      />
+                    );
+                  })}
+                </div>
+              )
             ) : isVideo ? (
-              /* ── 1-on-1 VIDEO ── */
+              /* ── 1-on-1 VIDEO (Main Remote Video + Small Floating Local PiP with swap) ── */
               <div className="video-stage">
-                <div ref={remoteVideoRef} className="remote-video" />
-                {!remoteVideoTrack && (
+                <div
+                  ref={swap1on1 ? localVideoRef : remoteVideoRef}
+                  className="remote-video"
+                />
+                {!remoteVideoTrack && !swap1on1 && (
                   <div className="video-waiting">
                     <div className="video-waiting-avatar">
                       <CallAvatar avatar={peerAvatar} name={peerName} size="xl" />
@@ -276,13 +502,31 @@ export default function CallModal({
                     <span>Waiting for video...</span>
                   </div>
                 )}
-                <div className="local-pip">
-                  <div ref={localVideoRef} className="local-video-inner" />
-                  {isVideoOff && (
+                {swap1on1 && isVideoOff && (
+                  <div className="video-waiting">
+                    <div className="video-waiting-avatar">
+                      <CallAvatar avatar={currentUser?.avatar} name={currentUser?.name || 'You'} size="xl" />
+                    </div>
+                    <span>Camera is off</span>
+                  </div>
+                )}
+
+                {/* Floating PiP Tile */}
+                <div
+                  className="local-pip"
+                  onClick={() => setSwap1on1(s => !s)}
+                  title="Click to swap focus"
+                >
+                  <div
+                    ref={swap1on1 ? remoteVideoRef : localVideoRef}
+                    className="local-video-inner"
+                  />
+                  {(!swap1on1 ? isVideoOff : !remoteVideoTrack) && (
                     <div className="pip-cam-off">
                       <i className="fa-solid fa-video-slash" />
                     </div>
                   )}
+                  <span className="pip-label">{swap1on1 ? peerName : 'You'}</span>
                 </div>
               </div>
             ) : (

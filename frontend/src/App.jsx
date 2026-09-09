@@ -60,6 +60,7 @@ export default function App() {
 
   // Agora Calling & Media States
   const [callState, setCallState] = useState(null);
+  const [isCallMinimized, setIsCallMinimized] = useState(false);
   const [localVideoTrack, setLocalVideoTrack] = useState(null);
   const [remoteVideoTrack, setRemoteVideoTrack] = useState(null);
   const [remoteVideoTracks, setRemoteVideoTracks] = useState({});
@@ -87,6 +88,7 @@ export default function App() {
     setCallParticipants([]);
     setSpeakingVolumes({});
     setCallState(null);
+    setIsCallMinimized(false);
     callUserMetadataRef.current.clear();
   }, []);
 
@@ -1619,13 +1621,54 @@ export default function App() {
       {/* Background Top Strip for Desktop/Web */}
       <div className="wa-web-top-strip"></div>
 
+      {/* Minimized Floating Call Bar/Pill (Active in background) */}
+      {callState && isCallMinimized && (
+        <div
+          className="wa-floating-call-pill"
+          onClick={() => setIsCallMinimized(false)}
+          title="Click to return to call"
+        >
+          <div className="wa-call-pill-pulse" />
+          <div className="wa-call-pill-icon">
+            <i className={`fa-solid ${callState.callType === 'video' ? 'fa-video' : 'fa-phone'}`} />
+          </div>
+          <div className="wa-call-pill-info">
+            <span className="wa-call-pill-title">{callState.peerName || callState.peerId || 'In Call'}</span>
+            <span className="wa-call-pill-sub">Tap to open call</span>
+          </div>
+          <button
+            type="button"
+            className="wa-call-pill-btn expand"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsCallMinimized(false);
+            }}
+            title="Expand call screen"
+          >
+            <i className="fa-solid fa-up-right-and-down-left-from-center" />
+          </button>
+          <button
+            type="button"
+            className="wa-call-pill-btn hangup"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEndCall();
+            }}
+            title="End call"
+          >
+            <i className="fa-solid fa-phone-slash" />
+          </button>
+        </div>
+      )}
+
       {/* Call Modal / Overlay (Active, Incoming, Video, Voice - Agora RTC) */}
-      {callState && (
+      {callState && !isCallMinimized && (
         <CallModal
           callState={callState}
           onAcceptCall={handleAcceptCall}
           onRejectCall={handleRejectCall}
           onEndCall={handleEndCall}
+          onMinimize={() => setIsCallMinimized(true)}
           localVideoTrack={localVideoTrack}
           remoteVideoTrack={remoteVideoTrack}
           remoteVideoTracks={remoteVideoTracks}

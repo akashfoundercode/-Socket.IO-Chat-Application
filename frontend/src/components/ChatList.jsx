@@ -789,6 +789,90 @@ export default function ChatList({
     });
   }, [searchResults, existingConversationKeys]);
 
+  const formatConversationPreview = (item, draftText = '') => {
+    if (draftText) return `Draft: ${draftText}`;
+    if (!item) return '';
+
+    const msgType = item.lastMessageType;
+    const rawMsg = item.lastMessage;
+    const isGroup = Boolean(item.isGroup);
+
+    if (msgType === 'deleted') return '🚫 This message was deleted';
+    if (msgType === 'location') return '📍 Location';
+    if (msgType === 'image') return '📷 Photo';
+    if (msgType === 'video') return '🎥 Video';
+    if (msgType === 'voice' || msgType === 'audio') return '🎤 Voice message';
+
+    // Helper to parse JSON safely if rawMsg is a JSON string or object
+    let parsedObj = null;
+    if (rawMsg && typeof rawMsg === 'object') {
+      parsedObj = rawMsg;
+    } else if (typeof rawMsg === 'string' && rawMsg.trim().startsWith('{')) {
+      try {
+        parsedObj = JSON.parse(rawMsg.trim());
+      } catch (e) {
+        parsedObj = null;
+      }
+    }
+
+    // Check if it's a Call message (by type or parsed JSON)
+    if (msgType === 'call' || (parsedObj && (parsedObj.callType || parsedObj.joinedCount !== undefined))) {
+      const callData = parsedObj || {};
+      const isVid = callData.callType === 'video';
+      const callIcon = isVid ? '🎥' : '📞';
+      const callLabel = isVid ? 'Video call' : 'Voice call';
+      if (isGroup) {
+        const jCount = Number(callData.joinedCount || (callData.memberNames?.length || 0));
+        if (callData.status === 'not_accepted' || callData.status === 'missed' || (jCount <= 1 && callData.status !== 'completed')) {
+          return `${callIcon} ${callLabel} • Not accepted`;
+        }
+        if (jCount > 1) {
+          return `${callIcon} ${callLabel} • ${jCount} participants`;
+        }
+        return `${callIcon} ${callLabel} ended`;
+      } else {
+        if (callData.status === 'missed') return `${callIcon} Missed ${callLabel.toLowerCase()}`;
+        if (callData.status === 'declined') return `${callIcon} ${callLabel} declined`;
+        return `${callIcon} ${callLabel} ended`;
+      }
+    }
+
+    // Check if it's a System message (by type or parsed JSON with action)
+    if (msgType === 'system' || (parsedObj && parsedObj.action)) {
+      const d = parsedObj || {};
+      const action = d.action || '';
+      if (action === 'leave_group') return `${d.name || d.userId || 'Someone'} left`;
+      if (action === 'add_member') return `${d.actorName || 'Admin'} added ${d.targetName || 'a member'}`;
+      if (action === 'remove_member') return `${d.targetName || 'A member'} was removed`;
+      if (action === 'create_group') return `Group created`;
+      if (action === 'join_link' || action === 'join_qr') return `${d.name || d.userId || 'Someone'} joined`;
+      return 'Group updated';
+    }
+
+    // Check if it's a Status Reaction
+    if (msgType === 'status_reaction' || (parsedObj && parsedObj.reaction)) {
+      const emoji = (parsedObj && parsedObj.reaction) || (typeof rawMsg === 'string' ? rawMsg : '❤️');
+      return `${emoji} Reacted to status`;
+    }
+
+    // Check if it's a Status Reply
+    if (msgType === 'status_reply' || (parsedObj && parsedObj.replyText !== undefined)) {
+      const reply = (parsedObj && parsedObj.replyText) || (typeof rawMsg === 'string' ? rawMsg : '');
+      return reply ? `↩ Status: ${reply}` : '↩ Replied to status';
+    }
+
+    // If parsedObj was some other JSON object that wasn't caught, avoid printing raw JSON
+    if (parsedObj && typeof parsedObj === 'object') {
+      return isGroup ? `${item.memberCount || 0} members` : 'Tap to chat';
+    }
+
+    if (typeof rawMsg === 'string' && rawMsg.trim()) {
+      return rawMsg;
+    }
+
+    return isGroup ? `${item.memberCount || 0} members` : 'Tap to chat';
+  };
+
   const renderConversationItem = (item) => {
     const isGroup = Boolean(item.isGroup);
     const phoneDisplay = item.fullPhone || item.phone || item.id;
@@ -796,79 +880,8 @@ export default function ChatList({
     const isDeletedMsg = item.lastMessageType === 'deleted';
     const isLocationMsg = !isDeletedMsg && item.lastMessageType === 'location';
     const isImageMsg = !isDeletedMsg && item.lastMessageType === 'image';
-    const isCallMsg = !isDeletedMsg && item.lastMessageType === 'call';
-    const isSystemMsg = !isDeletedMsg && item.lastMessageType === 'system';
-    const isStatusReaction = !isDeletedMsg && item.lastMessageType === 'status_reaction';
-    const isStatusReply = !isDeletedMsg && item.lastMessageType === 'status_reply';
     const draftText = getDraftForConversation(item);
-
-    let lastMsg = item.lastMessage || 'Tap to chat';
-    if (draftText) {
-      lastMsg = `Draft: ${draftText}`;
-    } else if (isDeletedMsg) {
-      lastMsg = '🚫 This message was deleted';
-    } else if (isCallMsg) {
-      try {
-        const callData = typeof item.lastMessage === 'string' ? JSON.parse(item.lastMessage) : item.lastMessage;
-        const callLabel = callData?.callType === 'video' ? 'Video call' : 'Voice call';
-        if (isGroup) {
-          if (callData?.status === 'not_accepted' || callData?.status === 'missed' || (callData?.joinedCount <= 1 && callData?.status !== 'completed')) {
-            lastMsg = '📞 Group call • Not accepted';
-          } else if (callData?.joinedCount > 1) {
-            lastMsg = `📞 Group call • ${callData.joinedCount} joined`;
-          } else {
-            lastMsg = '📞 Group call ended';
-          }
-        } else {
-          lastMsg = callData?.status === 'missed'
-            ? `📞 Missed ${callLabel.toLowerCase()}`
-            : callData?.status === 'declined'
-              ? `📞 ${callLabel} declined`
-              : `📞 ${callLabel} ended`;
-        }
-      } catch (e) {
-        lastMsg = '📞 Call';
-      }
-    } else if (isLocationMsg) {
-      lastMsg = '📍 Location';
-    } else if (isImageMsg) {
-      lastMsg = '📷 Photo';
-    } else if (isSystemMsg) {
-      try {
-        const d = typeof item.lastMessage === 'string' && item.lastMessage.startsWith('{') ? JSON.parse(item.lastMessage) : {};
-        const action = d.action || '';
-        if (action === 'leave_group') lastMsg = `${d.name || d.userId || 'Someone'} left`;
-        else if (action === 'add_member') lastMsg = `${d.actorName || 'Admin'} added ${d.targetName || 'a member'}`;
-        else if (action === 'remove_member') lastMsg = `${d.targetName || 'A member'} was removed`;
-        else if (action === 'create_group') lastMsg = `Group created`;
-        else if (action === 'join_link' || action === 'join_qr') lastMsg = `${d.name || d.userId || 'Someone'} joined`;
-        else lastMsg = 'Group updated';
-      } catch (e) {
-        lastMsg = 'Group updated';
-      }
-    } else if (isStatusReaction) {
-      let emoji = '❤️';
-      try {
-        if (item.lastMessage && item.lastMessage.startsWith('{')) {
-          const parsed = JSON.parse(item.lastMessage);
-          emoji = parsed.reaction || emoji;
-        } else if (item.lastMessage) {
-          emoji = item.lastMessage;
-        }
-      } catch (e) { }
-      lastMsg = `${emoji} Reacted to status`;
-    } else if (isStatusReply) {
-      let reply = '';
-      try {
-        if (item.lastMessage && item.lastMessage.startsWith('{')) {
-          const parsed = JSON.parse(item.lastMessage);
-          reply = parsed.replyText || '';
-        } else if (item.lastMessage) {
-          reply = item.lastMessage;
-        }
-      } catch (e) { }
-      lastMsg = reply ? `↩ Status: ${reply}` : '↩ Replied to status';
-    }
+    const lastMsg = formatConversationPreview(item, draftText);
     const online = !isGroup && isUserOnline(phoneDisplay);
     const isActive =
       activeChat &&
@@ -1288,7 +1301,7 @@ export default function ChatList({
                             {time && <span className={`wa-item-time ${item.unreadCount > 0 ? 'unread' : ''}`}>{time}</span>}
                           </div>
                           <div className="wa-item-bottom">
-                            <span className="wa-item-msg">{item.lastMessage || `${item.memberCount || 0} members`}</span>
+                            <span className="wa-item-msg">{formatConversationPreview(item)}</span>
                           </div>
                         </div>
                         <div className="wa-row-slide-trigger" onClick={(e) => handleToggleSwipe(e, item)} title="Options">
@@ -1364,7 +1377,7 @@ export default function ChatList({
                             {time && <span className={`wa-item-time ${item.unreadCount > 0 ? 'unread' : ''}`}>{time}</span>}
                           </div>
                           <div className="wa-item-bottom">
-                            <span className="wa-item-msg">{item.lastMessage || `${item.memberCount || 0} members`}</span>
+                            <span className="wa-item-msg">{formatConversationPreview(item)}</span>
                             {item.unreadCount > 0 && (
                               <span className="wa-unread-badge" title={`${item.unreadCount} new unread message${item.unreadCount > 1 ? 's' : ''}`}>
                                 {item.unreadCount > 99 ? '99+' : item.unreadCount}

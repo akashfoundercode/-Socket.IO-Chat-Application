@@ -395,6 +395,8 @@ module.exports = (io) => {
                 groupAvatar: group.avatar || null,
                 participants: new Set([from]),
                 participantNames: new Map([[from, callerName || from]]),
+                allJoinedMembers: new Set([from]),
+                allJoinedMemberNames: new Map([[from, callerName || from]]),
                 acceptedMembers: new Set(),
                 hadAcceptedMember: false,
                 startedAt: Date.now(),
@@ -436,6 +438,10 @@ module.exports = (io) => {
                 session.acceptedMembers.add(from);
                 session.hadAcceptedMember = true;
                 session.participantNames.set(from, userName || from);
+                if (!session.allJoinedMembers) session.allJoinedMembers = new Set([session.callerId]);
+                if (!session.allJoinedMemberNames) session.allJoinedMemberNames = new Map([[session.callerId, session.callerName]]);
+                session.allJoinedMembers.add(from);
+                session.allJoinedMemberNames.set(from, userName || from);
             }
 
             if (accepted) {
@@ -457,6 +463,15 @@ module.exports = (io) => {
             const from = socket.data.userId;
             const cleanGroupId = String(groupId || "").replace(/^group:/, "");
             if (!from || !cleanGroupId) return;
+            const session = channelName ? activeGroupCalls.get(channelName) : null;
+            if (session) {
+                session.participants.add(from);
+                session.participantNames.set(from, userName || from);
+                if (!session.allJoinedMembers) session.allJoinedMembers = new Set([session.callerId]);
+                if (!session.allJoinedMemberNames) session.allJoinedMemberNames = new Map([[session.callerId, session.callerName]]);
+                session.allJoinedMembers.add(from);
+                session.allJoinedMemberNames.set(from, userName || from);
+            }
             socket.to(`group:${cleanGroupId}`).emit("group_call_user_joined", {
                 from,
                 groupId: cleanGroupId,
@@ -487,11 +502,11 @@ module.exports = (io) => {
             const session = channelName ? activeGroupCalls.get(channelName) : null;
             if (session && !session.ended) {
                 session.ended = true;
-                const totalJoined = session.participants.size;
+                const totalJoined = session.allJoinedMembers ? session.allJoinedMembers.size : session.participants.size;
                 const hasAccepted = session.hadAcceptedMember || session.acceptedMembers.size > 0;
                 const finalStatus = hasAccepted ? 'completed' : 'not_accepted';
                 const callDuration = hasAccepted ? Math.max(1, Math.round((Date.now() - session.startedAt) / 1000)) : 0;
-                const memberNamesList = Array.from(session.participantNames.values());
+                const memberNamesList = session.allJoinedMemberNames ? Array.from(session.allJoinedMemberNames.values()) : Array.from(session.participantNames.values());
 
                 if (session.callId) {
                     chatModel.updateCallLog(session.callId, {
