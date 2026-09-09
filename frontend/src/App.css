@@ -3175,80 +3175,276 @@ body {
   font-size: 24px;
 }
 
-/* Voice Call Stage */
-.wa-voice-call-stage {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
+.wa-call-initial-avatar {
   width: 100%;
   height: 100%;
-}
-
-.wa-voice-avatar-wrap {
-  position: relative;
-  width: 120px;
-  height: 120px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.wa-voice-avatar-circle {
-  width: 120px;
-  height: 120px;
   border-radius: 50%;
-  background: #2a3942;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 56px;
   color: #ffffff;
-  z-index: 5;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  font-weight: 700;
+  font-size: 28px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
-.wa-voice-avatar-circle img {
+.wa-call-initial-avatar.small {
+  font-size: 20px;
+}
+
+.wa-call-initial-avatar.medium {
+  font-size: 28px;
+}
+
+.wa-call-initial-avatar.large {
+  font-size: 40px;
+}
+
+.wa-active-call-modal.is-group-call {
+  max-width: 840px;
+  height: 640px;
+}
+
+.wa-call-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.wa-call-count-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(37, 211, 102, 0.15);
+  color: #25d366;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: 1px solid rgba(37, 211, 102, 0.3);
+}
+
+/* =========================================================
+   GROUP CALL MULTI-USER DYNAMIC SPLIT GRID
+   ========================================================= */
+
+.wa-group-call-stage {
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  align-content: center;
+  justify-content: center;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.wa-group-call-stage.wa-grid-1 {
+  grid-template-columns: 1fr;
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+.wa-group-call-stage.wa-grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.wa-group-call-stage.wa-grid-4 {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  max-width: 760px;
+  height: 100%;
+  margin: 0 auto;
+}
+
+.wa-group-call-stage.wa-grid-6 {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  max-width: 800px;
+  height: 100%;
+  margin: 0 auto;
+}
+
+.wa-group-call-stage.wa-grid-multi {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+/* Individual Participant Tile Card */
+.wa-participant-tile {
+  background: rgba(30, 42, 49, 0.85);
+  border: 1.5px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 18px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  min-height: 140px;
+}
+
+.wa-participant-tile:hover {
+  background: rgba(37, 51, 60, 0.95);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.wa-participant-tile.is-speaking {
+  border-color: #25d366;
+  box-shadow: 0 0 24px rgba(37, 211, 102, 0.35);
+  background: rgba(37, 51, 60, 0.98);
+}
+
+.wa-tile-speaking-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(37, 211, 102, 0.18) 0%, transparent 70%);
+  pointer-events: none;
+  animation: tileGlowPulse 1.5s infinite ease-in-out;
+}
+
+@keyframes tileGlowPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.wa-tile-avatar-wrap {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wa-tile-avatar-circle {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  object-fit: cover;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
 }
 
-.wa-voice-wave {
+.wa-tile-avatar-circle.speaking {
+  transform: scale(1.06);
+}
+
+.wa-tile-avatar-circle.speaking::before {
+  content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  border: 2px solid #25d366;
+  inset: -6px;
   border-radius: 50%;
-  opacity: 0;
-  animation: voiceWave 2s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+  border: 2px solid #25d366;
+  animation: speakerRipple 1.4s infinite cubic-bezier(0.2, 0.8, 0.4, 1);
 }
 
-.wa-voice-wave.wave-1 {
-  animation-delay: 0s;
+@keyframes speakerRipple {
+  0% { transform: scale(0.95); opacity: 0.9; }
+  100% { transform: scale(1.35); opacity: 0; }
 }
 
-.wa-voice-wave.wave-2 {
-  animation-delay: 0.6s;
+/* 3-Bar Speaking Equalizer */
+.wa-tile-equalizer {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  background: #111b21;
+  border-radius: 10px;
+  padding: 3px 5px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2.5px;
+  height: 18px;
+  border: 1px solid #25d366;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
-.wa-voice-wave.wave-3 {
-  animation-delay: 1.2s;
+.wa-tile-equalizer .eq-bar {
+  width: 3px;
+  background: #25d366;
+  border-radius: 2px;
+  animation: eqBounce 0.8s infinite ease-in-out alternate;
 }
 
-@keyframes voiceWave {
-  0% {
-    transform: scale(1);
-    opacity: 0.8;
-  }
+.wa-tile-equalizer .bar-1 { height: 6px; animation-delay: 0.1s; }
+.wa-tile-equalizer .bar-2 { height: 12px; animation-delay: 0.3s; }
+.wa-tile-equalizer .bar-3 { height: 8px; animation-delay: 0.2s; }
 
-  100% {
-    transform: scale(2.2);
-    opacity: 0;
-  }
+@keyframes eqBounce {
+  0% { height: 4px; }
+  100% { height: 14px; }
+}
+
+/* Mute Indicator Badge */
+.wa-tile-mute-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  background: #ea4335;
+  color: #ffffff;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  border: 2px solid #111b21;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Participant Info */
+.wa-tile-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  overflow: hidden;
+}
+
+.wa-tile-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #e9edef;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.wa-self-tag {
+  color: #25d366;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.wa-tile-status-text {
+  font-size: 11.5px;
+  color: #8696a0;
+  margin-top: 2px;
+}
+
+.wa-participant-tile.is-speaking .wa-tile-status-text {
+  color: #25d366;
+  font-weight: 500;
+}
+
+.wa-participant-tile.is-muted .wa-tile-status-text {
+  color: #ea4335;
 }
 
 /* Call Action Controls */

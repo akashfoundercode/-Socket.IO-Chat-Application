@@ -49,7 +49,8 @@ class AgoraService {
     callType = 'voice',
     onRemoteUserPublished,
     onRemoteUserUnpublished,
-    onUserLeft
+    onUserLeft,
+    onVolumeIndicator
   }) {
     // Ensure clean state before joining
     await this.leaveChannel();
@@ -73,17 +74,38 @@ class AgoraService {
       }
     });
 
+    client.on('user-joined', (user) => {
+      console.log(`[Agora] Remote user ${user.uid} joined channel`);
+      if (onRemoteUserPublished) {
+        onRemoteUserPublished(user, 'joined');
+      }
+    });
+
     client.on('user-unpublished', (user, mediaType) => {
+      console.log(`[Agora] Remote user ${user.uid} unpublished ${mediaType}`);
       if (onRemoteUserUnpublished) {
         onRemoteUserUnpublished(user, mediaType);
       }
     });
 
     client.on('user-left', (user, reason) => {
+      console.log(`[Agora] Remote user ${user.uid} left call:`, reason);
       if (onUserLeft) {
         onUserLeft(user, reason);
       }
     });
+
+    // Enable Volume Indicator for Live Speaking Equalizer Waves
+    try {
+      client.enableAudioVolumeIndicator();
+      client.on('volume-indicator', (volumes) => {
+        if (onVolumeIndicator) {
+          onVolumeIndicator(volumes);
+        }
+      });
+    } catch (volErr) {
+      console.warn('[Agora] Volume indicator init warning:', volErr);
+    }
 
     // Join RTC Channel
     const joinedUid = await client.join(

@@ -618,6 +618,7 @@ module.exports = {
     getGroups,
     getGroup,
     addGroupMember,
+    joinGroupByInvite,
     updateGroup,
     updateGroupMemberRole,
     getGroupHistory,

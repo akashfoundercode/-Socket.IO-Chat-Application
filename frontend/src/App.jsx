@@ -60,6 +60,8 @@ export default function App() {
   const [remoteVideoTrack, setRemoteVideoTrack] = useState(null);
   const [callLogsTrigger, setCallLogsTrigger] = useState(0);
   const [remotePeerMediaStatus, setRemotePeerMediaStatus] = useState({ isMuted: false, isVideoOff: false });
+  const [callParticipants, setCallParticipants] = useState([]);
+  const [speakingVolumes, setSpeakingVolumes] = useState({});
 
   const userId = currentUser ? (currentUser.fullPhone || currentUser.id) : '';
 
@@ -69,6 +71,8 @@ export default function App() {
     agoraService.leaveChannel();
     setLocalVideoTrack(null);
     setRemoteVideoTrack(null);
+    setCallParticipants([]);
+    setSpeakingVolumes({});
     setCallState(null);
   }, []);
 

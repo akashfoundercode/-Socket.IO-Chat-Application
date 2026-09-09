@@ -350,15 +350,41 @@ module.exports = (io) => {
             });
         });
 
-        socket.on("group_call_response", ({ groupId, channelName, accepted }) => {
+        socket.on("group_call_response", ({ groupId, channelName, accepted, userName, userAvatar }) => {
             const from = socket.data.userId;
             const cleanGroupId = String(groupId || "").replace(/^group:/, "");
             if (!from || !cleanGroupId) return;
+            if (accepted) {
+                socket.join(`group:${cleanGroupId}`);
+            }
             socket.to(`group:${cleanGroupId}`).emit(accepted ? "group_call_accepted" : "group_call_rejected", {
                 from,
                 groupId: cleanGroupId,
-                channelName
+                channelName,
+                name: userName || from,
+                avatar: userAvatar || null,
+                accepted: Boolean(accepted)
             });
+        });
+
+        socket.on("group_call_media_status", ({ groupId, isMuted, isVideoOff }) => {
+            const from = socket.data.userId;
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (!from || !cleanGroupId) return;
+            socket.to(`group:${cleanGroupId}`).emit("group_call_peer_media_status", {
+                from,
+                groupId: cleanGroupId,
+                isMuted: Boolean(isMuted),
+                isVideoOff: Boolean(isVideoOff)
+            });
+        });
+
+        socket.on("group_call_leave", ({ groupId, channelName }) => {
+            const from = socket.data.userId;
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (cleanGroupId) {
+                socket.to(`group:${cleanGroupId}`).emit("group_call_user_left", { from, groupId: cleanGroupId, channelName });
+            }
         });
 
         socket.on("group_call_end", ({ groupId, channelName }) => {
