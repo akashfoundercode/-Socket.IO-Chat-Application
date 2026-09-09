@@ -1120,16 +1120,29 @@ export default function App() {
   };
 
   const handleRemoveGroupMember = async (groupId, memberId) => {
-    const data = await chatApi.removeGroupMember(getGroupId(groupId), userId, memberId);
-    if (data?.group) setGroupDetails(data.group);
+    try {
+      const data = await chatApi.removeGroupMember(getGroupId(groupId), userId, memberId);
+      if (data?.group) setGroupDetails(data.group);
+      setRecentMessageEvent({ type: 'conversation_refresh', timestamp: Date.now() });
+    } catch (err) {
+      console.error('Failed to remove group member:', err);
+    }
   };
 
   const handleLeaveGroup = async (groupId) => {
-    await chatApi.leaveGroup(getGroupId(groupId), userId);
-    setActiveChat(null);
-    setGroupDetails(null);
-    setMessages([]);
-    setCurrentView('inbox');
+    const rawGroupId = getGroupId(groupId);
+    try {
+      await chatApi.leaveGroup(rawGroupId, userId);
+    } catch (err) {
+      console.error('Failed to leave group on server:', err);
+    } finally {
+      socket.emit('leave_group_room', rawGroupId);
+      setActiveChat(null);
+      setGroupDetails(null);
+      setMessages([]);
+      setCurrentView('inbox');
+      setRecentMessageEvent({ type: 'conversation_refresh', timestamp: Date.now() });
+    }
   };
 
   // Login Success

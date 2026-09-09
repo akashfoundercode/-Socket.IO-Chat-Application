@@ -297,6 +297,11 @@ module.exports = (io) => {
             if (cleanGroupId) socket.join(`group:${cleanGroupId}`);
         });
 
+        socket.on("leave_group_room", (groupId) => {
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (cleanGroupId) socket.leave(`group:${cleanGroupId}`);
+        });
+
         socket.on("group_message", async (data) => {
             const senderId = socket.data.userId;
             const groupId = String(data?.groupId || "").replace(/^group:/, "");

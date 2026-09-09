@@ -986,9 +986,30 @@ const toGroupId = (id) => {
     return Number(clean) || 0;
 };
 
+const getAllUserVariants = async (userId) => {
+    const clean = String(userId || '').trim();
+    if (!clean) return [];
+    const rawVariants = new Set(getPhoneVariants(clean));
+    try {
+        const u = await getUser(clean);
+        if (u) {
+            if (u.id) rawVariants.add(String(u.id));
+            if (u.phone) {
+                getPhoneVariants(u.phone).forEach((v) => rawVariants.add(v));
+            }
+            if (u.fullPhone) {
+                getPhoneVariants(u.fullPhone).forEach((v) => rawVariants.add(v));
+            }
+        }
+    } catch (e) { }
+    return Array.from(rawVariants).filter(Boolean);
+};
+
 const isGroupMember = async (groupId, userId) => {
     const cleanId = toGroupId(groupId);
-    const variants = getPhoneVariants(userId);
+    if (!cleanId || !userId) return null;
+    const variants = await getAllUserVariants(userId);
+    if (variants.length === 0) return null;
     const placeholders = variants.map(() => "?").join(",");
     const [rows] = await getPool().execute(
         `SELECT role, user_id AS userId FROM group_members WHERE group_id = ? AND user_id IN (${placeholders}) LIMIT 1`,
@@ -1146,16 +1167,20 @@ const removeGroupMember = async (groupId, requesterId, memberId) => {
 
     const [groupRows] = await getPool().execute("SELECT creator_id AS creatorId FROM chat_groups WHERE id = ? LIMIT 1", [cleanId]);
     const creatorId = groupRows[0]?.creatorId;
-    if (creatorId && getPhoneVariants(memberId).includes(String(creatorId))) {
+    const creatorVariants = await getAllUserVariants(creatorId);
+    const targetVariants = await getAllUserVariants(memberId);
+
+    if (creatorId && targetVariants.some((v) => creatorVariants.includes(v))) {
         throw new Error("The group creator cannot be removed");
     }
 
-    const memberVariants = getPhoneVariants(memberId);
-    const placeholders = memberVariants.map(() => "?").join(",");
-    await getPool().execute(
-        `DELETE FROM group_members WHERE group_id = ? AND user_id IN (${placeholders})`,
-        [cleanId, ...memberVariants]
-    );
+    const placeholders = targetVariants.map(() => "?").join(",");
+    if (targetVariants.length > 0) {
+        await getPool().execute(
+            `DELETE FROM group_members WHERE group_id = ? AND user_id IN (${placeholders})`,
+            [cleanId, ...targetVariants]
+        );
+    }
 
     const requesterUser = await getUser(requesterId);
     const targetUser = await getUser(memberId);
@@ -1176,11 +1201,18 @@ const removeGroupMember = async (groupId, requesterId, memberId) => {
 
 const leaveGroup = async (groupId, userId) => {
     const cleanId = toGroupId(groupId);
-    const member = await isGroupMember(cleanId, userId);
-    if (!member) throw new Error("You are not a member of this group");
+    const userVariants = await getAllUserVariants(userId);
+    if (userVariants.length === 0) throw new Error("User ID is invalid");
 
-    const userVariants = getPhoneVariants(userId);
     const placeholders = userVariants.map(() => "?").join(",");
+    const [existing] = await getPool().execute(
+        `SELECT role, user_id FROM group_members WHERE group_id = ? AND user_id IN (${placeholders}) LIMIT 1`,
+        [cleanId, ...userVariants]
+    );
+    if (!existing || existing.length === 0) {
+        throw new Error("You are not a member of this group");
+    }
+
     await getPool().execute(
         `DELETE FROM group_members WHERE group_id = ? AND user_id IN (${placeholders})`,
         [cleanId, ...userVariants]
