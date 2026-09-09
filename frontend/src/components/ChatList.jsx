@@ -1042,14 +1042,6 @@ export default function ChatList({
           >
             <i className="fa-solid fa-qrcode"></i>
           </button>
-          <button
-            type="button"
-            className="wa-inbox-icon"
-            title="Scan QR image"
-            onClick={() => qrFileInputRef.current?.click()}
-          >
-            <i className="fa-regular fa-image"></i>
-          </button>
           <input ref={qrFileInputRef} type="file" accept="image/*" onChange={handleQrImageScan} hidden />
           <button
             type="button"
@@ -1160,6 +1152,9 @@ export default function ChatList({
             <h3>Scan group QR</h3>
             <video ref={qrVideoRef} className="wa-qr-scanner-video" muted playsInline />
             {qrScanError && <small className="wa-qr-scan-error">{qrScanError}</small>}
+            <button type="button" className="wa-group-invite-btn secondary" onClick={() => qrFileInputRef.current?.click()}>
+              <i className="fa-regular fa-image"></i> Upload QR image
+            </button>
             <button type="button" className="wa-group-invite-btn secondary" onClick={() => setShowQrScanner(false)}>Close</button>
           </div>
         </div>
