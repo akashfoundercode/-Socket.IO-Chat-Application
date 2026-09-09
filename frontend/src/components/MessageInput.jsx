@@ -34,6 +34,7 @@ export default function MessageInput({
 
   const fileInputRef = useRef(null);
   const typingTimerRef = useRef(null);
+  const textareaRef = useRef(null);
 
   // Advanced Voice Recording states & refs
   const [isRecording, setIsRecording] = useState(false);
@@ -385,6 +386,14 @@ export default function MessageInput({
   React.useEffect(() => {
     setText(draftValue || '');
   }, [draftValue, recipientId]);
+
+  React.useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const scrollH = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.min(Math.max(scrollH, 20), 120)}px`;
+    }
+  }, [text]);
 
   const handleTextChange = (e) => {
     if (isBlocked || !canSendMessages) return;
@@ -890,12 +899,19 @@ export default function MessageInput({
                 <i className={showEmojiPicker ? 'fa-solid fa-keyboard' : 'fa-regular fa-face-smile'}></i>
               </button>
 
-              <input
-                type="text"
+              <textarea
+                ref={textareaRef}
+                rows={1}
                 className="wa-main-input"
                 placeholder={recipientId ? 'Message' : 'Set recipient first'}
                 value={text}
                 onChange={handleTextChange}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e);
+                  }
+                }}
                 disabled={!recipientId.trim() || !canSendMessages}
               />
 

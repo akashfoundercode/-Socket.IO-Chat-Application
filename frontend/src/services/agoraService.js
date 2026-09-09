@@ -29,6 +29,8 @@ class AgoraService {
     this.client = null;
     this.localAudioTrack = null;
     this.localVideoTrack = null;
+    this.remoteVideoTracks = new Map();
+    this.remoteAudioTracks = new Map();
   }
 
   initClient() {
@@ -64,10 +66,15 @@ class AgoraService {
         await client.subscribe(user, mediaType);
         if (mediaType === 'audio' && user.audioTrack) {
           user.audioTrack.play();
+          this.remoteAudioTracks.set(user.uid, user.audioTrack);
           console.log(`[Agora] Playing remote audio for user ${user.uid}`);
         }
+        if (mediaType === 'video' && user.videoTrack) {
+          this.remoteVideoTracks.set(user.uid, user.videoTrack);
+          console.log(`[Agora] Track registered for user ${user.uid}`);
+        }
         if (onRemoteUserPublished) {
-          onRemoteUserPublished(user, mediaType);
+          onRemoteUserPublished(user, mediaType, user.videoTrack || user.audioTrack);
         }
       } catch (err) {
         console.error('[Agora] Subscribe error:', err);
@@ -83,6 +90,12 @@ class AgoraService {
 
     client.on('user-unpublished', (user, mediaType) => {
       console.log(`[Agora] Remote user ${user.uid} unpublished ${mediaType}`);
+      if (mediaType === 'video') {
+        this.remoteVideoTracks.delete(user.uid);
+      }
+      if (mediaType === 'audio') {
+        this.remoteAudioTracks.delete(user.uid);
+      }
       if (onRemoteUserUnpublished) {
         onRemoteUserUnpublished(user, mediaType);
       }
@@ -90,6 +103,8 @@ class AgoraService {
 
     client.on('user-left', (user, reason) => {
       console.log(`[Agora] Remote user ${user.uid} left call:`, reason);
+      this.remoteVideoTracks.delete(user.uid);
+      this.remoteAudioTracks.delete(user.uid);
       if (onUserLeft) {
         onUserLeft(user, reason);
       }
@@ -196,6 +211,15 @@ class AgoraService {
         this.localVideoTrack.stop();
         this.localVideoTrack.close();
         this.localVideoTrack = null;
+      }
+      if (this.remoteAudioTracks) {
+        this.remoteAudioTracks.forEach((track) => {
+          try { track?.stop?.(); } catch (e) { }
+        });
+        this.remoteAudioTracks.clear();
+      }
+      if (this.remoteVideoTracks) {
+        this.remoteVideoTracks.clear();
       }
       if (this.client) {
         this.client.removeAllListeners();

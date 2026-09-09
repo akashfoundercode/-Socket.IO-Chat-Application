@@ -62,6 +62,7 @@ export default function App() {
   const [callState, setCallState] = useState(null);
   const [localVideoTrack, setLocalVideoTrack] = useState(null);
   const [remoteVideoTrack, setRemoteVideoTrack] = useState(null);
+  const [remoteVideoTracks, setRemoteVideoTracks] = useState({});
   const [callLogsTrigger, setCallLogsTrigger] = useState(0);
   const [remotePeerMediaStatus, setRemotePeerMediaStatus] = useState({ isMuted: false, isVideoOff: false });
   const [callParticipants, setCallParticipants] = useState([]);
@@ -75,6 +76,7 @@ export default function App() {
     agoraService.leaveChannel();
     setLocalVideoTrack(null);
     setRemoteVideoTrack(null);
+    setRemoteVideoTracks({});
     setCallParticipants([]);
     setSpeakingVolumes({});
     setCallState(null);
@@ -495,6 +497,12 @@ export default function App() {
     }
 
     function onGroupCallUserLeft({ from }) {
+      setRemoteVideoTracks((prev) => {
+        const next = { ...prev };
+        delete next[from];
+        delete next[String(from)];
+        return next;
+      });
       setCallParticipants((prev) => prev.filter((p) => p.userId !== from && p.uid !== from));
     }
 
@@ -879,11 +887,22 @@ export default function App() {
           onRemoteUserPublished: (user, mediaType) => {
             if (mediaType === 'video' && user.videoTrack) {
               setRemoteVideoTrack(user.videoTrack);
+              setRemoteVideoTracks((prev) => ({
+                ...prev,
+                [user.uid]: user.videoTrack,
+                [String(user.uid)]: user.videoTrack
+              }));
             }
-            if (isGroupCall) return;
             setCallParticipants((prev) => {
               const strUid = String(user.uid);
-              if (prev.some((p) => String(p.uid) === strUid || String(p.userId) === strUid)) return prev;
+              if (prev.some((p) => String(p.uid) === strUid || String(p.userId) === strUid)) {
+                return prev.map((p) => {
+                  if (String(p.userId) === strUid || String(p.uid) === strUid) {
+                    return { ...p, uid: user.uid };
+                  }
+                  return p;
+                });
+              }
               return [
                 ...prev,
                 {
@@ -900,11 +919,23 @@ export default function App() {
           },
           onRemoteUserUnpublished: (user, mediaType) => {
             if (mediaType === 'video') {
-              setRemoteVideoTrack(null);
+              setRemoteVideoTrack((prev) => (prev === user.videoTrack ? null : prev));
+              setRemoteVideoTracks((prev) => {
+                const next = { ...prev };
+                delete next[user.uid];
+                delete next[String(user.uid)];
+                return next;
+              });
             }
           },
           onUserLeft: (user) => {
             console.log('[Agora] Remote user left call:', user);
+            setRemoteVideoTracks((prev) => {
+              const next = { ...prev };
+              delete next[user.uid];
+              delete next[String(user.uid)];
+              return next;
+            });
             setCallParticipants((prev) => prev.filter((p) => String(p.uid) !== String(user.uid) && String(p.userId) !== String(user.uid)));
             if (!isGroupCall) {
               cleanupCall();
@@ -996,13 +1027,22 @@ export default function App() {
           onRemoteUserPublished: (user, mediaType) => {
             if (mediaType === 'video' && user.videoTrack) {
               setRemoteVideoTrack(user.videoTrack);
+              setRemoteVideoTracks((prev) => ({
+                ...prev,
+                [user.uid]: user.videoTrack,
+                [String(user.uid)]: user.videoTrack
+              }));
             }
-            // In group calls the socket acceptance event is authoritative.
-            // Do not create tiles for arbitrary/stale Agora users.
-            if (callState.groupId) return;
             setCallParticipants((prev) => {
               const strUid = String(user.uid);
-              if (prev.some((p) => String(p.uid) === strUid || String(p.userId) === strUid)) return prev;
+              if (prev.some((p) => String(p.uid) === strUid || String(p.userId) === strUid)) {
+                return prev.map((p) => {
+                  if (String(p.userId) === strUid || String(p.uid) === strUid) {
+                    return { ...p, uid: user.uid };
+                  }
+                  return p;
+                });
+              }
               return [
                 ...prev,
                 {
@@ -1019,11 +1059,23 @@ export default function App() {
           },
           onRemoteUserUnpublished: (user, mediaType) => {
             if (mediaType === 'video') {
-              setRemoteVideoTrack(null);
+              setRemoteVideoTrack((prev) => (prev === user.videoTrack ? null : prev));
+              setRemoteVideoTracks((prev) => {
+                const next = { ...prev };
+                delete next[user.uid];
+                delete next[String(user.uid)];
+                return next;
+              });
             }
           },
           onUserLeft: (user) => {
             console.log('[Agora] Remote user left call:', user);
+            setRemoteVideoTracks((prev) => {
+              const next = { ...prev };
+              delete next[user.uid];
+              delete next[String(user.uid)];
+              return next;
+            });
             setCallParticipants((prev) => prev.filter((p) => String(p.uid) !== String(user.uid) && String(p.userId) !== String(user.uid)));
             if (!callState?.groupId) {
               cleanupCall();
@@ -1416,6 +1468,7 @@ export default function App() {
           onEndCall={handleEndCall}
           localVideoTrack={localVideoTrack}
           remoteVideoTrack={remoteVideoTrack}
+          remoteVideoTracks={remoteVideoTracks}
           onToggleMute={handleToggleMute}
           onToggleVideo={handleToggleVideo}
           participants={callParticipants}

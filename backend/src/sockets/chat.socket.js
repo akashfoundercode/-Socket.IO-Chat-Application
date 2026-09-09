@@ -468,32 +468,7 @@ module.exports = (io) => {
             });
         });
 
-        socket.on("group_call_leave", ({ groupId, channelName }) => {
-            const from = socket.data.userId;
-            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
-            if (cleanGroupId) {
-                const session = channelName ? activeGroupCalls.get(channelName) : null;
-                if (!session || session.groupId !== cleanGroupId || !session.participants.has(from)) return;
-                if (session) {
-                    session.participants.delete(from);
-                    session.acceptedMembers.delete(from);
-                    session.participantNames.delete(from);
-                }
-                socket.to(`group:${cleanGroupId}`).emit("group_call_user_left", { from, groupId: cleanGroupId, channelName });
-
-                // A group RTC channel with one participant left is no longer
-                // an active call. Reuse the normal finalization path so the
-                // remaining user receives the same cleanup and call log.
-                if (session && session.participants.size <= 1 && !session.ended) {
-                    socket.emit("group_call_end", { groupId: cleanGroupId, channelName });
-                }
-            }
-        });
-
-        socket.on("group_call_end", ({ groupId, channelName }) => {
-            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
-            if (!cleanGroupId) return;
-
+        const endGroupCallSession = async (channelName, cleanGroupId) => {
             const session = channelName ? activeGroupCalls.get(channelName) : null;
             if (session && !session.ended) {
                 session.ended = true;
@@ -537,7 +512,31 @@ module.exports = (io) => {
                 io.to(`group:${cleanGroupId}`).emit('call_log_updated');
             }
 
-            socket.to(`group:${cleanGroupId}`).emit("group_call_ended", { channelName });
+            io.to(`group:${cleanGroupId}`).emit("group_call_ended", { channelName });
+        };
+
+        socket.on("group_call_leave", ({ groupId, channelName }) => {
+            const from = socket.data.userId;
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (cleanGroupId) {
+                const session = channelName ? activeGroupCalls.get(channelName) : null;
+                if (!session || session.groupId !== cleanGroupId || !session.participants.has(from)) return;
+                session.participants.delete(from);
+                session.acceptedMembers.delete(from);
+                session.participantNames.delete(from);
+
+                socket.to(`group:${cleanGroupId}`).emit("group_call_user_left", { from, groupId: cleanGroupId, channelName });
+
+                if (session.participants.size === 0) {
+                    endGroupCallSession(channelName, cleanGroupId);
+                }
+            }
+        });
+
+        socket.on("group_call_end", ({ groupId, channelName }) => {
+            const cleanGroupId = String(groupId || "").replace(/^group:/, "");
+            if (!cleanGroupId) return;
+            endGroupCallSession(channelName, cleanGroupId);
         });
 
 

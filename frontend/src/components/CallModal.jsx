@@ -41,14 +41,19 @@ function VideoTile({ participant, videoTrack, isSpeaking, isMuted, count }) {
 
   useEffect(() => {
     if (containerRef.current && videoTrack) {
-      try { videoTrack.play(containerRef.current); } catch (e) { /* ignore */ }
+      try {
+        containerRef.current.innerHTML = '';
+        videoTrack.play(containerRef.current);
+      } catch (e) {
+        console.warn('[VideoTile] Play error:', e);
+      }
     }
   }, [videoTrack]);
 
   return (
     <div className={`call-tile ${isSpeaking ? 'speaking' : ''} ${isMuted ? 'muted' : ''} ${count > 4 ? 'tile-sm' : ''}`}>
       {isSpeaking && <div className="tile-glow" />}
-      <div ref={containerRef} className="tile-video-container" />
+      <div ref={containerRef} className="tile-video-container" style={{ display: videoTrack ? 'block' : 'none' }} />
       {!videoTrack && (
         <div className="tile-avatar-bg">
           <div className={`tile-avatar-ring ${isSpeaking ? 'ring-active' : ''}`}>
@@ -77,6 +82,7 @@ export default function CallModal({
   onEndCall,
   localVideoTrack,
   remoteVideoTrack,
+  remoteVideoTracks = {},
   onToggleMute,
   onToggleVideo,
   participants = [],
@@ -231,7 +237,9 @@ export default function CallModal({
                     : (speakingVolumes[p.uid] || speakingVolumes[p.userId] || 0);
                   const speaking = vol > 6;
                   const muted = p.isSelf ? isMuted : Boolean(p.isMuted);
-                  const vTrack = p.isSelf ? (isVideo ? localVideoTrack : null) : (isVideo ? remoteVideoTrack : null);
+                  const vTrack = p.isSelf
+                    ? (isVideo ? localVideoTrack : null)
+                    : (isVideo ? (remoteVideoTracks[p.uid] || remoteVideoTracks[p.userId] || (allParticipants.filter(x => !x.isSelf).length === 1 ? Object.values(remoteVideoTracks)[0] : null) || remoteVideoTrack) : null);
                   return (
                     <VideoTile
                       key={p.uid || p.userId || i}
