@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// Generates consistent color based on string
 const getAvatarColor = (str) => {
   const colors = [
     'linear-gradient(135deg, #25d366, #128c7e)',
@@ -19,34 +18,54 @@ const getAvatarColor = (str) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
-function CallAvatar({ avatar, name, size = 'default' }) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const value = String(avatar || '').trim();
-  const isInvalid = !value || value === 'null' || value === 'undefined' || value.toLowerCase() === 'avatar' || value.toLowerCase() === 'contact avatar';
-  const isEmoji = !isInvalid && value.length <= 4 && !value.startsWith('/') && !value.startsWith('data:') && !value.startsWith('http');
+function CallAvatar({ avatar, name, size = 'md' }) {
+  const [failed, setFailed] = useState(false);
+  const val = String(avatar || '').trim();
+  const invalid = !val || val === 'null' || val === 'undefined' || val.toLowerCase() === 'avatar';
+  const isEmoji = !invalid && val.length <= 4 && !val.startsWith('/') && !val.startsWith('data:') && !val.startsWith('http');
 
-  if (!isInvalid && !imageFailed && isEmoji) {
-    return <span className={`wa-call-emoji-avatar ${size}`}>{value}</span>;
-  }
-
-  if (!isInvalid && !imageFailed) {
-    return (
-      <img
-        src={value}
-        alt=""
-        className={`wa-call-img-avatar ${size}`}
-        onError={() => setImageFailed(true)}
-      />
-    );
-  }
+  if (!invalid && !failed && isEmoji) return <span className={`cav-emoji cav-${size}`}>{val}</span>;
+  if (!invalid && !failed) return <img src={val} alt="" className={`cav-img cav-${size}`} onError={() => setFailed(true)} />;
 
   const initial = (name || 'U').charAt(0).toUpperCase();
   return (
-    <div
-      className={`wa-call-initial-avatar ${size}`}
-      style={{ background: getAvatarColor(name || 'user') }}
-    >
+    <div className={`cav-initial cav-${size}`} style={{ background: getAvatarColor(name || 'user') }}>
       <span>{initial}</span>
+    </div>
+  );
+}
+
+// Video tile for group video calls — each participant gets their own video container
+function VideoTile({ participant, videoTrack, isSpeaking, isMuted, count }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (containerRef.current && videoTrack) {
+      try { videoTrack.play(containerRef.current); } catch (e) { /* ignore */ }
+    }
+  }, [videoTrack]);
+
+  return (
+    <div className={`call-tile ${isSpeaking ? 'speaking' : ''} ${isMuted ? 'muted' : ''} ${count > 4 ? 'tile-sm' : ''}`}>
+      {isSpeaking && <div className="tile-glow" />}
+      <div ref={containerRef} className="tile-video-container" />
+      {!videoTrack && (
+        <div className="tile-avatar-bg">
+          <div className={`tile-avatar-ring ${isSpeaking ? 'ring-active' : ''}`}>
+            <CallAvatar avatar={participant.avatar} name={participant.name} size={count > 4 ? 'sm' : 'md'} />
+          </div>
+          {isSpeaking && (
+            <div className="tile-eq">
+              <span className="eq-b b1" /><span className="eq-b b2" /><span className="eq-b b3" /><span className="eq-b b4" />
+            </div>
+          )}
+        </div>
+      )}
+      <div className="tile-footer">
+        <span className="tile-name">{participant.name}{participant.isSelf ? ' (You)' : ''}</span>
+        {isMuted && <i className="fa-solid fa-microphone-slash tile-mute-icon" />}
+        {isSpeaking && !isMuted && <i className="fa-solid fa-volume-high tile-speak-icon" />}
+      </div>
     </div>
   );
 }
@@ -66,73 +85,48 @@ export default function CallModal({
   currentUser
 }) {
   const [isMuted, setIsMuted] = useState(false);
-  const [isVideoDisabled, setIsVideoDisabled] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
   const [duration, setDuration] = useState(0);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
 
-  const localVideoContainerRef = useRef(null);
-  const remoteVideoContainerRef = useRef(null);
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
 
-  // Bind Agora Local Video Track to DOM container
   useEffect(() => {
-    if (localVideoContainerRef.current && localVideoTrack) {
-      try {
-        localVideoTrack.play(localVideoContainerRef.current);
-      } catch (err) {
-        console.warn('Local video play error:', err);
-      }
+    if (localVideoRef.current && localVideoTrack) {
+      try { localVideoTrack.play(localVideoRef.current); } catch (e) { /* ignore */ }
     }
   }, [localVideoTrack, callState?.callType]);
 
-  // Bind Agora Remote Video Track to DOM container
   useEffect(() => {
-    if (remoteVideoContainerRef.current && remoteVideoTrack) {
-      try {
-        remoteVideoTrack.play(remoteVideoContainerRef.current);
-      } catch (err) {
-        console.warn('Remote video play error:', err);
-      }
+    if (remoteVideoRef.current && remoteVideoTrack) {
+      try { remoteVideoTrack.play(remoteVideoRef.current); } catch (e) { /* ignore */ }
     }
   }, [remoteVideoTrack, callState?.callType]);
 
-  // Call duration timer once connected
   useEffect(() => {
-    let timer = null;
+    let t = null;
     if (callState?.isAccepted) {
-      timer = setInterval(() => {
-        setDuration((prev) => prev + 1);
-      }, 1000);
+      t = setInterval(() => setDuration(p => p + 1), 1000);
     } else {
       setDuration(0);
     }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
+    return () => { if (t) clearInterval(t); };
   }, [callState?.isAccepted]);
 
-  // Mute / Unmute Audio Track
   const toggleMute = () => {
-    const nextMuted = !isMuted;
-    setIsMuted(nextMuted);
-    if (onToggleMute) {
-      onToggleMute(nextMuted);
-    }
+    const next = !isMuted;
+    setIsMuted(next);
+    onToggleMute?.(next);
   };
 
-  // Enable / Disable Video Track
   const toggleVideo = () => {
-    const nextDisabled = !isVideoDisabled;
-    setIsVideoDisabled(nextDisabled);
-    if (onToggleVideo) {
-      onToggleVideo(nextDisabled);
-    }
+    const next = !isVideoOff;
+    setIsVideoOff(next);
+    onToggleVideo?.(next);
   };
 
-  // Format Duration seconds to mm:ss
-  const formatDuration = (sec) => {
-    const mins = Math.floor(sec / 60);
-    const secs = sec % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   if (!callState) return null;
 
@@ -142,235 +136,148 @@ export default function CallModal({
   const peerName = callState.peerName || callState.peerId || 'User';
   const peerAvatar = callState.peerAvatar;
 
-  // Build complete participants list
-  const activeParticipants = React.useMemo(() => {
+  const statusText = callState.isAccepted
+    ? fmt(duration)
+    : callState.isCallWaiting
+      ? 'User is on another call...'
+      : callState.isRinging ? 'Ringing...' : 'Calling...';
+
+  // Build participants list for group call
+  const allParticipants = React.useMemo(() => {
     if (!isGroup) return [];
-
-    // Ensure self is in participants list
-    const selfItem = {
-      uid: 'self',
-      userId: currentUserId || 'self',
+    const self = {
+      uid: 'self', userId: currentUserId || 'self',
       name: currentUser?.name || currentUser?.fullPhone || 'You',
-      avatar: currentUser?.avatar || null,
-      isSelf: true,
-      isMuted: isMuted,
-      volume: speakingVolumes['self'] || speakingVolumes[0] || 0
+      avatar: currentUser?.avatar || null, isSelf: true,
+      isMuted, volume: speakingVolumes['self'] || speakingVolumes[0] || 0
     };
-
-    const remoteList = (participants || []).filter((p) => !p.isSelf && p.userId !== currentUserId);
-
-    // If caller is in callState but not in remoteList yet, include them
-    if (callState.callerId && callState.callerId !== currentUserId && !remoteList.some((p) => p.userId === callState.callerId)) {
-      remoteList.push({
-        uid: callState.callerId,
-        userId: callState.callerId,
+    const remote = (participants || []).filter(p => !p.isSelf && p.userId !== currentUserId);
+    if (callState.callerId && callState.callerId !== currentUserId && !remote.some(p => p.userId === callState.callerId)) {
+      remote.push({
+        uid: callState.callerId, userId: callState.callerId,
         name: callState.peerName || callState.callerId,
-        avatar: callState.peerAvatar,
-        isSelf: false,
-        isMuted: false,
+        avatar: callState.peerAvatar, isSelf: false, isMuted: false,
         volume: speakingVolumes[callState.callerId] || 0
       });
     }
-
-    return [selfItem, ...remoteList];
+    return [self, ...remote];
   }, [isGroup, participants, currentUserId, currentUser, isMuted, speakingVolumes, callState]);
 
-  const participantCount = activeParticipants.length;
+  const count = allParticipants.length;
 
-  // Grid class calculation based on total number of participants
-  const getGridClass = (count) => {
-    if (count <= 1) return 'wa-grid-1';
-    if (count === 2) return 'wa-grid-2';
-    if (count <= 4) return 'wa-grid-4';
-    if (count <= 6) return 'wa-grid-6';
-    return 'wa-grid-multi';
-  };
+  // Grid layout class: 1, 2, 3-4, 5-6, 7+
+  const gridClass = count <= 1 ? 'grid-1' : count === 2 ? 'grid-2' : count <= 4 ? 'grid-4' : count <= 6 ? 'grid-6' : 'grid-many';
 
   return (
-    <div className="wa-call-overlay">
-      {/* 1. INCOMING CALL NOTIFICATION CARD */}
+    <div className="call-overlay">
       {isIncoming ? (
-        <div className="wa-incoming-call-card">
-          <div className="wa-call-header-tag">
-            <i className={`fa-solid ${isVideo ? 'fa-video' : 'fa-phone'}`}></i>
+        /* ── INCOMING CALL CARD ── */
+        <div className="incoming-card">
+          <div className="incoming-badge">
+            <i className={`fa-solid ${isVideo ? 'fa-video' : 'fa-phone'}`} />
             <span>{isGroup ? 'Group' : 'Incoming'} {isVideo ? 'Video' : 'Voice'} Call</span>
           </div>
-
-          <div className="wa-incoming-avatar-wrap">
-            <CallAvatar avatar={peerAvatar} name={peerName} size="large" />
-            <div className="wa-call-pulse-ring"></div>
+          <div className="incoming-avatar-wrap">
+            <CallAvatar avatar={peerAvatar} name={peerName} size="xl" />
+            <div className="pulse-ring r1" /><div className="pulse-ring r2" /><div className="pulse-ring r3" />
           </div>
-
-          <h3 className="wa-incoming-name">{peerName}</h3>
+          <h3 className="incoming-name">{peerName}</h3>
           {isGroup && callState.callerName && (
-            <p className="wa-incoming-status" style={{ fontSize: '13px', opacity: 0.85 }}>
-              from {callState.callerName}
-            </p>
+            <p className="incoming-sub">from {callState.callerName}</p>
           )}
-
-          <div className="wa-incoming-actions">
-            {/* Decline Call Button */}
-            <button
-              type="button"
-              className="wa-call-action-btn decline"
-              onClick={onRejectCall}
-              title="Decline Call"
-            >
-              <i className="fa-solid fa-phone-slash"></i>
-              <span>Decline</span>
+          <div className="incoming-actions">
+            <button type="button" className="inc-btn decline" onClick={onRejectCall}>
+              <span className="inc-btn-icon"><i className="fa-solid fa-phone-slash" /></span>
+              <span className="inc-btn-label">Decline</span>
             </button>
-
-            {/* Accept Call Button */}
-            <button
-              type="button"
-              className="wa-call-action-btn accept"
-              onClick={onAcceptCall}
-              title={isGroup ? 'Join Call' : 'Accept Call'}
-            >
-              <i className={`fa-solid ${isVideo ? 'fa-video' : 'fa-phone'}`}></i>
-              <span>{isGroup ? 'Join' : 'Accept'}</span>
+            <button type="button" className="inc-btn accept" onClick={onAcceptCall}>
+              <span className="inc-btn-icon"><i className={`fa-solid ${isVideo ? 'fa-video' : 'fa-phone'}`} /></span>
+              <span className="inc-btn-label">{isGroup ? 'Join' : 'Accept'}</span>
             </button>
           </div>
         </div>
       ) : (
-        /* 2. ACTIVE / OUTGOING CALL MODAL */
-        <div className={`wa-active-call-modal ${isGroup ? 'is-group-call' : ''} ${isVideo ? 'is-video-call' : 'is-voice-call'}`}>
-          {/* Top Status & Info Header */}
-          <div className="wa-active-call-top">
-            <div className="wa-call-top-row">
-              <div className="wa-call-secure-badge">
-                <i className="fa-solid fa-lock"></i>
-                <span>End-to-end encrypted (Agora RTC)</span>
-              </div>
-              {isGroup && (
-                <div className="wa-call-count-pill">
-                  <i className="fa-solid fa-users"></i>
-                  <span>{participantCount} {participantCount === 1 ? 'Participant' : 'Participants'}</span>
-                </div>
-              )}
-            </div>
+        /* ── ACTIVE CALL MODAL ── */
+        <div className={`active-call ${isGroup ? 'is-group' : ''} ${isVideo ? 'is-video' : 'is-voice'}`}>
 
-            <h2 className="wa-active-call-name">{peerName}</h2>
-            <div className="wa-active-call-status">
-              {callState.isAccepted
-                ? formatDuration(duration)
-                : callState.isCallWaiting
-                  ? 'User is on another call...'
-                  : callState.isRinging
-                    ? 'Ringing...'
-                    : 'Calling...'}
+          {/* Top bar */}
+          <div className="call-topbar">
+            <div className="call-secure-tag">
+              <i className="fa-solid fa-lock" />
+              <span>End-to-end encrypted</span>
             </div>
+            <div className="call-peer-info">
+              <span className="call-peer-name">{peerName}</span>
+              <span className={`call-status-text ${callState.isAccepted ? 'connected' : 'ringing'}`}>
+                {statusText}
+              </span>
+            </div>
+            {isGroup && (
+              <div className="call-participants-pill">
+                <i className="fa-solid fa-users" />
+                <span>{count}</span>
+              </div>
+            )}
           </div>
 
-          {/* Call Body Area */}
-          <div className="wa-active-call-body">
+          {/* Body */}
+          <div className="call-body">
             {isGroup ? (
-              /* MULTI-USER DYNAMIC GROUP CALL GRID (1, 2, 3, 4, 5, 6+ Tiles) */
-              <div className={`wa-group-call-stage ${getGridClass(participantCount)}`}>
-                {activeParticipants.map((participant, index) => {
-                  const vol = participant.isSelf
+              /* ── GROUP CALL GRID ── */
+              <div className={`group-grid ${gridClass}`}>
+                {allParticipants.map((p, i) => {
+                  const vol = p.isSelf
                     ? (isMuted ? 0 : (speakingVolumes['self'] || speakingVolumes[0] || 0))
-                    : (speakingVolumes[participant.uid] || speakingVolumes[participant.userId] || 0);
-                  const isSpeaking = vol > 6;
-                  const isParticipantMuted = participant.isSelf ? isMuted : Boolean(participant.isMuted);
-
+                    : (speakingVolumes[p.uid] || speakingVolumes[p.userId] || 0);
+                  const speaking = vol > 6;
+                  const muted = p.isSelf ? isMuted : Boolean(p.isMuted);
+                  const vTrack = p.isSelf ? (isVideo ? localVideoTrack : null) : (isVideo ? remoteVideoTrack : null);
                   return (
-                    <div
-                      key={participant.uid || participant.userId || index}
-                      className={`wa-participant-tile ${participant.isSelf ? 'is-self' : ''} ${isSpeaking ? 'is-speaking' : ''} ${isParticipantMuted ? 'is-muted' : ''}`}
-                    >
-                      {/* Speaking Pulse Ring & Glow */}
-                      {isSpeaking && <div className="wa-tile-speaking-glow" />}
-
-                      {/* Participant Avatar Container */}
-                      <div className="wa-tile-avatar-wrap">
-                        <div className={`wa-tile-avatar-circle ${isSpeaking ? 'speaking' : ''}`}>
-                          <CallAvatar
-                            avatar={participant.avatar}
-                            name={participant.name}
-                            size={participantCount > 4 ? 'small' : 'medium'}
-                          />
-                        </div>
-
-                        {/* Animated 3-Bar Speaking Equalizer Waves */}
-                        {isSpeaking && (
-                          <div className="wa-tile-equalizer">
-                            <span className="eq-bar bar-1" />
-                            <span className="eq-bar bar-2" />
-                            <span className="eq-bar bar-3" />
-                          </div>
-                        )}
-
-                        {/* Mute Indicator Badge */}
-                        {isParticipantMuted && (
-                          <div className="wa-tile-mute-badge" title="Microphone Muted">
-                            <i className="fa-solid fa-microphone-slash"></i>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Participant Name & Status Footer */}
-                      <div className="wa-tile-info">
-                        <span className="wa-tile-name">
-                          {participant.name} {participant.isSelf && <strong className="wa-self-tag">(You)</strong>}
-                        </span>
-                        <span className="wa-tile-status-text">
-                          {isSpeaking
-                            ? 'Speaking...'
-                            : isParticipantMuted
-                              ? 'Muted'
-                              : callState.isAccepted
-                                ? 'Connected'
-                                : 'Connecting...'}
-                        </span>
-                      </div>
-                    </div>
+                    <VideoTile
+                      key={p.uid || p.userId || i}
+                      participant={p}
+                      videoTrack={isVideo ? vTrack : null}
+                      isSpeaking={speaking}
+                      isMuted={muted}
+                      count={count}
+                    />
                   );
                 })}
               </div>
             ) : isVideo ? (
-              /* 1-on-1 Video Call Stage */
-              <div className="wa-video-call-stage">
-                <div
-                  ref={remoteVideoContainerRef}
-                  className="wa-remote-video"
-                  style={{ width: '100%', height: '100%', position: 'relative' }}
-                />
-
+              /* ── 1-on-1 VIDEO ── */
+              <div className="video-stage">
+                <div ref={remoteVideoRef} className="remote-video" />
                 {!remoteVideoTrack && (
-                  <div className="wa-video-placeholder">
-                    <div className="wa-call-avatar-circle">
-                      <CallAvatar avatar={peerAvatar} name={peerName} size="large" />
+                  <div className="video-waiting">
+                    <div className="video-waiting-avatar">
+                      <CallAvatar avatar={peerAvatar} name={peerName} size="xl" />
                     </div>
                     <span>Waiting for video...</span>
                   </div>
                 )}
-
-                <div className="wa-local-video-pip">
-                  <div
-                    ref={localVideoContainerRef}
-                    className="wa-local-video"
-                    style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}
-                  />
-                  {isVideoDisabled && (
-                    <div className="wa-video-disabled-overlay">
-                      <i className="fa-solid fa-video-slash"></i>
+                <div className="local-pip">
+                  <div ref={localVideoRef} className="local-video-inner" />
+                  {isVideoOff && (
+                    <div className="pip-cam-off">
+                      <i className="fa-solid fa-video-slash" />
                     </div>
                   )}
                 </div>
               </div>
             ) : (
-              /* 1-on-1 Voice Call Stage with Pulsing Wave */
-              <div className="wa-voice-call-stage">
-                <div className="wa-voice-avatar-wrap">
-                  <div className="wa-voice-avatar-circle">
-                    <CallAvatar avatar={peerAvatar} name={peerName} size="large" />
+              /* ── 1-on-1 VOICE ── */
+              <div className="voice-stage">
+                <div className="voice-bg-blur" style={{ background: getAvatarColor(peerName) }} />
+                <div className="voice-center">
+                  <div className={`voice-avatar-ring ${callState.isAccepted ? 'ring-pulse' : ''}`}>
+                    <div className="voice-avatar-inner">
+                      <CallAvatar avatar={peerAvatar} name={peerName} size="xl" />
+                    </div>
                   </div>
                   {callState.isAccepted && (
                     <>
-                      <div className="wa-voice-wave wave-1"></div>
-                      <div className="wa-voice-wave wave-2"></div>
-                      <div className="wa-voice-wave wave-3"></div>
+                      <div className="vwave w1" /><div className="vwave w2" /><div className="vwave w3" />
                     </>
                   )}
                 </div>
@@ -378,38 +285,43 @@ export default function CallModal({
             )}
           </div>
 
-          {/* Bottom Action Controls Bar */}
-          <div className="wa-active-call-controls">
-            {/* Mute / Unmute Button */}
+          {/* Controls */}
+          <div className="call-controls">
             <button
               type="button"
-              className={`wa-call-ctrl-btn ${isMuted ? 'active-off' : ''}`}
+              className={`ctrl-btn ${isMuted ? 'ctrl-off' : ''}`}
               onClick={toggleMute}
-              title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+              title={isMuted ? 'Unmute' : 'Mute'}
             >
-              <i className={`fa-solid ${isMuted ? 'fa-microphone-slash' : 'fa-microphone'}`}></i>
+              <i className={`fa-solid ${isMuted ? 'fa-microphone-slash' : 'fa-microphone'}`} />
+              <span>{isMuted ? 'Unmute' : 'Mute'}</span>
             </button>
 
-            {/* Video Toggle (If Video Call) */}
             {isVideo && (
               <button
                 type="button"
-                className={`wa-call-ctrl-btn ${isVideoDisabled ? 'active-off' : ''}`}
+                className={`ctrl-btn ${isVideoOff ? 'ctrl-off' : ''}`}
                 onClick={toggleVideo}
-                title={isVideoDisabled ? 'Turn Camera On' : 'Turn Camera Off'}
+                title={isVideoOff ? 'Camera On' : 'Camera Off'}
               >
-                <i className={`fa-solid ${isVideoDisabled ? 'fa-video-slash' : 'fa-video'}`}></i>
+                <i className={`fa-solid ${isVideoOff ? 'fa-video-slash' : 'fa-video'}`} />
+                <span>Camera</span>
               </button>
             )}
 
-            {/* Leave / End Call Button */}
             <button
               type="button"
-              className="wa-call-ctrl-btn end-call"
-              onClick={onEndCall}
-              title={isGroup ? 'Leave group call' : 'End call'}
+              className={`ctrl-btn ${isSpeakerOn ? '' : 'ctrl-off'}`}
+              onClick={() => setIsSpeakerOn(p => !p)}
+              title="Speaker"
             >
-              <i className="fa-solid fa-phone-slash"></i>
+              <i className={`fa-solid ${isSpeakerOn ? 'fa-volume-high' : 'fa-volume-xmark'}`} />
+              <span>Speaker</span>
+            </button>
+
+            <button type="button" className="ctrl-btn ctrl-end" onClick={onEndCall} title="End call">
+              <i className="fa-solid fa-phone-slash" />
+              <span>{isGroup ? 'Leave' : 'End'}</span>
             </button>
           </div>
         </div>
@@ -417,4 +329,3 @@ export default function CallModal({
     </div>
   );
 }
-
