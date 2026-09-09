@@ -396,6 +396,7 @@ module.exports = (io) => {
                 participants: new Set([from]),
                 participantNames: new Map([[from, callerName || from]]),
                 acceptedMembers: new Set(),
+                hadAcceptedMember: false,
                 startedAt: Date.now(),
                 ended: false
             });
@@ -422,6 +423,7 @@ module.exports = (io) => {
             if (session && accepted) {
                 session.participants.add(from);
                 session.acceptedMembers.add(from);
+                session.hadAcceptedMember = true;
                 session.participantNames.set(from, userName || from);
             }
 
@@ -455,7 +457,20 @@ module.exports = (io) => {
             const from = socket.data.userId;
             const cleanGroupId = String(groupId || "").replace(/^group:/, "");
             if (cleanGroupId) {
+                const session = channelName ? activeGroupCalls.get(channelName) : null;
+                if (session) {
+                    session.participants.delete(from);
+                    session.acceptedMembers.delete(from);
+                    session.participantNames.delete(from);
+                }
                 socket.to(`group:${cleanGroupId}`).emit("group_call_user_left", { from, groupId: cleanGroupId, channelName });
+
+                // A group RTC channel with one participant left is no longer
+                // an active call. Reuse the normal finalization path so the
+                // remaining user receives the same cleanup and call log.
+                if (session && session.participants.size <= 1 && !session.ended) {
+                    socket.emit("group_call_end", { groupId: cleanGroupId, channelName });
+                }
             }
         });
 
@@ -467,7 +482,7 @@ module.exports = (io) => {
             if (session && !session.ended) {
                 session.ended = true;
                 const totalJoined = session.participants.size;
-                const hasAccepted = session.acceptedMembers.size > 0;
+                const hasAccepted = session.hadAcceptedMember || session.acceptedMembers.size > 0;
                 const finalStatus = hasAccepted ? 'completed' : 'not_accepted';
                 const callDuration = hasAccepted ? Math.max(1, Math.round((Date.now() - session.startedAt) / 1000)) : 0;
                 const memberNamesList = Array.from(session.participantNames.values());

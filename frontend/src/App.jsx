@@ -123,7 +123,7 @@ export default function App() {
       // Auto-detect system messages if type is missing
       const normalizedMessage = message.type ? message : {
         ...message,
-        type: (typeof message.text === 'string' && message.text.startsWith('{') && (() => { try { return JSON.parse(message.text)?.action; } catch(e) { return false; } })()) ? 'system' : (message.type || 'text')
+        type: (typeof message.text === 'string' && message.text.startsWith('{') && (() => { try { return JSON.parse(message.text)?.action; } catch (e) { return false; } })()) ? 'system' : (message.type || 'text')
       };
       if (!isCurrentGroup || document.hidden) {
         if (normalizedMessage.type !== 'system') playMessageNotification();
@@ -157,7 +157,7 @@ export default function App() {
         setGroupDetails(null);
         setMessages([]);
         setCurrentView('inbox');
-        try { localStorage.removeItem('wa_active_chat'); } catch {}
+        try { localStorage.removeItem('wa_active_chat'); } catch { }
       }
       setRecentMessageEvent({ type: 'group_member_removed', groupId, memberId, timestamp: Date.now() });
     }
@@ -170,7 +170,7 @@ export default function App() {
         setGroupDetails(null);
         setMessages([]);
         setCurrentView('inbox');
-        try { localStorage.removeItem('wa_active_chat'); } catch {}
+        try { localStorage.removeItem('wa_active_chat'); } catch { }
       }
       setRecentMessageEvent({ type: 'group_member_left', groupId, userId: leftUserId, timestamp: Date.now() });
     }
@@ -261,7 +261,10 @@ export default function App() {
     // Outgoing message confirmation for sender
     function onMessageSaved(msg) {
       setRecentMessageEvent(msg);
-      if (activeChat && (msg.from === activeChat || msg.to === activeChat)) {
+      const cleanActive = String(activeChat || '').replace(/\D/g, '');
+      const cleanFrom = String(msg.from || '').replace(/\D/g, '');
+      const cleanTo = String(msg.to || '').replace(/\D/g, '');
+      if (activeChat && (cleanFrom === cleanActive || cleanTo === cleanActive)) {
         setMessages((prev) => [...prev, msg]);
       }
     }
@@ -411,17 +414,8 @@ export default function App() {
         callerName: callerName || from,
         peerAvatar: groupAvatar || callerAvatar || null
       });
-      setCallParticipants([
-        {
-          uid: from,
-          userId: from,
-          name: callerName || from,
-          avatar: callerAvatar || null,
-          isSelf: false,
-          isMuted: false,
-          volume: 0
-        }
-      ]);
+      // An incoming participant must remain outside Agora until they accept.
+      setCallParticipants([]);
       startIncomingRingtone();
     }
 
@@ -470,8 +464,17 @@ export default function App() {
     }
 
     function onGroupCallAccepted(data) {
-      stopCallSounds();
-      setCallState((prev) => (prev ? { ...prev, isAccepted: true, isRinging: false } : null));
+      // This event is broadcast to the group. Only an already-running caller
+      // should transition because another member accepted; ringing members
+      // must keep waiting for their own explicit Accept/Join action.
+      setCallState((prev) => (
+        prev && !prev.isIncoming
+          ? (() => {
+            stopCallSounds();
+            return { ...prev, isAccepted: true, isRinging: false };
+          })()
+          : prev
+      ));
       if (data && data.from && data.from !== userId) {
         setCallParticipants((prev) => {
           if (prev.some((p) => p.userId === data.from || p.uid === data.from)) return prev;
@@ -1174,7 +1177,7 @@ export default function App() {
     }
     setActiveChat(recipientPhone);
     setCurrentView('chat');
-    try { localStorage.setItem('wa_active_chat', recipientPhone); } catch {}
+    try { localStorage.setItem('wa_active_chat', recipientPhone); } catch { }
     if (userId && recipientPhone) {
       chatApi.markSeen(userId, recipientPhone).catch(() => { });
       socket.emit('mark_seen', { otherUserId: recipientPhone });
@@ -1229,7 +1232,7 @@ export default function App() {
     setRecipientProfile(null);
     setMessages([]);
     setCurrentView('inbox');
-    try { localStorage.removeItem('wa_active_chat'); } catch {}
+    try { localStorage.removeItem('wa_active_chat'); } catch { }
   };
 
   // Open Profile Settings
