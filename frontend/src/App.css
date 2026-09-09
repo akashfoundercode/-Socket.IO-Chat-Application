@@ -6335,7 +6335,6 @@ body {
 .wa-group-contact-avatar,
 .wa-group-info-member-avatar,
 .wa-contact-phone-sub,
-.wa-auth-green-btn,
 .wa-group-role-btn {
   color: var(--wa-green-header);
 }

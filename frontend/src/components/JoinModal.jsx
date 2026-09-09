@@ -221,7 +221,7 @@ export default function JoinModal({ onJoin, isConnected }) {
                 className="wa-auth-green-btn"
                 disabled={loading || phone.length !== currentCountry.digits}
               >
-                {loading ? 'Sending...' : 'Send'}
+                {loading ? 'Sending...' : 'Send OTP'}
               </button>
             </form>
 
