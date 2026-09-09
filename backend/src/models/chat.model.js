@@ -1029,15 +1029,15 @@ const addGroupSystemMessage = async (groupId, payload) => {
     return mapGroupMessage(rows[0]);
 };
 
-const createGroup = async ({ name, creatorId, memberIds = [] }) => {
+const createGroup = async ({ name, creatorId, memberIds = [], avatar = null }) => {
     const pool = getPool();
     const cleanName = String(name || "").trim();
     const cleanCreator = String(creatorId || "").trim();
     if (!cleanName || !cleanCreator) throw new Error("Group name and creator are required");
 
     const [result] = await pool.execute(
-        "INSERT INTO chat_groups (name, creator_id) VALUES (?, ?)",
-        [cleanName, cleanCreator]
+        "INSERT INTO chat_groups (name, creator_id, avatar) VALUES (?, ?, ?)",
+        [cleanName, cleanCreator, avatar ? String(avatar).trim() : null]
     );
     const uniqueMembers = Array.from(new Set([cleanCreator, ...memberIds.map((id) => String(id || "").trim()).filter(Boolean)]));
     for (const memberId of uniqueMembers) {
@@ -1284,13 +1284,22 @@ const updateGroup = async (groupId, requesterId, { name, avatar, messagePermissi
     const requester = await isGroupMember(cleanId, requesterId);
     if (!requester || requester.role !== "admin") throw new Error("Only group admins can change group settings");
     const cleanPermission = messagePermission === "admins" ? "admins" : messagePermission === "everyone" ? "everyone" : null;
+
+    const params = [name !== undefined ? String(name).trim() || null : null];
+    let avatarClause = "avatar";
+    if (avatar !== undefined) {
+        avatarClause = "?";
+        params.push(avatar ? String(avatar).trim() : null);
+    }
+    params.push(cleanPermission, cleanId);
+
     await getPool().execute(
         `UPDATE chat_groups SET
             name = COALESCE(?, name),
-            avatar = COALESCE(?, avatar),
+            avatar = ${avatarClause},
             message_permission = COALESCE(?, message_permission)
          WHERE id = ?`,
-        [name !== undefined ? String(name).trim() || null : null, avatar !== undefined ? avatar : null, cleanPermission, cleanId]
+        params
     );
     return getGroup(cleanId, requesterId);
 };

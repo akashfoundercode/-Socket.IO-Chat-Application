@@ -97,11 +97,18 @@ export default function ContactInfoModal({
   const isBlocked = isBlockedByMe || isBlockedByThem;
   const avatar = isBlocked ? null : (isGroup ? groupDetails?.avatar : recipientProfile?.avatar);
   const about = isBlocked ? '' : (recipientProfile?.about || 'Hey there! I am using WhatsApp.');
-  const currentGroupMember = groupDetails?.members?.find((member) => (
-    String(member.userId) === String(currentUserId) ||
-    String(member.fullPhone || '').replace(/^\+/, '') === String(currentUserId).replace(/^\+/, '')
-  ));
-  const isGroupAdmin = isGroup && currentGroupMember?.role === 'admin';
+  const groupFileInputRef = React.useRef(null);
+  const currentGroupMember = groupDetails?.members?.find((member) => {
+    const mId = String(member.userId || '').replace(/\D/g, '');
+    const cId = String(currentUserId || '').replace(/\D/g, '');
+    const mPhone = String(member.fullPhone || member.phone || '').replace(/\D/g, '');
+    return (mId && cId && mId === cId) || (mPhone && cId && mPhone === cId) || String(member.userId) === String(currentUserId);
+  });
+  const isCreator = groupDetails?.creatorId && (
+    String(groupDetails.creatorId) === String(currentUserId) ||
+    String(groupDetails.creatorId).replace(/\D/g, '') === String(currentUserId || '').replace(/\D/g, '')
+  );
+  const isGroupAdmin = isGroup && (currentGroupMember?.role === 'admin' || isCreator || !groupDetails?.members || groupDetails.members.length === 0);
   const isMemberOnline = (member) => {
     const id = String(member.fullPhone || member.userId || '').trim();
     const variants = [id, id.startsWith('+') ? id.slice(1) : `+${id}`, id.replace(/^\+/, '')];
@@ -218,24 +225,79 @@ export default function ContactInfoModal({
         <div className="wa-contact-info-body">
           {/* Large Avatar Header */}
           <div className="wa-contact-avatar-section">
-            <div style={{ position: 'relative', display: 'inline-block', marginBottom: '14px' }}>
+            <div
+              style={{
+                position: 'relative',
+                display: 'inline-block',
+                marginBottom: '10px',
+                cursor: isGroup && isGroupAdmin ? 'pointer' : 'default'
+              }}
+              onClick={() => {
+                if (isGroup && isGroupAdmin) {
+                  groupFileInputRef.current?.click();
+                }
+              }}
+              title={isGroup && isGroupAdmin ? 'Tap to change group photo' : displayName}
+            >
               <Avatar
                 src={avatar}
                 name={displayName}
                 isGroup={isGroup}
                 size={110}
                 style={{
-                  border: '3px solid rgba(255,255,255,0.35)',
+                  border: '3px solid rgba(255,255,255,0.4)',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.25)'
                 }}
               />
               {isGroup && isGroupAdmin && (
-                <label className="wa-group-avatar-edit" title="Change group logo">
+                <label
+                  className="wa-group-avatar-edit"
+                  title="Change group photo"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <i className="fa-solid fa-camera"></i>
-                  <input type="file" accept="image/*" onChange={handleGroupAvatarFile} />
+                  <input
+                    type="file"
+                    ref={groupFileInputRef}
+                    accept="image/png, image/jpeg, image/jpg, image/webp"
+                    onChange={handleGroupAvatarFile}
+                    style={{ display: 'none' }}
+                  />
                 </label>
               )}
             </div>
+
+            {isGroup && isGroupAdmin && (
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <button
+                  type="button"
+                  className="wa-group-photo-action-btn"
+                  onClick={() => groupFileInputRef.current?.click()}
+                  title="Upload group photo"
+                >
+                  <i className="fa-solid fa-camera"></i> {avatar ? 'Change Photo' : 'Upload Photo'}
+                </button>
+                {avatar && (
+                  <button
+                    type="button"
+                    className="wa-group-photo-action-btn remove"
+                    onClick={async () => {
+                      setIsSavingGroup(true);
+                      try {
+                        await onUpdateGroup?.(recipientId, { avatar: '' });
+                        setGroupUpdateMessage('Group photo removed');
+                        window.setTimeout(() => setGroupUpdateMessage(''), 2500);
+                      } finally {
+                        setIsSavingGroup(false);
+                      }
+                    }}
+                    title="Remove group photo"
+                  >
+                    <i className="fa-solid fa-trash-can"></i> Remove
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Contact Name & Inline Edit */}
             {isEditingName ? (

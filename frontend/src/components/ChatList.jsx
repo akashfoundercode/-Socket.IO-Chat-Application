@@ -42,6 +42,8 @@ export default function ChatList({
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [groupName, setGroupName] = useState('');
+  const [groupAvatar, setGroupAvatar] = useState(null);
+  const groupAvatarInputRef = useRef(null);
   const [groupMemberQuery, setGroupMemberQuery] = useState('');
   const [selectedGroupMembers, setSelectedGroupMembers] = useState([]);
   const [groupMemberResults, setGroupMemberResults] = useState([]);
@@ -273,6 +275,16 @@ export default function ChatList({
     }
   };
 
+  const handleGroupAvatarUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setGroupAvatar(String(reader.result || ''));
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleCreateGroup = async (e) => {
     e.preventDefault();
     const memberIds = selectedGroupMembers.map((member) => member.fullPhone || member.phone || member.id);
@@ -283,10 +295,11 @@ export default function ChatList({
     setCreatingGroup(true);
     setModalError('');
     try {
-      const data = await chatApi.createGroup(userId, groupName.trim(), memberIds);
+      const data = await chatApi.createGroup(userId, groupName.trim(), memberIds, groupAvatar);
       const group = data.group;
       setShowGroupModal(false);
       setGroupName('');
+      setGroupAvatar(null);
       setGroupMemberQuery('');
       setSelectedGroupMembers([]);
       setGroupMemberResults([]);
@@ -296,6 +309,7 @@ export default function ChatList({
           id: `group:${group.id}`,
           groupId: group.id,
           name: group.name,
+          avatar: group.avatar || groupAvatar || null,
           isGroup: true,
           unreadCount: 0,
           lastMessage: null
@@ -1649,6 +1663,53 @@ export default function ChatList({
             </div>
             {modalError && <div className="wa-auth-error">{modalError}</div>}
             <form onSubmit={handleCreateGroup} className="wa-modal-form">
+              {/* Group Avatar Upload Circle */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '14px' }}>
+                <div
+                  style={{ position: 'relative', cursor: 'pointer', display: 'inline-block' }}
+                  onClick={() => groupAvatarInputRef.current?.click()}
+                  title="Upload group image"
+                >
+                  <Avatar
+                    src={groupAvatar}
+                    name={groupName || 'Group'}
+                    isGroup={true}
+                    size={76}
+                    style={{ border: '2.5px dashed #00a884', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+                  />
+                  <div className="wa-create-group-avatar-overlay">
+                    <i className="fa-solid fa-camera"></i>
+                  </div>
+                </div>
+                <input
+                  type="file"
+                  ref={groupAvatarInputRef}
+                  accept="image/png, image/jpeg, image/jpg, image/webp"
+                  onChange={handleGroupAvatarUpload}
+                  style={{ display: 'none' }}
+                />
+                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                  <button
+                    type="button"
+                    className="wa-group-photo-action-btn"
+                    onClick={() => groupAvatarInputRef.current?.click()}
+                    style={{ fontSize: '11px', padding: '3px 10px' }}
+                  >
+                    <i className="fa-solid fa-camera"></i> {groupAvatar ? 'Change Photo' : 'Add Group Image'}
+                  </button>
+                  {groupAvatar && (
+                    <button
+                      type="button"
+                      className="wa-group-photo-action-btn remove"
+                      onClick={() => setGroupAvatar(null)}
+                      style={{ fontSize: '11px', padding: '3px 10px' }}
+                    >
+                      <i className="fa-solid fa-trash-can"></i> Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <label>Group Name</label>
               <input
                 type="text"

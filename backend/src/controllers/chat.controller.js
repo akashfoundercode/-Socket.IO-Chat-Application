@@ -437,9 +437,10 @@ const createGroup = async (req, res) => {
     try {
         const creatorId = normalizeId(req.body.creatorId || req.body.userId);
         const name = String(req.body.name || '').trim();
+        const avatar = req.body.avatar || null;
         const memberIds = Array.isArray(req.body.memberIds) ? req.body.memberIds : [];
         if (!creatorId || !name) return res.status(400).json({ success: false, message: 'creatorId and name are required' });
-        const group = await chatModel.createGroup({ name, creatorId, memberIds });
+        const group = await chatModel.createGroup({ name, creatorId, memberIds, avatar });
 
         // Broadcast real-time socket events to creator and all members
         const io = req.app.get('io');

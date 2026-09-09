@@ -213,9 +213,9 @@ export const chatApi = {
 
   getGroups: (userId) => request(`/api/chat/groups/${encodeURIComponent(userId)}`),
 
-  createGroup: (creatorId, name, memberIds) => request('/api/chat/groups', {
+  createGroup: (creatorId, name, memberIds, avatar = null) => request('/api/chat/groups', {
     method: 'POST',
-    body: JSON.stringify({ creatorId, name, memberIds })
+    body: JSON.stringify({ creatorId, name, memberIds, avatar })
   }),
 
   getGroup: (groupId, userId) => request(`/api/chat/groups/detail/${encodeURIComponent(groupId)}?userId=${encodeURIComponent(userId)}`),
