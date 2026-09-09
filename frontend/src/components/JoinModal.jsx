@@ -237,7 +237,7 @@ export default function JoinModal({ onJoin, isConnected, theme = 'green', themeV
             {/* Theme Switcher */}
             {onThemeChange && (
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '16px' }}>
-                {[['green','#008069'],['orange','#ea580c'],['blue','#126782'],['charcoal','#334155']].map(([t, color]) => (
+                {[['green', '#008069'], ['orange', '#ea580c'], ['blue', '#126782'], ['purple', '#6d28d9']].map(([t, color]) => (
                   <button
                     key={t}
                     type="button"

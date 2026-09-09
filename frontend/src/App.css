@@ -3,17 +3,41 @@
    ========================================================= */
 
 :root {
-  --wa-green: #f97316;
-  --wa-green-dark: #c2410c;
-  --wa-green-header: #ea580c;
-  --wa-green-hover: #fb923c;
-  --wa-text-title: #1f2937;
-  --wa-text-sub: #6b7280;
-  --wa-pill-bg: #f3f4f6;
-  --wa-pill-border: #e5e7eb;
-  --wa-chat-bg: #efeae2;
-  --wa-outgoing-bubble: #ffedd5;
-  --wa-incoming-bubble: #ffffff;
+  --theme-primary: #f97316;
+  --theme-primary-hover: #fb923c;
+  --theme-primary-active: #c2410c;
+  --theme-primary-text: #ffffff;
+  --theme-background: #fffaf5;
+  --theme-surface: #ffffff;
+  --theme-surface-secondary: #fff0e1;
+  --theme-text: #111827;
+  --theme-text-secondary: #6b7280;
+  --theme-border: #f1d9c8;
+  --theme-input-bg: #fff7ed;
+  --theme-input-border: #fdba74;
+  --theme-input-focus: #f97316;
+  --theme-icon: #f97316;
+  --theme-chat-pane: #fff7ed;
+  --theme-chat-bubble: #ffedd5;
+  --theme-chat-bubble-text: #1f2937;
+  --theme-hover-bg: #fff7ed;
+  --theme-hover-text: #7c2d12;
+  --theme-badge: #ffedd5;
+  --theme-badge-text: #9a3412;
+  --theme-danger: #ef4444;
+  --theme-success: #22c55e;
+  --theme-warning: #f59e0b;
+  --wa-green: var(--theme-primary);
+  --wa-green-dark: var(--theme-primary-active);
+  --wa-green-header: var(--theme-primary-active);
+  --wa-green-hover: var(--theme-primary-hover);
+  --wa-text-title: var(--theme-text);
+  --wa-text-sub: var(--theme-text-secondary);
+  --wa-pill-bg: var(--theme-surface-secondary);
+  --wa-pill-border: var(--theme-border);
+  --wa-chat-bg: var(--theme-chat-pane);
+  --wa-outgoing-bubble: var(--theme-chat-bubble);
+  --wa-incoming-bubble: var(--theme-surface);
 }
 
 * {
@@ -25,8 +49,7 @@
 }
 
 body {
-  background-color: #d1d7db;
-  background-color: #ffffff;
+  background: var(--theme-background);
   min-height: 100vh;
   margin: 0;
   padding: 0;
@@ -34,6 +57,7 @@ body {
   justify-content: center;
   align-items: center;
   overflow: hidden;
+  color: var(--theme-text);
 }
 
 .wa-app-root {
@@ -46,8 +70,8 @@ body {
   align-items: center;
   position: relative;
   overflow: hidden;
-  background-color: #d1d7db;
-  background-color: #ffffff;
+  background: var(--theme-background);
+  color: var(--theme-text);
   padding: 0;
   box-sizing: border-box;
 }
@@ -86,7 +110,7 @@ body {
   height: 100vh;
   height: 100dvh;
   max-height: 100dvh;
-  background: #ffffff;
+  background: var(--theme-surface);
   border-radius: 4px;
   box-shadow: 0 6px 18px rgba(11, 20, 26, 0.08);
   border-radius: 0;
@@ -94,6 +118,7 @@ body {
   overflow: hidden;
   animation: frameAppear 0.25s ease-out;
   margin: 0;
+  border: 1px solid var(--theme-border);
 }
 
 @keyframes frameAppear {
@@ -116,8 +141,8 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #e9edef;
-  background: #ffffff;
+  border-right: 1px solid var(--theme-border);
+  background: var(--theme-surface);
   flex-shrink: 0;
   overflow: hidden;
   position: relative;
@@ -129,7 +154,7 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #efeae2;
+  background: var(--theme-chat-pane);
   position: relative;
   overflow: hidden;
   min-width: 0;
@@ -155,7 +180,7 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: #f0f2f5;
+  background-color: var(--theme-surface-secondary);
   border-bottom: 6px solid var(--wa-online);
   border-bottom: none;
   padding: 24px;
@@ -233,9 +258,9 @@ body {
   max-width: 420px;
   height: 720px;
   max-height: 92vh;
-  background: #ffffff;
+  background: var(--theme-surface);
   border-radius: 20px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--theme-border);
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.12);
   position: relative;
   z-index: 10;
@@ -247,7 +272,7 @@ body {
 
 .wa-auth-screen {
   flex: 1;
-  background-color: #fbfbfb;
+  background-color: var(--theme-background);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -350,8 +375,8 @@ body {
 .wa-auth-input-pill {
   width: 100%;
   max-width: 240px;
-  background: #ffffff;
-  border: 1.5px solid #e5e7eb;
+  background: var(--theme-input-bg);
+  border: 1.5px solid var(--theme-input-border);
   border-radius: 12px;
   padding: 10px 16px;
   display: flex;
@@ -396,7 +421,7 @@ body {
   background: transparent;
   font-size: 16px;
   font-weight: 600;
-  color: #111827;
+  color: var(--theme-text);
   letter-spacing: 2px;
   text-align: left;
   direction: ltr;
@@ -415,8 +440,8 @@ body {
 .wa-auth-green-btn {
   width: 100%;
   max-width: 240px;
-  background: var(--wa-green);
-  color: #ffffff;
+  background: var(--theme-primary);
+  color: var(--theme-primary-text);
   border: none;
   border-radius: 24px;
   padding: 12px 24px;
@@ -429,7 +454,7 @@ body {
 }
 
 .wa-auth-green-btn:hover:not(:disabled) {
-  background: var(--wa-green-hover);
+  background: var(--theme-primary-hover);
   transform: translateY(-1px);
 }
 
@@ -1085,12 +1110,12 @@ body {
 
 .wa-theme-picker {
   padding: 8px 16px 10px;
-  border-top: 1px solid #eef0f2;
+  border-top: 1px solid var(--theme-border);
   margin-top: 4px;
 }
 
 .wa-theme-picker-label {
-  color: #6b7280;
+  color: var(--theme-text-secondary);
   font-size: 11px;
   font-weight: 700;
   margin-bottom: 7px;
@@ -1140,7 +1165,7 @@ body {
 
 /* Tabs Bar */
 .wa-tabs-bar {
-  background: var(--wa-green-header);
+  background: var(--theme-primary-active);
   display: flex;
   padding: 0 4px;
   flex-shrink: 0;
@@ -1150,7 +1175,7 @@ body {
   flex: 1;
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.72);
   padding: 10px 0;
   font-size: 12.5px;
   font-weight: 700;
@@ -1165,8 +1190,8 @@ body {
 }
 
 .wa-tab-btn.active {
-  color: #ffffff;
-  border-bottom-color: #ffffff;
+  color: var(--theme-primary-text);
+  border-bottom-color: var(--theme-primary-text);
 }
 
 .wa-tab-badge {
@@ -1181,8 +1206,8 @@ body {
 /* Search Bar */
 .wa-search-bar-wrap {
   padding: 8px 12px;
-  background: #f0f2f5;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--theme-surface-secondary);
+  border-bottom: 1px solid var(--theme-border);
 }
 
 .wa-search-bar {

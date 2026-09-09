@@ -1118,7 +1118,7 @@ export default function ChatList({
                       ['green', '#008f72'],
                       ['orange', '#ea580c'],
                       ['blue', '#126782'],
-                      ['charcoal', '#334155']
+                      ['purple', '#6d28d9']
                     ].map(([name, color]) => (
                       <button
                         key={name}
