@@ -56,10 +56,20 @@ async function request(endpoint, options = {}) {
 
   try {
     const response = await fetch(url, config);
-    const data = await response.json();
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json')
+      ? await response.json()
+      : await response.text();
 
     if (!response.ok) {
-      throw new Error(data.message || `Request failed with status ${response.status}`);
+      const message = typeof data === 'string'
+        ? `API returned a non-JSON response (${response.status}). Check the backend deployment.`
+        : data.message || `Request failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    if (typeof data === 'string') {
+      throw new Error('API returned a non-JSON response. Check the backend deployment.');
     }
 
     return data;

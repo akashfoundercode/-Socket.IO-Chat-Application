@@ -10506,3 +10506,209 @@ body {
   background: rgba(239, 68, 68, 0.15);
   color: #ef4444;
 }
+
+/* Contact log visual refinement */
+.wa-contact-log-modal {
+  background: #f7f9fa;
+  border-color: rgba(15, 118, 110, 0.24);
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28), 0 8px 24px rgba(15, 118, 110, 0.12);
+}
+
+.wa-contact-log-header {
+  position: relative;
+  padding: 20px 22px 18px;
+  background: linear-gradient(135deg, #ffffff 0%, #eef8f6 100%);
+  border-bottom-color: rgba(15, 118, 110, 0.14);
+}
+
+.wa-contact-log-header::after {
+  content: '';
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, #0f766e, rgba(15, 118, 110, 0));
+}
+
+.wa-contact-log-header-icon {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(145deg, #0f766e, #14b8a6);
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.25);
+}
+
+.wa-contact-log-header-left h3 {
+  letter-spacing: 0.1px;
+}
+
+.wa-contact-log-sub {
+  color: #52706e;
+}
+
+.wa-contact-log-action-btn {
+  border-color: rgba(15, 118, 110, 0.3);
+  background: rgba(15, 118, 110, 0.08);
+  color: #0f766e;
+}
+
+.wa-contact-log-action-btn:hover,
+.wa-contact-log-action-btn.active {
+  background: #0f766e;
+  border-color: #0f766e;
+  box-shadow: 0 6px 14px rgba(15, 118, 110, 0.2);
+}
+
+.wa-contact-log-search-wrap {
+  padding: 16px 20px 10px;
+}
+
+.wa-contact-log-search-box {
+  min-height: 42px;
+  background: #ffffff;
+  border-color: rgba(15, 118, 110, 0.14);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+}
+
+.wa-contact-log-search-box:focus-within {
+  border-color: rgba(15, 118, 110, 0.5);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12), 0 5px 16px rgba(15, 23, 42, 0.06);
+}
+
+.wa-contact-log-body {
+  padding: 10px 20px 24px;
+}
+
+.wa-contact-log-list {
+  gap: 10px;
+}
+
+.wa-contact-card {
+  padding: 12px 14px;
+  border-color: rgba(15, 23, 42, 0.07);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.035);
+}
+
+.wa-contact-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 118, 110, 0.32);
+  box-shadow: 0 9px 22px rgba(15, 118, 110, 0.1);
+}
+
+.wa-contact-name {
+  font-size: 15px;
+}
+
+.wa-contact-saved-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 6px;
+  background: rgba(15, 118, 110, 0.1);
+}
+
+.wa-contact-btn-action {
+  width: 34px;
+  height: 34px;
+  background: #f1f5f5;
+  border: 1px solid rgba(15, 23, 42, 0.05);
+}
+
+.dark .wa-contact-log-modal,
+[data-theme="dark"] .wa-contact-log-modal {
+  background: #111b21;
+  border-color: rgba(45, 212, 191, 0.2);
+}
+
+.dark .wa-contact-log-header,
+[data-theme="dark"] .wa-contact-log-header {
+  background: linear-gradient(135deg, #17262c 0%, #142e2d 100%);
+  border-bottom-color: rgba(45, 212, 191, 0.16);
+}
+
+.dark .wa-contact-log-sub,
+[data-theme="dark"] .wa-contact-log-sub {
+  color: #8fb6b2;
+}
+
+.dark .wa-contact-log-search-box,
+[data-theme="dark"] .wa-contact-log-search-box {
+  background: #1c2a30;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.dark .wa-contact-card,
+[data-theme="dark"] .wa-contact-card {
+  background: #1a292f;
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.dark .wa-contact-card:hover,
+[data-theme="dark"] .wa-contact-card:hover {
+  background: #1d3035;
+  border-color: rgba(45, 212, 191, 0.32);
+  box-shadow: 0 9px 22px rgba(0, 0, 0, 0.2);
+}
+
+.dark .wa-contact-btn-action,
+[data-theme="dark"] .wa-contact-btn-action {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 600px) {
+  .wa-contact-log-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .wa-contact-log-modal {
+    max-width: none;
+    height: min(92vh, 760px);
+    border-radius: 22px 22px 0 0;
+  }
+
+  .wa-contact-log-header {
+    padding: 18px 16px 16px;
+  }
+
+  .wa-contact-log-header-actions {
+    gap: 6px;
+  }
+
+  .wa-contact-log-action-btn {
+    padding: 8px 10px;
+  }
+
+  .wa-contact-log-action-btn span {
+    display: none;
+  }
+
+  .wa-contact-log-search-wrap,
+  .wa-contact-log-body {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .wa-contact-card {
+    gap: 10px;
+    padding: 11px 10px;
+  }
+
+  .wa-contact-actions {
+    gap: 3px;
+  }
+
+  .wa-contact-btn-action {
+    width: 31px;
+    height: 31px;
+    font-size: 12px;
+  }
+
+  .wa-contact-about-snippet {
+    max-width: 170px;
+  }
+}
