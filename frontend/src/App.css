@@ -7409,7 +7409,7 @@ body {
   background: #ffffff;
 }
 
-/* Orange WhatsApp accent theme */
+/* WhatsApp theme variable bindings */
 .wa-web-top-strip,
 .wa-inbox-header,
 .wa-chat-header,
@@ -7422,16 +7422,6 @@ body {
 .wa-group-member-result:hover,
 .wa-group-contact-result:hover {
   background-color: var(--wa-green-header);
-  background-color: #ea580c;
-}
-
-.wa-web-top-strip,
-.wa-inbox-header,
-.wa-chat-header,
-.wa-profile-header,
-.wa-tabs-bar {
-  background-color: var(--wa-green-header);
-  background-color: #ea580c;
 }
 
 .wa-tab-btn.active,
@@ -7443,20 +7433,20 @@ body {
 .wa-contact-phone-sub,
 .wa-group-role-btn {
   color: var(--wa-green-header);
-  color: #ea580c;
 }
 
 .wa-tab-btn.active {
-  border-bottom-color: #fed7aa;
+  border-bottom-color: #ffffff;
 }
 
 .wa-tabs-bar .wa-tab-btn {
-  color: var(--wa-outgoing-bubble);
-  color: #ffedd5;
+  color: var(--wa-outgoing-bubble, #ffffff);
+  opacity: 0.85;
 }
 
 .wa-tabs-bar .wa-tab-btn.active {
   color: #ffffff;
+  opacity: 1;
   border-bottom-color: #ffffff;
 }
 
@@ -7467,8 +7457,7 @@ body {
 .wa-group-contact-avatar,
 .wa-group-info-member-avatar {
   background: var(--wa-outgoing-bubble);
-  background: #ffedd5;
-  border-color: #fdba74;
+  border-color: var(--wa-accent-border);
 }
 
 .wa-contact-edit-pencil:hover,
@@ -7476,27 +7465,22 @@ body {
 .wa-group-member-result:hover,
 .wa-group-contact-result:hover {
   color: var(--wa-green-dark);
-  color: #c2410c;
 }
 
 .wa-status-quote-bar,
 .wa-message-reply-quote,
 .wa-reply-preview {
   border-left-color: var(--wa-green);
-  border-left-color: #f97316;
 }
 
 .wa-group-update-toast {
   background: var(--wa-green-dark);
-  background: #c2410c;
 }
 
 .wa-group-member-online-text,
 .wa-group-online-dot {
   color: var(--wa-green-header) !important;
-  background-color: var(--wa-green);
-  color: #ea580c !important;
-  background-color: #f97316;
+  background-color: var(--wa-online, var(--wa-green));
 }
 
 .wa-group-info-member-main small {
@@ -8516,7 +8500,7 @@ body {
 }
 
 .wa-custom-avatar-online-dot.online {
-  background-color: #f97316;
+  background-color: var(--wa-online, var(--wa-green, #22c55e));
 }
 
 .wa-custom-avatar-online-dot.offline {
