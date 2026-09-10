@@ -716,6 +716,8 @@ body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  width: 100%;
+  box-sizing: border-box;
   padding: 12px 14px;
   background-color: var(--wa-chat-bg);
   background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" fill="%23efeae2"/><g fill="none" stroke="%23d9d2c9" stroke-width="2" opacity=".42"><path d="M18 25h18M27 16v18M116 32l10 10m0-10l-10 10M70 125l12 12m0-12l-12 12M132 120h18m-9-9v18M18 102l14-14m0 14L18 88"/></g></svg>');
@@ -8183,8 +8185,8 @@ body {
    ========================================================================== */
 
 .wa-bubble.voice-bubble {
-  max-width: min(86vw, 320px) !important;
-  width: min(86vw, 320px);
+  width: 100%;
+  max-width: 320px;
   box-sizing: border-box;
   padding: 6px 8px 4px 8px;
   overflow: hidden;
@@ -8398,7 +8400,8 @@ body {
 
 .wa-message-row .wa-bubble-wrap {
   min-width: 0;
-  max-width: 100%;
+  max-width: 80%;
+  overflow: hidden;
 }
 
 .wa-message-row.group-message-row .wa-bubble-wrap {
