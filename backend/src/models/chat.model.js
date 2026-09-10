@@ -482,81 +482,34 @@ const listUserContacts = async (userId) => {
     const userVars = getPhoneVariants(cleanUserId);
     const placeholders = userVars.map(() => "?").join(",");
 
+    // Only return explicitly saved contacts (contacts table), exclude groups and self
     const [rows] = await pool.execute(
-        `SELECT 
-            c_union.contact_id AS id,
-            COALESCE(
-                (
-                    SELECT c.custom_name FROM contacts c 
-                    WHERE c.user_id IN (${placeholders}) 
-                      AND (c.contact_id = c_union.contact_id OR c.contact_id = u.full_phone OR c.contact_id = u.phone OR c.contact_id = CAST(u.id AS CHAR))
-                    LIMIT 1
-                ),
-                u.name,
-                u.full_phone,
-                c_union.contact_id
-            ) AS name,
-            (
-                SELECT c.custom_name FROM contacts c 
-                WHERE c.user_id IN (${placeholders}) 
-                  AND (c.contact_id = c_union.contact_id OR c.contact_id = u.full_phone OR c.contact_id = u.phone OR c.contact_id = CAST(u.id AS CHAR))
-                LIMIT 1
-            ) AS customName,
-            u.name AS profileName,
-            COALESCE(u.full_phone, c_union.contact_id) AS fullPhone,
+        `SELECT
+            c.contact_id AS id,
+            c.custom_name AS customName,
+            COALESCE(u.name, c.custom_name, c.contact_id) AS profileName,
+            COALESCE(u.full_phone, c.contact_id) AS fullPhone,
             u.phone AS phone,
             u.avatar AS avatar,
             u.about AS about,
-            u.last_seen AS lastSeen,
-            EXISTS (
-                SELECT 1 FROM contacts c3 
-                WHERE c3.user_id IN (${placeholders}) 
-                  AND (c3.contact_id = c_union.contact_id OR c3.contact_id = u.full_phone OR c3.contact_id = u.phone OR c3.contact_id = CAST(u.id AS CHAR))
-            ) AS isSaved,
-            (
-                SELECT m.text FROM messages m 
-                WHERE ((m.sender_id IN (${placeholders}) AND (m.recipient_id = c_union.contact_id OR m.recipient_id = u.full_phone OR m.recipient_id = u.phone))
-                    OR (m.recipient_id IN (${placeholders}) AND (m.sender_id = c_union.contact_id OR m.sender_id = u.full_phone OR m.sender_id = u.phone)))
-                ORDER BY m.id DESC LIMIT 1
-            ) AS lastMessage,
-            (
-                SELECT m.created_at FROM messages m 
-                WHERE ((m.sender_id IN (${placeholders}) AND (m.recipient_id = c_union.contact_id OR m.recipient_id = u.full_phone OR m.recipient_id = u.phone))
-                    OR (m.recipient_id IN (${placeholders}) AND (m.sender_id = c_union.contact_id OR m.sender_id = u.full_phone OR m.sender_id = u.phone)))
-                ORDER BY m.id DESC LIMIT 1
-            ) AS lastMessageAt
-         FROM (
-            SELECT contact_id FROM contacts WHERE user_id IN (${placeholders})
-            UNION
-            SELECT DISTINCT 
-                CASE 
-                    WHEN sender_id IN (${placeholders}) THEN recipient_id 
-                    ELSE sender_id 
-                END AS contact_id
-            FROM messages
-            WHERE (sender_id IN (${placeholders}) OR recipient_id IN (${placeholders}))
-         ) AS c_union
-         LEFT JOIN users u ON (u.full_phone = c_union.contact_id OR u.phone = c_union.contact_id OR CAST(u.id AS CHAR) = c_union.contact_id OR c_union.contact_id LIKE CONCAT('%', u.phone))
-         WHERE c_union.contact_id NOT IN (${placeholders})
-         ORDER BY name ASC`,
-        [
-            ...userVars, // custom_name 1
-            ...userVars, // custom_name 2
-            ...userVars, // isSaved
-            ...userVars, // lastMessage sender
-            ...userVars, // lastMessage recipient
-            ...userVars, // lastMessageAt sender
-            ...userVars, // lastMessageAt recipient
-            ...userVars, // union contacts
-            ...userVars, // union messages sender
-            ...userVars, // union messages recipient
-            ...userVars  // NOT IN viewer
-        ]
+            u.last_seen AS lastSeen
+         FROM contacts c
+         LEFT JOIN users u ON (
+             u.full_phone = c.contact_id
+             OR u.phone = c.contact_id
+             OR CAST(u.id AS CHAR) = c.contact_id
+         )
+         WHERE c.user_id IN (${placeholders})
+           AND c.contact_id NOT IN (${placeholders})
+           AND c.contact_id NOT LIKE 'group:%'
+         GROUP BY c.contact_id
+         ORDER BY c.custom_name ASC`,
+        [...userVars, ...userVars]
     );
 
     return rows.map((r) => ({
         id: r.id,
-        name: r.name || r.fullPhone || r.id,
+        name: r.customName || r.profileName || r.fullPhone || r.id,
         customName: r.customName || null,
         profileName: r.profileName || null,
         fullPhone: r.fullPhone || r.id,
@@ -564,9 +517,7 @@ const listUserContacts = async (userId) => {
         avatar: r.avatar || null,
         about: r.about || 'Hey there! I am using WhatsApp.',
         lastSeen: r.lastSeen || null,
-        isSaved: Boolean(r.isSaved),
-        lastMessage: r.lastMessage || null,
-        lastMessageAt: r.lastMessageAt || null
+        isSaved: true
     }));
 };
 
