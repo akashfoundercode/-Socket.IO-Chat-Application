@@ -1698,23 +1698,24 @@ export default function ChatList({
                 </>
               )}
 
-              {/* 3. Fallback direct chat trigger if no existing chat and no new search results found */}
-              {filteredConversations.length === 0 && newSearchResults.length === 0 && !isSearchingDb && (
-                <div
-                  className="wa-search-no-match"
-                  onClick={() => {
-                    let num = searchQuery.trim();
-                    if (!num.startsWith('+')) num = `+91${num.replace(/\D/g, '')}`;
-                    handleSelectUser(num);
-                  }}
-                >
-                  <i className="fa-solid fa-paper-plane"></i>
-                  <div>
-                    <strong>Chat with "{searchQuery.trim()}"</strong>
-                    <p>Tap here to start chatting with this mobile number</p>
+              {/* 3. Fallback direct chat trigger — only when exactly 10 digits typed */}
+              {filteredConversations.length === 0 && newSearchResults.length === 0 && !isSearchingDb && (() => {
+                const digits = searchQuery.replace(/\D/g, '');
+                if (digits.length !== 10) return null;
+                const fullNum = `+91${digits}`;
+                return (
+                  <div
+                    className="wa-search-no-match"
+                    onClick={() => handleSelectUser(fullNum)}
+                  >
+                    <i className="fa-solid fa-paper-plane"></i>
+                    <div>
+                      <strong>Chat with {fullNum}</strong>
+                      <p>Tap here to start chatting with this number</p>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           ) : (
             /* --- NORMAL CONVERSATIONS LIST --- */
@@ -1928,7 +1929,7 @@ export default function ChatList({
                 type="submit"
                 className="wa-auth-green-btn"
                 style={{ width: '100%', maxWidth: '100%', margin: '0' }}
-                disabled={addingContact || !newPhone.trim()}
+                disabled={addingContact || newPhone.replace(/\D/g, '').length !== selectedCountry.digits}
               >
                 {addingContact ? 'Adding & Opening...' : 'Start Chatting'}
               </button>

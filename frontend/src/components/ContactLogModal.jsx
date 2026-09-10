@@ -293,7 +293,7 @@ export default function ContactLogModal({
               <button
                 type="submit"
                 className="wa-contact-log-btn-save"
-                disabled={isSaving || !newPhone.trim()}
+                disabled={isSaving || newPhone.replace(/\D/g, '').length !== selectedCountry.digits}
               >
                 {isSaving ? (
                   <>
