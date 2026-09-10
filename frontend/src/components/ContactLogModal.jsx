@@ -428,10 +428,6 @@ export default function ContactLogModal({
                         <span className="wa-contact-phone">{contact.fullPhone || contact.phone || contact.id}</span>
                         {online ? (
                           <span className="wa-contact-status-online">Online</span>
-                        ) : contact.lastSeen ? (
-                          <span className="wa-contact-status-offline">
-                            Last seen {new Date(contact.lastSeen).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                          </span>
                         ) : null}
                       </div>
 
