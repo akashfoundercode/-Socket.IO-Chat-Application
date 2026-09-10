@@ -4,6 +4,7 @@ import { socket } from '../socket/socket';
 import StatusTab from './StatusTab';
 import QrScanner from 'qr-scanner';
 import Avatar from './Avatar';
+import MetaAiModal from './MetaAiModal';
 
 const COUNTRY_OPTIONS = [
   { code: '+91', name: 'India', flag: '🇮🇳', digits: 10 },
@@ -56,6 +57,7 @@ export default function ChatList({
   const qrFileInputRef = useRef(null);
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [qrScanError, setQrScanError] = useState('');
+  const [showMetaAi, setShowMetaAi] = useState(false);
 
   const confirmQrJoin = (scannedUrl) => {
     const url = new URL(scannedUrl);
@@ -1302,11 +1304,18 @@ export default function ChatList({
       {/* Search Bar */}
       <div className="wa-search-bar-wrap">
         <div className="wa-search-bar">
-          <i className="fa-solid fa-magnifying-glass"></i>
+          <button
+            type="button"
+            className="wa-search-meta-btn"
+            title="Ask Meta AI"
+            onClick={() => setShowMetaAi(true)}
+          >
+            <img src="/meta_ai_logo.png" alt="Meta AI" className="wa-search-meta-logo" />
+          </button>
           <input
             id="chat-search"
             type="text"
-            placeholder={activeTab === 'calls' ? "Search call logs..." : activeTab === 'groups' ? "Search groups..." : "Search mobile number (+91...)"}
+            placeholder={activeTab === 'calls' ? "Search call logs..." : activeTab === 'groups' ? "Search groups..." : "Ask Meta AI or Search"}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -1953,6 +1962,27 @@ export default function ChatList({
           </div>
         </div>
       )}
+
+      {/* Floating Meta AI Button */}
+      <div className="wa-floating-meta-ai-wrap">
+        <button
+          type="button"
+          className="wa-floating-meta-ai-btn"
+          title="Ask Meta AI"
+          onClick={() => setShowMetaAi(true)}
+        >
+          <div className="wa-floating-meta-ai-aura"></div>
+          <img src="/meta_ai_logo.png" alt="Meta AI" className="wa-floating-meta-ai-icon" />
+          <span className="wa-floating-meta-ai-badge">AI</span>
+        </button>
+      </div>
+
+      {/* Meta AI Interactive Assistant Modal */}
+      <MetaAiModal
+        isOpen={showMetaAi}
+        onClose={() => setShowMetaAi(false)}
+        theme={theme}
+      />
     </div>
   );
 }
