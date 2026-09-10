@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { chatApi, statusApi } from '../services/api';
+import { statusApi } from '../services/api';
 import { socket } from '../socket/socket';
 
 const BG_COLORS = [
@@ -17,7 +17,7 @@ const FONT_STYLES = [
   { value: 'bold', label: 'Bold', family: 'Impact, -apple-system, BlinkMacSystemFont, sans-serif' }
 ];
 
-export default function StatusComposer({ userId, onClose, onPosted }) {
+export default function StatusComposer({ userId, onClose, onPosted, privacyMode = 'contacts', audienceUserIds = [] }) {
   const [activeTab, setActiveTab] = useState('photo'); // 'video' | 'photo' | 'text'
   const [facingMode, setFacingMode] = useState('user'); // 'user' | 'environment'
   const [cameraError, setCameraError] = useState(null);
@@ -35,9 +35,6 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
   const [textContent, setTextContent] = useState('');
   const [bgIndex, setBgIndex] = useState(0);
   const [fontIndex, setFontIndex] = useState(0);
-  const [privacyMode, setPrivacyMode] = useState('everyone');
-  const [audienceContacts, setAudienceContacts] = useState([]);
-  const [selectedAudienceIds, setSelectedAudienceIds] = useState([]);
 
   // Refs
   const videoRef = useRef(null);
@@ -69,16 +66,26 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
     try {
       setCameraError(null);
       const isVideo = activeTab === 'video';
-      const constraints = {
+      const videoConstraints = {
         video: {
           facingMode: facingMode,
           width: { ideal: 1280 },
           height: { ideal: 720 }
-        },
-        audio: isVideo
+        }
       };
+      const constraints = { ...videoConstraints, audio: isVideo };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (err) {
+        // Keep the camera usable for video/photo when only microphone access is blocked.
+        if (isVideo && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
+          stream = await navigator.mediaDevices.getUserMedia({ ...videoConstraints, audio: false });
+        } else {
+          throw err;
+        }
+      }
       streamRef.current = stream;
 
       if (videoRef.current) {
@@ -87,7 +94,13 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
       }
     } catch (err) {
       console.warn("Camera access warning:", err.message);
-      setCameraError(err.name === 'NotAllowedError' ? 'Camera permission was denied. You can still pick files from gallery.' : 'Camera is not available on this device.');
+      if (!window.isSecureContext) {
+        setCameraError('Camera needs a secure HTTPS connection.');
+      } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraError('Camera permission is blocked. Tap Allow camera in browser settings, then retry.');
+      } else {
+        setCameraError('Camera is not available on this device.');
+      }
     }
   };
 
@@ -105,16 +118,6 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
       setTimeout(() => textareaRef.current?.focus(), 150);
     }
   }, [activeTab]);
-
-  useEffect(() => {
-    let cancelled = false;
-    chatApi.getContacts(userId).then((data) => {
-      if (!cancelled) setAudienceContacts(Array.isArray(data?.contacts) ? data.contacts : []);
-    }).catch(() => {
-      if (!cancelled) setAudienceContacts([]);
-    });
-    return () => { cancelled = true; };
-  }, [userId]);
 
   /* ── 2. Photo Capture ── */
   const handleCapturePhoto = () => {
@@ -261,24 +264,12 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
     setCaption('');
   };
 
-  const getAudienceId = (contact) => String(contact.fullPhone || contact.phone || contact.id || '').trim();
-
-  const toggleAudienceContact = (contactId) => {
-    setSelectedAudienceIds((previous) => previous.includes(contactId)
-      ? previous.filter((id) => id !== contactId)
-      : [...previous, contactId]);
-  };
-
-  const selectAllAudience = () => {
-    setSelectedAudienceIds(audienceContacts.map(getAudienceId).filter(Boolean));
-  };
-
   /* ── 6. Final Status Submission ── */
   const handlePostStatus = async () => {
     if (posting) return;
 
-    if (privacyMode === 'private' && selectedAudienceIds.length === 0) {
-      alert('Select at least one saved contact for private status.');
+    if ((privacyMode === 'only_share' || privacyMode === 'contacts_except') && audienceUserIds.length === 0 && privacyMode === 'only_share') {
+      alert('Select at least one saved contact for this status.');
       return;
     }
 
@@ -294,7 +285,7 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
         bgColor: BG_COLORS[bgIndex],
         fontStyle: FONT_STYLES[fontIndex].value,
         privacyMode,
-        audienceUserIds: selectedAudienceIds
+        audienceUserIds
       };
     } else if (capturedMedia) {
       payload = {
@@ -305,7 +296,7 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
         bgColor: '#075e54',
         fontStyle: 'normal',
         privacyMode,
-        audienceUserIds: selectedAudienceIds
+        audienceUserIds
       };
     }
 
@@ -431,6 +422,9 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
                 <div className="wa-composer-camera-err-box">
                   <i className="fa-solid fa-video-slash" style={{ fontSize: 32, marginBottom: 10, color: '#f87171' }}></i>
                   <p>{cameraError}</p>
+                  <button type="button" className="wa-composer-permission-retry" onClick={startCameraStream}>
+                    <i className="fa-solid fa-rotate-right"></i> Retry camera
+                  </button>
                 </div>
               )}
 
@@ -441,44 +435,6 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
                   <span>00:{recordDuration < 10 ? `0${recordDuration}` : recordDuration}</span>
                 </div>
               )}
-            </div>
-          )}
-        </div>
-
-        <div className="wa-status-audience-panel">
-          <div className="wa-status-audience-heading">
-            <div>
-              <strong><i className="fa-solid fa-eye"></i> Status audience</strong>
-              <span>{privacyMode === 'everyone' ? 'All saved contacts can view this update' : `${selectedAudienceIds.length} contact${selectedAudienceIds.length === 1 ? '' : 's'} selected`}</span>
-            </div>
-            <div className="wa-status-audience-modes">
-              <button type="button" className={privacyMode === 'everyone' ? 'active' : ''} onClick={() => setPrivacyMode('everyone')}>
-                <i className="fa-solid fa-users"></i> Everyone
-              </button>
-              <button type="button" className={privacyMode === 'private' ? 'active' : ''} onClick={() => setPrivacyMode('private')}>
-                <i className="fa-solid fa-user-lock"></i> Private
-              </button>
-            </div>
-          </div>
-
-          {privacyMode === 'private' && (
-            <div className="wa-status-audience-picker">
-              <button type="button" className="wa-status-select-all" onClick={selectAllAudience} disabled={!audienceContacts.length}>
-                <i className="fa-solid fa-check-double"></i> Select all
-              </button>
-              <div className="wa-status-audience-list">
-                {audienceContacts.length ? audienceContacts.map((contact) => {
-                  const contactId = getAudienceId(contact);
-                  const selected = selectedAudienceIds.includes(contactId);
-                  return (
-                    <button type="button" key={contactId} className={`wa-status-audience-contact ${selected ? 'selected' : ''}`} onClick={() => toggleAudienceContact(contactId)}>
-                      <span className="wa-status-audience-check">{selected && <i className="fa-solid fa-check"></i>}</span>
-                      <span>{contact.customName || contact.name || contactId}</span>
-                      <small>{contact.fullPhone || contact.phone || contactId}</small>
-                    </button>
-                  );
-                }) : <span className="wa-status-no-audience">No saved contacts available.</span>}
-              </div>
             </div>
           )}
         </div>

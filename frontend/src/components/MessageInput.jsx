@@ -40,6 +40,7 @@ export default function MessageInput({
   const [isRecording, setIsRecording] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
+  const [micPermissionError, setMicPermissionError] = useState('');
   const [recordDuration, setRecordDuration] = useState(0);
   const [dragOffset, setDragOffset] = useState(0);
   const [audioLevels, setAudioLevels] = useState(Array(18).fill(15));
@@ -129,6 +130,7 @@ export default function MessageInput({
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       });
+      setMicPermissionError('');
       mediaStreamRef.current = stream;
 
       if (isCancelledRef.current) {
@@ -262,9 +264,12 @@ export default function MessageInput({
       isInitializingMicRef.current = false;
       cleanupRecordingResources();
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        alert('Microphone permission is blocked. Please click the Lock/Camera icon in your browser address bar and choose "Allow Microphone".');
+        const message = !window.isSecureContext
+          ? 'Microphone needs a secure HTTPS connection.'
+          : 'Microphone permission is blocked. Allow Microphone in the browser Lock/Camera settings, then tap Retry.';
+        setMicPermissionError(message);
       } else {
-        alert(`Microphone error: ${error.message}`);
+        setMicPermissionError(`Microphone error: ${error.message || 'Permission unavailable'}`);
       }
     }
   };
@@ -837,155 +842,163 @@ export default function MessageInput({
         </div>
       ) : (
         /* WhatsApp Message Input Row */
-        <form className="wa-input-row" onSubmit={handleSubmit}>
-          {isRecording ? (
-            /* Live Recording Active Capsule with Waveform Visualizer */
-            <div className={`wa-recording-capsule ${isCanceling ? 'canceling' : ''}`}>
-              <div className="wa-rec-timer-wrap">
-                <div className="wa-rec-pulse-dot" />
-                <span className="wa-rec-timer">{formatRecordTime(recordDuration)}</span>
-              </div>
-
-              {/* Dynamic Live Audio Frequency Meter Waves */}
-              <div className="wa-rec-waveform-meter">
-                {audioLevels.map((lvl, idx) => (
-                  <span
-                    key={idx}
-                    className="wa-rec-meter-bar"
-                    style={{ height: `${lvl}%` }}
-                  />
-                ))}
-              </div>
-
-              {/* Slide to Cancel or Release to Delete Alert */}
-              {!isLocked ? (
-                <div
-                  className="wa-rec-cancel-slide"
-                  style={{ transform: `translateX(${dragOffset}px)` }}
-                >
-                  {isCanceling ? (
-                    <span className="wa-rec-cancel-text trash">
-                      <i className="fa-solid fa-trash-can" style={{ color: '#ef4444' }}></i>
-                      Release to cancel
-                    </span>
-                  ) : (
-                    <span className="wa-rec-cancel-text">
-                      <i className="fa-solid fa-chevron-left"></i>
-                      Slide to cancel
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <div className="wa-rec-locked-actions">
-                  <button
-                    type="button"
-                    className="wa-rec-locked-btn delete"
-                    onClick={() => stopAndSendRecording(true)}
-                    title="Cancel recording"
-                  >
-                    <i className="fa-solid fa-trash-can"></i>
-                  </button>
-                </div>
-              )}
+        <>
+          {micPermissionError && !text.trim() && (
+            <div className="wa-mic-permission-error">
+              <span><i className="fa-solid fa-microphone-slash"></i> {micPermissionError}</span>
+              <button type="button" onClick={() => startRecording(false)}>Retry</button>
             </div>
-          ) : (
-            /* Normal Typing Capsule */
-            <div className="wa-input-capsule">
-              <button
-                type="button"
-                className={`wa-capsule-icon ${showEmojiPicker ? 'active' : ''}`}
-                title="Emoji Keyboard"
-                onClick={() => {
-                  setShowEmojiPicker((prev) => !prev);
-                  setShowAttachMenu(false);
-                }}
-              >
-                <i className={showEmojiPicker ? 'fa-solid fa-keyboard' : 'fa-regular fa-face-smile'}></i>
-              </button>
+          )}
+          <form className="wa-input-row" onSubmit={handleSubmit}>
+            {isRecording ? (
+              /* Live Recording Active Capsule with Waveform Visualizer */
+              <div className={`wa-recording-capsule ${isCanceling ? 'canceling' : ''}`}>
+                <div className="wa-rec-timer-wrap">
+                  <div className="wa-rec-pulse-dot" />
+                  <span className="wa-rec-timer">{formatRecordTime(recordDuration)}</span>
+                </div>
 
-              <textarea
-                ref={textareaRef}
-                rows={1}
-                className="wa-main-input"
-                placeholder={recipientId ? 'Message' : 'Set recipient first'}
-                value={text}
-                onChange={handleTextChange}
-                onFocus={() => {
-                  setTimeout(() => {
-                    window.scrollTo(0, 0);
-                    const msgContainer = document.querySelector('.wa-messages-container') || document.querySelector('.wa-chat-pane');
-                    if (msgContainer) {
-                      msgContainer.scrollTop = msgContainer.scrollHeight;
-                    }
-                  }, 250);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSubmit(e);
-                  }
-                }}
-                disabled={!recipientId.trim() || !canSendMessages}
-              />
+                {/* Dynamic Live Audio Frequency Meter Waves */}
+                <div className="wa-rec-waveform-meter">
+                  {audioLevels.map((lvl, idx) => (
+                    <span
+                      key={idx}
+                      className="wa-rec-meter-bar"
+                      style={{ height: `${lvl}%` }}
+                    />
+                  ))}
+                </div>
 
-              <button
-                type="button"
-                className={`wa-capsule-icon ${showAttachMenu ? 'active' : ''}`}
-                title="Attach File or Location"
-                onClick={() => {
-                  setShowAttachMenu((prev) => !prev);
-                  setShowEmojiPicker(false);
-                }}
-              >
-                {isLocating ? (
-                  <i className="fa-solid fa-circle-notch fa-spin" style={{ color: '#f97316' }}></i>
+                {/* Slide to Cancel or Release to Delete Alert */}
+                {!isLocked ? (
+                  <div
+                    className="wa-rec-cancel-slide"
+                    style={{ transform: `translateX(${dragOffset}px)` }}
+                  >
+                    {isCanceling ? (
+                      <span className="wa-rec-cancel-text trash">
+                        <i className="fa-solid fa-trash-can" style={{ color: '#ef4444' }}></i>
+                        Release to cancel
+                      </span>
+                    ) : (
+                      <span className="wa-rec-cancel-text">
+                        <i className="fa-solid fa-chevron-left"></i>
+                        Slide to cancel
+                      </span>
+                    )}
+                  </div>
                 ) : (
-                  <i className="fa-solid fa-paperclip"></i>
+                  <div className="wa-rec-locked-actions">
+                    <button
+                      type="button"
+                      className="wa-rec-locked-btn delete"
+                      onClick={() => stopAndSendRecording(true)}
+                      title="Cancel recording"
+                    >
+                      <i className="fa-solid fa-trash-can"></i>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Normal Typing Capsule */
+              <div className="wa-input-capsule">
+                <button
+                  type="button"
+                  className={`wa-capsule-icon ${showEmojiPicker ? 'active' : ''}`}
+                  title="Emoji Keyboard"
+                  onClick={() => {
+                    setShowEmojiPicker((prev) => !prev);
+                    setShowAttachMenu(false);
+                  }}
+                >
+                  <i className={showEmojiPicker ? 'fa-solid fa-keyboard' : 'fa-regular fa-face-smile'}></i>
+                </button>
+
+                <textarea
+                  ref={textareaRef}
+                  rows={1}
+                  className="wa-main-input"
+                  placeholder={recipientId ? 'Message' : 'Set recipient first'}
+                  value={text}
+                  onChange={handleTextChange}
+                  onFocus={() => {
+                    setTimeout(() => {
+                      window.scrollTo(0, 0);
+                      const msgContainer = document.querySelector('.wa-messages-container') || document.querySelector('.wa-chat-pane');
+                      if (msgContainer) {
+                        msgContainer.scrollTop = msgContainer.scrollHeight;
+                      }
+                    }, 250);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSubmit(e);
+                    }
+                  }}
+                  disabled={!recipientId.trim() || !canSendMessages}
+                />
+
+                <button
+                  type="button"
+                  className={`wa-capsule-icon ${showAttachMenu ? 'active' : ''}`}
+                  title="Attach File or Location"
+                  onClick={() => {
+                    setShowAttachMenu((prev) => !prev);
+                    setShowEmojiPicker(false);
+                  }}
+                >
+                  {isLocating ? (
+                    <i className="fa-solid fa-circle-notch fa-spin" style={{ color: '#f97316' }}></i>
+                  ) : (
+                    <i className="fa-solid fa-paperclip"></i>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  className="wa-capsule-icon"
+                  title="Change recipient"
+                  onClick={() => setShowRecipientInput((prev) => !prev)}
+                >
+                  <i className="fa-solid fa-address-book"></i>
+                </button>
+              </div>
+            )}
+
+            {text.trim() ? (
+              <button
+                type="submit"
+                className="wa-send-mic-btn"
+                disabled={!recipientId.trim() || !canSendMessages}
+                title="Send Message"
+              >
+                <i className="fa-solid fa-paper-plane"></i>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={`wa-send-mic-btn ${isRecording ? 'recording' : ''} ${isCanceling ? 'canceling' : ''}`}
+                disabled={!recipientId.trim()}
+                onPointerDown={handleMicPointerDown}
+                onPointerMove={handleMicPointerMove}
+                onPointerUp={handleMicPointerUp}
+                onPointerCancel={handleMicPointerCancel}
+                onClick={isRecording && isLocked ? () => stopAndSendRecording(false) : undefined}
+                title={isRecording ? (isLocked ? 'Send voice note' : 'Release to send, drag left to cancel') : 'Click or hold to record voice note'}
+              >
+                {isLocked ? (
+                  <i className="fa-solid fa-paper-plane"></i>
+                ) : isRecording ? (
+                  <i className="fa-solid fa-microphone"></i>
+                ) : (
+                  <i className="fa-solid fa-microphone"></i>
                 )}
               </button>
-
-              <button
-                type="button"
-                className="wa-capsule-icon"
-                title="Change recipient"
-                onClick={() => setShowRecipientInput((prev) => !prev)}
-              >
-                <i className="fa-solid fa-address-book"></i>
-              </button>
-            </div>
-          )}
-
-          {text.trim() ? (
-            <button
-              type="submit"
-              className="wa-send-mic-btn"
-              disabled={!recipientId.trim() || !canSendMessages}
-              title="Send Message"
-            >
-              <i className="fa-solid fa-paper-plane"></i>
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={`wa-send-mic-btn ${isRecording ? 'recording' : ''} ${isCanceling ? 'canceling' : ''}`}
-              disabled={!recipientId.trim()}
-              onPointerDown={handleMicPointerDown}
-              onPointerMove={handleMicPointerMove}
-              onPointerUp={handleMicPointerUp}
-              onPointerCancel={handleMicPointerCancel}
-              onClick={isRecording && isLocked ? () => stopAndSendRecording(false) : undefined}
-              title={isRecording ? (isLocked ? 'Send voice note' : 'Release to send, drag left to cancel') : 'Click or hold to record voice note'}
-            >
-              {isLocked ? (
-                <i className="fa-solid fa-paper-plane"></i>
-              ) : isRecording ? (
-                <i className="fa-solid fa-microphone"></i>
-              ) : (
-                <i className="fa-solid fa-microphone"></i>
-              )}
-            </button>
-          )}
-        </form>
+            )}
+          </form>
+        </>
       )}
     </div>
   );

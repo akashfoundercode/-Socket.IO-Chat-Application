@@ -1769,20 +1769,21 @@ const clearCallLogs = async (userId) => {
 /**
  * Status CRUD
  */
-const createStatus = async ({ userId, type, content, caption, bgColor, fontStyle, privacyMode = 'everyone', audienceUserIds = [] }) => {
+const createStatus = async ({ userId, type, content, caption, bgColor, fontStyle, privacyMode = 'contacts', audienceUserIds = [] }) => {
     const pool = getPool();
     const cleanUserId = String(userId || '').trim();
     if (!cleanUserId || !content) return null;
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-    const cleanPrivacyMode = privacyMode === 'private' ? 'private' : 'everyone';
+    const allowedPrivacyModes = ['everyone', 'contacts', 'contacts_except', 'only_share'];
+    const cleanPrivacyMode = allowedPrivacyModes.includes(privacyMode) ? privacyMode : 'contacts';
     const [result] = await pool.execute(
         `INSERT INTO user_statuses (user_id, type, content, caption, bg_color, font_style, privacy_mode, expires_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [cleanUserId, type || 'text', content, caption || null, bgColor || '#075e54', fontStyle || 'normal', cleanPrivacyMode, expiresAt]
     );
 
-    if (cleanPrivacyMode === 'private' && Array.isArray(audienceUserIds)) {
+    if ((cleanPrivacyMode === 'contacts_except' || cleanPrivacyMode === 'only_share') && Array.isArray(audienceUserIds)) {
         const ownerVars = getPhoneVariants(cleanUserId);
         for (const audienceUserId of audienceUserIds.slice(0, 200)) {
             const audienceVars = getPhoneVariants(audienceUserId);
@@ -1873,32 +1874,53 @@ const getContactStatuses = async (userId) => {
          LEFT JOIN users u ON (u.full_phone = s.user_id OR u.phone = s.user_id OR CAST(u.id AS CHAR) = s.user_id OR s.user_id LIKE CONCAT('%', u.phone))
          WHERE s.expires_at > NOW()
            AND s.user_id NOT IN (${placeholders})
-                     AND (
-                             (
-                                     COALESCE(s.privacy_mode, 'everyone') = 'everyone'
-                                     AND EXISTS (
-                                             SELECT 1 FROM contacts c1
-                                             WHERE (c1.user_id = s.user_id OR c1.user_id = u.full_phone OR c1.user_id = u.phone OR c1.user_id = CAST(u.id AS CHAR))
-                                                 AND c1.contact_id IN (${placeholders})
-                                     )
+                       AND EXISTS (
+                           SELECT 1 FROM contacts owner_contacts
+                           WHERE (owner_contacts.user_id = s.user_id OR owner_contacts.user_id = u.full_phone OR owner_contacts.user_id = u.phone OR owner_contacts.user_id = CAST(u.id AS CHAR))
+                             AND owner_contacts.contact_id IN (${placeholders})
+                       )
+                       AND EXISTS (
+                           SELECT 1 FROM contacts viewer_contacts
+                           WHERE viewer_contacts.user_id IN (${placeholders})
+                             AND viewer_contacts.contact_id IN (
+                                 s.user_id, u.full_phone, u.phone, CAST(u.id AS CHAR)
                              )
-                             OR (
-                                     COALESCE(s.privacy_mode, 'everyone') = 'private'
-                                     AND EXISTS (
-                                             SELECT 1 FROM status_audience sa
-                                             WHERE sa.status_id = s.id
-                                                 AND sa.viewer_id IN (${placeholders})
-                                     )
-                             )
-                     )
+                       )
+                       AND (
+                           COALESCE(s.privacy_mode, 'everyone') = 'everyone'
+                           OR (
+                               COALESCE(s.privacy_mode, 'everyone') IN ('contacts', 'contacts_except', 'only_share')
+                               AND (
+                                   COALESCE(s.privacy_mode, 'contacts') = 'contacts'
+                                   OR (
+                                       COALESCE(s.privacy_mode, 'contacts') = 'contacts_except'
+                                       AND NOT EXISTS (
+                                           SELECT 1 FROM status_audience excluded_viewers
+                                           WHERE excluded_viewers.status_id = s.id
+                                             AND excluded_viewers.viewer_id IN (${placeholders})
+                                       )
+                                   )
+                                   OR (
+                                       COALESCE(s.privacy_mode, 'contacts') = 'only_share'
+                                       AND EXISTS (
+                                           SELECT 1 FROM status_audience included_viewers
+                                           WHERE included_viewers.status_id = s.id
+                                             AND included_viewers.viewer_id IN (${placeholders})
+                                       )
+                                   )
+                               )
+                           )
+                       )
          GROUP BY s.id
          ORDER BY s.user_id, s.id ASC`,
         [
             ...userVars, // display_name subquery
             ...userVars, // is_viewed
             ...userVars, // NOT IN viewer
-            ...userVars, // everyone audience (Status Owner saved Viewer)
-            ...userVars  // private audience
+            ...userVars, // owner saved viewer
+            ...userVars, // viewer saved owner
+            ...userVars, // contacts except audience
+            ...userVars  // only share audience
         ]
     );
     return rows.map((r) => ({

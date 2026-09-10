@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { statusApi, resolveMediaUrl } from '../services/api';
+import { chatApi, statusApi, resolveMediaUrl } from '../services/api';
 import { socket } from '../socket/socket';
 import Avatar from './Avatar';
 import StatusComposer from './StatusComposer';
@@ -346,6 +346,11 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
   const [loading, setLoading] = useState(true);
   const [showComposer, setShowComposer] = useState(false);
   const [viewer, setViewer] = useState(null);
+  const [showPrivacyMenu, setShowPrivacyMenu] = useState(false);
+  const [showPrivacyContacts, setShowPrivacyContacts] = useState(false);
+  const [savedContacts, setSavedContacts] = useState([]);
+  const [privacyMode, setPrivacyMode] = useState('contacts');
+  const [privacyAudienceIds, setPrivacyAudienceIds] = useState([]);
 
   const load = async (showSpinner = true) => {
     if (!userId) return;
@@ -371,6 +376,16 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
       socket.off('status_updated', handleRealtimeStatus);
       socket.off('status_view_updated', handleRealtimeStatus);
     };
+  }, [userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    chatApi.getContacts(userId).then((data) => {
+      if (!cancelled) setSavedContacts(Array.isArray(data?.contacts) ? data.contacts : []);
+    }).catch(() => {
+      if (!cancelled) setSavedContacts([]);
+    });
+    return () => { cancelled = true; };
   }, [userId]);
 
   const handleStatusViewed = (statusId) => {
@@ -406,6 +421,30 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
     if (onSelectChat) onSelectChat(targetUserId);
   };
 
+  const getPrivacyContactId = (contact) => String(contact.fullPhone || contact.phone || contact.id || '').trim();
+
+  const togglePrivacyContact = (contactId) => {
+    setPrivacyAudienceIds((previous) => previous.includes(contactId)
+      ? previous.filter((id) => id !== contactId)
+      : [...previous, contactId]);
+  };
+
+  const selectAllPrivacyContacts = () => {
+    setPrivacyAudienceIds(savedContacts.map(getPrivacyContactId).filter(Boolean));
+  };
+
+  const choosePrivacyMode = (mode) => {
+    setPrivacyMode(mode);
+    setShowPrivacyMenu(false);
+    setShowPrivacyContacts(mode !== 'contacts');
+    if (mode === 'contacts') setPrivacyAudienceIds([]);
+  };
+
+  const openComposer = () => {
+    setShowPrivacyMenu(false);
+    setShowComposer(true);
+  };
+
   const myAvatar = currentUser?.avatar;
   const myName = currentUser?.name || userId;
 
@@ -421,14 +460,14 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
     <div className="wa-status-screen">
 
       {/* ── My Status row ── */}
-      <div className="wa-status-my-item"
+      <div className="wa-status-my-item wa-status-own-row"
         onClick={() => mine.length > 0
           ? setViewer({ statuses: mine, userName: myName, userAvatar: myAvatar, isOwn: true })
-          : setShowComposer(true)}>
+          : openComposer()}>
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <StatusRing avatar={myAvatar} hasNew={mine.length > 0} />
           <span className="wa-status-add-badge"
-            onClick={e => { e.stopPropagation(); setShowComposer(true); }}>+</span>
+            onClick={e => { e.stopPropagation(); openComposer(); }}>+</span>
         </div>
         <div className="wa-item-center">
           <div className="wa-item-top"><span className="wa-item-name">My Status</span></div>
@@ -440,13 +479,58 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
             </span>
           </div>
         </div>
-        {mine.length > 0 && (
-          <button className="wa-status-delete-all-btn"
-            onClick={e => { e.stopPropagation(); if (window.confirm('Delete all your statuses?')) mine.forEach(s => handleDeleteMine(s.id)); }}>
-            <i className="fa-solid fa-trash-can"></i>
+        <div className="wa-status-own-actions">
+          <button className="wa-status-privacy-menu-btn" title="Status privacy"
+            onClick={e => { e.stopPropagation(); setShowPrivacyMenu(previous => !previous); }}>
+            <i className="fa-solid fa-ellipsis-vertical"></i>
           </button>
+          {mine.length > 0 && (
+            <button className="wa-status-delete-all-btn"
+              onClick={e => { e.stopPropagation(); if (window.confirm('Delete all your statuses?')) mine.forEach(s => handleDeleteMine(s.id)); }}>
+              <i className="fa-solid fa-trash-can"></i>
+            </button>
+          )}
+        </div>
+        {showPrivacyMenu && (
+          <div className="wa-status-privacy-menu" onClick={e => e.stopPropagation()}>
+            <button type="button" onClick={() => choosePrivacyMode('contacts')}>
+              <i className="fa-solid fa-users"></i><span><strong>My contacts</strong><small>All saved contacts who also saved you</small></span>
+              {privacyMode === 'contacts' && <i className="fa-solid fa-check"></i>}
+            </button>
+            <button type="button" onClick={() => choosePrivacyMode('contacts_except')}>
+              <i className="fa-solid fa-user-minus"></i><span><strong>My contacts except</strong><small>Exclude selected saved contacts</small></span>
+              {privacyMode === 'contacts_except' && <i className="fa-solid fa-check"></i>}
+            </button>
+            <button type="button" onClick={() => choosePrivacyMode('only_share')}>
+              <i className="fa-solid fa-user-check"></i><span><strong>Only share with</strong><small>Share only with selected contacts</small></span>
+              {privacyMode === 'only_share' && <i className="fa-solid fa-check"></i>}
+            </button>
+          </div>
         )}
       </div>
+
+      {showPrivacyContacts && (
+        <div className="wa-status-privacy-contacts">
+          <div className="wa-status-privacy-contacts-head">
+            <strong>{privacyMode === 'only_share' ? 'Only share with' : 'My contacts except'}</strong>
+            <button type="button" onClick={selectAllPrivacyContacts} disabled={!savedContacts.length}>Select all</button>
+          </div>
+          <div className="wa-status-privacy-contact-list">
+            {savedContacts.length ? savedContacts.map((contact) => {
+              const contactId = getPrivacyContactId(contact);
+              const selected = privacyAudienceIds.includes(contactId);
+              return (
+                <button type="button" key={contactId} className={selected ? 'selected' : ''} onClick={() => togglePrivacyContact(contactId)}>
+                  <span className="wa-status-privacy-check">{selected && <i className="fa-solid fa-check"></i>}</span>
+                  <span>{contact.customName || contact.name || contactId}</span>
+                  <small>{contact.fullPhone || contact.phone || contactId}</small>
+                </button>
+              );
+            }) : <span className="wa-status-no-audience">No saved contacts available.</span>}
+          </div>
+          <button type="button" className="wa-status-privacy-done" onClick={() => setShowPrivacyContacts(false)}>Done</button>
+        </div>
+      )}
 
       {/* ── Recent Updates (Unviewed) ── */}
       {recentUpdates.length > 0 && (
@@ -519,6 +603,8 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
       {showComposer && (
         <StatusComposer
           userId={userId}
+          privacyMode={privacyMode}
+          audienceUserIds={privacyAudienceIds}
           onClose={() => setShowComposer(false)}
           onPosted={() => load(false)}
         />
