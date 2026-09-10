@@ -794,9 +794,17 @@ export default function ChatList({
     return bTime - aTime;
   });
 
+  const chatConversations = React.useMemo(() => {
+    return orderedConversations.filter((item) => !item.isGroup && !item.isDeletedForMe);
+  }, [orderedConversations]);
+
+  const groupConversations = React.useMemo(() => {
+    return orderedConversations.filter((item) => item.isGroup && !item.isDeletedForMe);
+  }, [orderedConversations]);
+
   const visibleConversations = activeTab === 'groups'
-    ? orderedConversations.filter((item) => item.isGroup)
-    : orderedConversations.filter((item) => !item.isDeletedForMe);
+    ? groupConversations
+    : chatConversations;
 
   const existingConversationKeys = React.useMemo(() => {
     const set = new Set();
@@ -1224,40 +1232,54 @@ export default function ChatList({
         <button
           type="button"
           className={`wa-tab-btn ${activeTab === 'chats' ? 'active' : ''}`}
-          onClick={() => setActiveTab('chats')}
+          onClick={() => {
+            setActiveTab('chats');
+            setSearchQuery('');
+          }}
         >
           CHATS
-          {conversations.some((c) => (c.unreadCount || 0) > 0) ? (
+          {chatConversations.some((c) => (c.unreadCount || 0) > 0) ? (
             <span className="wa-tab-badge unread-pill">
-              {conversations.reduce((acc, c) => acc + (Number(c.unreadCount) || 0), 0)}
+              {chatConversations.reduce((acc, c) => acc + (Number(c.unreadCount) || 0), 0)}
             </span>
-          ) : conversations.length > 0 ? (
-            <span className="wa-tab-badge">{conversations.length}</span>
+          ) : chatConversations.length > 0 ? (
+            <span className="wa-tab-badge">{chatConversations.length}</span>
           ) : null}
         </button>
         <button
           type="button"
           className={`wa-tab-btn ${activeTab === 'groups' ? 'active' : ''}`}
-          onClick={() => setActiveTab('groups')}
+          onClick={() => {
+            setActiveTab('groups');
+            setSearchQuery('');
+          }}
         >
           GROUPS
-          {visibleConversations.filter((c) => c.isGroup).length > 0 ? (
+          {groupConversations.some((c) => (c.unreadCount || 0) > 0) ? (
             <span className="wa-tab-badge unread-pill">
-              {visibleConversations.filter((c) => c.isGroup).length}
+              {groupConversations.reduce((acc, c) => acc + (Number(c.unreadCount) || 0), 0)}
             </span>
+          ) : groupConversations.length > 0 ? (
+            <span className="wa-tab-badge">{groupConversations.length}</span>
           ) : null}
         </button>
         <button
           type="button"
           className={`wa-tab-btn ${activeTab === 'status' ? 'active' : ''}`}
-          onClick={() => setActiveTab('status')}
+          onClick={() => {
+            setActiveTab('status');
+            setSearchQuery('');
+          }}
         >
           STATUS
         </button>
         <button
           type="button"
           className={`wa-tab-btn ${activeTab === 'calls' ? 'active' : ''}`}
-          onClick={() => setActiveTab('calls')}
+          onClick={() => {
+            setActiveTab('calls');
+            setSearchQuery('');
+          }}
         >
           CALLS
           {missedCallsCount > 0 ? (
@@ -1277,7 +1299,7 @@ export default function ChatList({
           <input
             id="chat-search"
             type="text"
-            placeholder={activeTab === 'calls' ? "Search call logs..." : "Search mobile number (+91...)"}
+            placeholder={activeTab === 'calls' ? "Search call logs..." : activeTab === 'groups' ? "Search groups..." : "Search mobile number (+91...)"}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -1305,69 +1327,7 @@ export default function ChatList({
               </div>
 
               {filteredConversations.length > 0 ? (
-                filteredConversations.map((item) => {
-                  const isGroup = Boolean(item.isGroup);
-                  const phoneDisplay = item.fullPhone || item.phone || item.id;
-                  const displayName = item.name || phoneDisplay;
-                  const isActive = activeChat && (activeChat === phoneDisplay || activeChat === item.phone || activeChat === item.fullPhone || activeChat === item.id);
-                  const time = item.lastMessageAt
-                    ? new Date(item.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    : '';
-
-                  return (
-                    <div className="wa-swipe-item-container" key={item.id}>
-                      <div className="wa-swipe-actions">
-                        <button
-                          type="button"
-                          className="wa-swipe-delete-btn"
-                          title="Delete Chat"
-                          onClick={(e) => handleOpenDeleteModal(e, item)}
-                        >
-                          <i className="fa-solid fa-trash-can"></i>
-                          <span>Delete</span>
-                        </button>
-                      </div>
-
-                      <div
-                        className={`wa-chat-item-row wa-swipeable-row ${isActive ? 'active' : ''} ${swipedId === item.id ? 'is-swiped' : ''}`}
-                        style={{
-                          transform: `translateX(${dragState.id === item.id ? `${dragState.currentOffset}px` : swipedId === item.id ? '-80px' : '0px'})`,
-                          transition: dragState.id === item.id && dragState.isDragging ? 'none' : 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)'
-                        }}
-                        onTouchStart={(e) => handleTouchStart(e, item)}
-                        onTouchMove={(e) => handleTouchMove(e, item)}
-                        onTouchEnd={(e) => handleTouchEnd(e, item)}
-                        onClick={() => {
-                          if (swipedId === item.id) {
-                            setSwipedId(null);
-                            return;
-                          }
-                          handleSelectUser(phoneDisplay, item);
-                        }}
-                      >
-                        <Avatar
-                          src={item.avatar}
-                          isGroup={true}
-                          name={displayName}
-                          size={46}
-                        />
-                        <div className="wa-item-center">
-                          <div className="wa-item-top">
-                            <span className={`wa-item-name ${item.unreadCount > 0 ? 'unread' : ''}`}>{displayName}</span>
-                            <span className="wa-group-tag">Groups</span>
-                            {time && <span className={`wa-item-time ${item.unreadCount > 0 ? 'unread' : ''}`}>{time}</span>}
-                          </div>
-                          <div className="wa-item-bottom">
-                            <span className="wa-item-msg">{formatConversationPreview(item)}</span>
-                          </div>
-                        </div>
-                        <div className="wa-row-slide-trigger" onClick={(e) => handleToggleSwipe(e, item)} title="Options">
-                          <i className="fa-solid fa-chevron-left"></i>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
+                filteredConversations.map((item) => renderConversationItem(item))
               ) : (
                 <div className="wa-inbox-empty">
                   <div className="wa-empty-icon-circle">
@@ -1380,75 +1340,8 @@ export default function ChatList({
             </div>
           ) : (
             <>
-              {filteredConversations.length > 0 ? (
-                filteredConversations.map((item) => {
-                  const isGroup = Boolean(item.isGroup);
-                  const phoneDisplay = item.fullPhone || item.phone || item.id;
-                  const displayName = item.name || phoneDisplay;
-                  const isActive = activeChat && (activeChat === phoneDisplay || activeChat === item.phone || activeChat === item.fullPhone || activeChat === item.id);
-                  const time = item.lastMessageAt
-                    ? new Date(item.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    : '';
-
-                  return (
-                    <div className="wa-swipe-item-container" key={item.id}>
-                      <div className="wa-swipe-actions">
-                        <button
-                          type="button"
-                          className="wa-swipe-delete-btn"
-                          title="Delete Chat"
-                          onClick={(e) => handleOpenDeleteModal(e, item)}
-                        >
-                          <i className="fa-solid fa-trash-can"></i>
-                          <span>Delete</span>
-                        </button>
-                      </div>
-
-                      <div
-                        className={`wa-chat-item-row wa-swipeable-row ${isActive ? 'active' : ''} ${swipedId === item.id ? 'is-swiped' : ''}`}
-                        style={{
-                          transform: `translateX(${dragState.id === item.id ? `${dragState.currentOffset}px` : swipedId === item.id ? '-80px' : '0px'})`,
-                          transition: dragState.id === item.id && dragState.isDragging ? 'none' : 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)'
-                        }}
-                        onTouchStart={(e) => handleTouchStart(e, item)}
-                        onTouchMove={(e) => handleTouchMove(e, item)}
-                        onTouchEnd={(e) => handleTouchEnd(e, item)}
-                        onClick={() => {
-                          if (swipedId === item.id) {
-                            setSwipedId(null);
-                            return;
-                          }
-                          handleSelectUser(phoneDisplay, item);
-                        }}
-                      >
-                        <Avatar
-                          src={item.avatar}
-                          isGroup={Boolean(item.isGroup)}
-                          name={displayName}
-                          size={46}
-                        />
-                        <div className="wa-item-center">
-                          <div className="wa-item-top">
-                            <span className={`wa-item-name ${item.unreadCount > 0 ? 'unread' : ''}`}>{displayName}</span>
-                            <span className="wa-group-tag">Groups</span>
-                            {time && <span className={`wa-item-time ${item.unreadCount > 0 ? 'unread' : ''}`}>{time}</span>}
-                          </div>
-                          <div className="wa-item-bottom">
-                            <span className="wa-item-msg">{formatConversationPreview(item)}</span>
-                            {item.unreadCount > 0 && (
-                              <span className="wa-unread-badge" title={`${item.unreadCount} new unread message${item.unreadCount > 1 ? 's' : ''}`}>
-                                {item.unreadCount > 99 ? '99+' : item.unreadCount}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="wa-row-slide-trigger" onClick={(e) => handleToggleSwipe(e, item)} title="Options">
-                          <i className="fa-solid fa-chevron-left"></i>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
+              {groupConversations.length > 0 ? (
+                groupConversations.map((item) => renderConversationItem(item))
               ) : (
                 <div className="wa-inbox-empty">
                   <div className="wa-empty-icon-circle">
@@ -1789,12 +1682,12 @@ export default function ChatList({
             </div>
           ) : (
             /* --- NORMAL CONVERSATIONS LIST --- */
-            loading && conversations.length === 0 ? (
+            loading && chatConversations.length === 0 ? (
               <div className="wa-inbox-loading">
                 <i className="fa-solid fa-circle-notch fa-spin"></i>
                 <span>Loading chats...</span>
               </div>
-            ) : conversations.length === 0 ? (
+            ) : chatConversations.length === 0 ? (
               <div className="wa-inbox-empty">
                 <div className="wa-empty-icon-circle">
                   <i className="fa-solid fa-comments"></i>
@@ -1803,7 +1696,7 @@ export default function ChatList({
                 <p>Type any mobile number in the search bar above or tap 💬 below to start chatting!</p>
               </div>
             ) : (
-              orderedConversations.map((item) => renderConversationItem(item))
+              chatConversations.map((item) => renderConversationItem(item))
             )
           )
         )}

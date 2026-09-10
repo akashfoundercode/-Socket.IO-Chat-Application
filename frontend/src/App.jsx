@@ -997,7 +997,23 @@ export default function App() {
       setCurrentView('chat');
 
       if (String(activeChat).startsWith('group:')) {
+        const cleanGroupId = String(activeChat).replace(/^group:/, '');
         socket.emit('loadGroup', activeChat);
+        // Fast HTTP fetch for instant group open
+        chatApi.getGroup(cleanGroupId, userId)
+          .then((data) => {
+            if (data && data.success && data.group) {
+              setGroupDetails(data.group);
+            }
+          })
+          .catch(() => { });
+        chatApi.getGroupHistory(cleanGroupId, userId)
+          .then((data) => {
+            if (data && data.success && Array.isArray(data.messages)) {
+              setMessages(data.messages);
+            }
+          })
+          .catch(() => { });
         return;
       }
 
@@ -1606,14 +1622,20 @@ export default function App() {
   // Open Chat
   const handleSelectChat = (recipientPhone, contactObj = null) => {
     if (contactObj) {
-      setRecipientProfile(contactObj);
+      if (contactObj.isGroup || String(recipientPhone).startsWith('group:')) {
+        setGroupDetails((prev) => ({ ...(prev || {}), ...contactObj }));
+      } else {
+        setRecipientProfile(contactObj);
+      }
     }
     setActiveChat(recipientPhone);
     setCurrentView('chat');
     try { localStorage.setItem('wa_active_chat', recipientPhone); } catch { }
     if (userId && recipientPhone) {
-      chatApi.markSeen(userId, recipientPhone).catch(() => { });
-      socket.emit('mark_seen', { otherUserId: recipientPhone });
+      if (!String(recipientPhone).startsWith('group:')) {
+        chatApi.markSeen(userId, recipientPhone).catch(() => { });
+        socket.emit('mark_seen', { otherUserId: recipientPhone });
+      }
     }
   };
 
@@ -1658,11 +1680,12 @@ export default function App() {
   ));
   const canSendGroupMessages = !isActiveGroup || groupDetails?.messagePermission !== 'admins' || activeGroupMember?.role === 'admin';
 
-  // Back button in 1-on-1 Chat -> Return to ChatList
+  // Back button in 1-on-1 Chat or Group -> Return to ChatList
   const handleBackToChatList = () => {
     socket.emit('close_chat');
     setActiveChat(null);
     setRecipientProfile(null);
+    setGroupDetails(null);
     setMessages([]);
     setCurrentView('inbox');
     try { localStorage.removeItem('wa_active_chat'); } catch { }
