@@ -204,6 +204,7 @@ export default function ChatList({
             return String(conversation.fullPhone || conversation.phone || conversation.id || '').replace(/\D/g, '');
           }));
           const previouslyVisible = previous.filter((conversation) => {
+            if (conversation.isGroup && conversation.isDeletedForMe) return false;
             const key = conversation.isGroup
               ? String(conversation.id)
               : String(conversation.fullPhone || conversation.phone || conversation.id || '').replace(/\D/g, '');
@@ -676,7 +677,9 @@ export default function ChatList({
   const handleConfirmDelete = async () => {
     if (!deleteModal.item || !userId) return;
     const item = deleteModal.item;
-    const targetPhone = item.fullPhone || item.phone || item.id;
+    const isGroup = Boolean(item.isGroup || String(item.id).startsWith('group:'));
+    const cleanGroupId = isGroup ? (item.groupId || String(item.id).replace(/^group:/, '')) : null;
+    const targetPhone = isGroup ? `group:${cleanGroupId}` : (item.fullPhone || item.phone || item.id);
 
     setDeleteModal((prev) => ({ ...prev, isDeleting: true }));
 
@@ -689,7 +692,13 @@ export default function ChatList({
 
       // 3. Optimistic Local State Update
       setConversations((prev) =>
-        prev.filter((c) => c.id !== item.id && c.fullPhone !== targetPhone && c.phone !== targetPhone)
+        prev.filter((c) => {
+          if (isGroup) {
+            const cGroupId = c.groupId || String(c.id).replace(/^group:/, '');
+            return String(c.id) !== targetPhone && String(cGroupId) !== String(cleanGroupId);
+          }
+          return c.id !== item.id && c.fullPhone !== targetPhone && c.phone !== targetPhone;
+        })
       );
 
       // 4. Notify parent if active chat was deleted
@@ -698,6 +707,7 @@ export default function ChatList({
         (activeChat === targetPhone ||
           activeChat === String(targetPhone).replace(/^\+/, '') ||
           activeChat === `+${String(targetPhone).replace(/^\+/, '')}` ||
+          (isGroup && String(activeChat).replace(/^group:/, '') === String(cleanGroupId)) ||
           activeChat === item.id)
       ) {
         if (onDeleteChat) {
@@ -739,7 +749,7 @@ export default function ChatList({
 
   const visibleConversations = activeTab === 'groups'
     ? orderedConversations.filter((item) => item.isGroup)
-    : orderedConversations;
+    : orderedConversations.filter((item) => !item.isDeletedForMe);
 
   const existingConversationKeys = React.useMemo(() => {
     const set = new Set();

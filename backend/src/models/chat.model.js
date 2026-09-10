@@ -854,8 +854,38 @@ const deleteMessage = async (id, userId, everyone = false) => {
  */
 const deleteConversation = async (userId, otherUserId) => {
     const pool = getPool();
-    const userVars = getPhoneVariants(userId);
-    const otherVars = getPhoneVariants(otherUserId);
+    const cleanUserId = String(userId || "").trim();
+    const cleanOtherId = String(otherUserId || "").trim();
+    if (!cleanUserId || !cleanOtherId) return false;
+
+    // Check if otherUserId is a group (e.g. starts with 'group:' or is group member)
+    const isGroup = cleanOtherId.startsWith("group:") || (await isGroupMember(cleanOtherId, cleanUserId));
+    if (isGroup) {
+        const cleanGroupId = toGroupId(cleanOtherId);
+        const userVars = getPhoneVariants(cleanUserId);
+        const uPlaceholders = userVars.map(() => "?").join(",");
+
+        // Fetch current maximum message ID in this group
+        const [maxRows] = await pool.execute(
+            "SELECT COALESCE(MAX(id), 0) AS maxId FROM group_messages WHERE group_id = ?",
+            [cleanGroupId]
+        );
+        const maxId = maxRows[0]?.maxId || 0;
+
+        // Mark all messages up to maxId as deleted / cleared for this member
+        await pool.execute(
+            `UPDATE group_members 
+             SET last_deleted_message_id = ?, 
+                 last_seen_message_id = GREATEST(last_seen_message_id, ?) 
+             WHERE group_id = ? AND user_id IN (${uPlaceholders})`,
+            [maxId, maxId, cleanGroupId, ...userVars]
+        );
+
+        return true;
+    }
+
+    const userVars = getPhoneVariants(cleanUserId);
+    const otherVars = getPhoneVariants(cleanOtherId);
     if (!userVars.length || !otherVars.length) return false;
 
     const uPlaceholders = userVars.map(() => "?").join(",");
@@ -885,6 +915,10 @@ const deleteConversation = async (userId, otherUserId) => {
 };
 
 const getConversation = async (userId, otherUserId) => {
+    const cleanOtherId = String(otherUserId || "").trim();
+    if (cleanOtherId.startsWith("group:")) {
+        return getGroupMessages(cleanOtherId, userId);
+    }
     const pool = getPool();
     const userVars = getPhoneVariants(userId);
     const otherVars = getPhoneVariants(otherUserId);
@@ -1091,27 +1125,36 @@ const listGroups = async (userId) => {
             g.message_permission AS messagePermission, g.created_at AS createdAt,
                 (SELECT COUNT(*) FROM group_members gm WHERE gm.group_id = g.id) AS memberCount,
                 m.text AS lastMessage, m.type AS lastMessageType, m.created_at AS lastMessageAt,
+                COALESCE(mine.last_deleted_message_id, 0) AS lastDeletedMessageId,
                 (
                     SELECT COUNT(*) FROM group_messages gm2
                     WHERE gm2.group_id = g.id
-                      AND gm2.id > COALESCE(mine.last_seen_message_id, 0)
+                      AND gm2.id > GREATEST(COALESCE(mine.last_seen_message_id, 0), COALESCE(mine.last_deleted_message_id, 0))
                       AND gm2.sender_id NOT IN (${notPlaceholders})
                 ) AS unreadCount
           FROM chat_groups g
           INNER JOIN group_members mine ON mine.group_id = g.id AND mine.user_id IN (${placeholders})
-          LEFT JOIN group_messages m ON m.id = (SELECT MAX(m2.id) FROM group_messages m2 WHERE m2.group_id = g.id)
-          GROUP BY g.id, mine.last_seen_message_id, m.id
-          ORDER BY COALESCE(m.id, g.id) DESC`,
+          LEFT JOIN group_messages m ON m.id = (
+              SELECT MAX(m2.id) FROM group_messages m2 
+              WHERE m2.group_id = g.id AND m2.id > COALESCE(mine.last_deleted_message_id, 0)
+          )
+          GROUP BY g.id, mine.last_seen_message_id, mine.last_deleted_message_id, m.id
+          ORDER BY COALESCE(m.id, 0) DESC, g.created_at DESC`,
         [...variants, ...variants]
     );
-    return rows.map((row) => ({
-        ...row,
-        id: `group:${row.id}`,
-        groupId: String(row.id),
-        memberCount: Number(row.memberCount || 0),
-        unreadCount: Number(row.unreadCount || 0),
-        isGroup: true
-    }));
+    return rows.map((row) => {
+        const lastDeleted = Number(row.lastDeletedMessageId || 0);
+        const hasLastMessage = Boolean(row.lastMessage);
+        return {
+            ...row,
+            id: `group:${row.id}`,
+            groupId: String(row.id),
+            memberCount: Number(row.memberCount || 0),
+            unreadCount: Number(row.unreadCount || 0),
+            isGroup: true,
+            isDeletedForMe: lastDeleted > 0 && !hasLastMessage
+        };
+    });
 };
 
 const markGroupMessagesAsSeen = async (groupId, userId) => {
@@ -1325,7 +1368,24 @@ const updateGroupMemberRole = async (groupId, requesterId, memberId, role) => {
 const getGroupMessages = async (groupId, userId) => {
     const cleanId = toGroupId(groupId);
     if (!(await isGroupMember(cleanId, userId))) return [];
-    const [rows] = await getPool().execute("SELECT * FROM group_messages WHERE group_id = ? ORDER BY is_pinned DESC, id ASC", [cleanId]);
+
+    const cleanUserId = String(userId || "").trim();
+    const variants = getPhoneVariants(cleanUserId);
+    const placeholders = variants.map(() => '?').join(', ');
+
+    const [memberRows] = await getPool().execute(
+        `SELECT COALESCE(last_deleted_message_id, 0) AS lastDeletedMessageId 
+         FROM group_members 
+         WHERE group_id = ? AND user_id IN (${placeholders}) 
+         LIMIT 1`,
+        [cleanId, ...variants]
+    );
+    const lastDeletedId = Number(memberRows[0]?.lastDeletedMessageId || 0);
+
+    const [rows] = await getPool().execute(
+        "SELECT * FROM group_messages WHERE group_id = ? AND id > ? ORDER BY is_pinned DESC, id ASC",
+        [cleanId, lastDeletedId]
+    );
     return rows.map(mapGroupMessage);
 };
 

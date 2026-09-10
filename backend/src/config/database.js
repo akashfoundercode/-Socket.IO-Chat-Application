@@ -293,6 +293,12 @@ const initializeDatabase = async () => {
         // column already exists
     }
 
+    try {
+        await pool.query("ALTER TABLE group_members ADD COLUMN last_deleted_message_id BIGINT UNSIGNED NOT NULL DEFAULT 0");
+    } catch (e) {
+        // column already exists
+    }
+
     await pool.query(`
         CREATE TABLE IF NOT EXISTS group_messages (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
