@@ -33,9 +33,10 @@ function StatusRing({ avatar, hasNew, size = 52 }) {
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
       background: hasNew
-        ? 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)'
-        : '#e9edef',
-      padding: '2.5px'
+        ? 'linear-gradient(135deg, #25D366 0%, #00a884 100%)'
+        : '#8696a0',
+      padding: '2.5px',
+      transition: 'background 0.3s ease'
     }}>
       <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: '#fff', overflow: 'hidden' }}>
         <AvatarCircle avatar={avatar} size={size - 7} />
@@ -88,7 +89,7 @@ function ViewersPanel({ statusId, ownerId, onClose }) {
 }
 
 /* ── Full-screen Status Viewer ── */
-function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId, onClose, onReply }) {
+function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId, onClose, onReply, onStatusViewed }) {
   const [idx, setIdx] = useState(0);
   const [progress, setProgress] = useState(0);
   const [showReactions, setShowReactions] = useState(false);
@@ -107,6 +108,8 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
   useEffect(() => {
     if (!isOwn && current?.id && viewerId) {
       statusApi.viewStatus(current.id, viewerId).catch(() => { });
+      socket.emit('status_viewed', { statusId: current.id, ownerId, viewerId });
+      onStatusViewed?.(current.id);
     }
   }, [idx, current?.id]);
 
@@ -161,120 +164,124 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
   };
 
   return (
-    <div className="wa-sv-overlay" onClick={onClose}>
-      <div className="wa-sv-card" onClick={e => e.stopPropagation()}>
+    <div className="wa-sv-backdrop" onClick={onClose}>
+      <div className="wa-sv-container" onClick={e => e.stopPropagation()}
+        style={{ background: current.type === 'text' ? (current.bgColor || '#075e54') : '#000' }}>
 
-        {/* progress bars */}
-        <div className="wa-sv-bars">
-          {statuses.map((_, i) => (
-            <div key={i} className="wa-sv-bar-track">
-              <div className="wa-sv-bar-fill"
-                style={{ width: i < idx ? '100%' : i === idx ? `${progress}%` : '0%' }} />
+        {/* Progress bars */}
+        <div className="wa-sv-progress-row">
+          {statuses.map((s, i) => (
+            <div key={i} className="wa-sv-prog-track">
+              <div className="wa-sv-prog-fill" style={{
+                width: i < idx ? '100%' : i === idx ? `${progress}%` : '0%'
+              }} />
             </div>
           ))}
         </div>
 
-        {/* header */}
+        {/* Header */}
         <div className="wa-sv-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div className="wa-sv-avatar"><AvatarCircle avatar={userAvatar} size={40} /></div>
+          <div className="wa-sv-user-info">
+            <AvatarCircle avatar={userAvatar} size={38} />
             <div>
-              <div className="wa-sv-username">{userName}</div>
+              <div className="wa-sv-user-name">{userName}</div>
               <div className="wa-sv-time">
                 {new Date(current.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                {statuses.length > 1 && <span style={{ marginLeft: 6, opacity: 0.6 }}>{idx + 1}/{statuses.length}</span>}
               </div>
             </div>
           </div>
-          <button className="wa-sv-close-btn" onClick={onClose}>✕</button>
+          <div className="wa-sv-header-actions">
+            {isOwn && (
+              <button className="wa-sv-icon-btn" onClick={() => setShowViewers(v => !v)}>
+                <i className="fa-solid fa-eye"></i> {current.viewCount || 0}
+              </button>
+            )}
+            <button className="wa-sv-icon-btn" onClick={onClose}>✕</button>
+          </div>
         </div>
 
-        {/* content */}
-        <div className="wa-sv-body">
+        {/* Content */}
+        <div className="wa-sv-content">
           {current.type === 'text' && (
-            <div className="wa-sv-text-content" style={{ background: current.bgColor, fontFamily, fontWeight: isBold ? 700 : 400 }}>
+            <p className="wa-sv-text" style={{ fontFamily, fontWeight: isBold ? 'bold' : 'normal' }}>
               {current.content}
+            </p>
+          )}
+          {current.type === 'link' && (
+            <div className="wa-sv-link-box">
+              <a href={current.content} target="_blank" rel="noreferrer" className="wa-sv-link-text">
+                🔗 {current.content}
+              </a>
             </div>
           )}
-          {current.type === 'image' && <img src={resolveMediaUrl(current.content)} alt="" className="wa-sv-media" />}
-          {current.type === 'video' && <video src={resolveMediaUrl(current.content)} autoPlay muted loop className="wa-sv-media" />}
-          {current.type === 'link' && (
-            <div className="wa-sv-text-content" style={{ background: current.bgColor, flexDirection: 'column', gap: 12 }}>
-              <i className="fa-solid fa-link" style={{ fontSize: 28, opacity: 0.7 }}></i>
-              <a href={current.content} target="_blank" rel="noopener noreferrer" className="wa-sv-link">{current.content}</a>
-              {current.caption && <p style={{ fontSize: 14, opacity: 0.85, marginTop: 4 }}>{current.caption}</p>}
+          {current.type === 'image' && (
+            <div className="wa-sv-media-wrap">
+              <img src={resolveMediaUrl(current.content)} alt="Status" className="wa-sv-img" />
+              {current.caption && <div className="wa-sv-caption">{current.caption}</div>}
+            </div>
+          )}
+          {current.type === 'video' && (
+            <div className="wa-sv-media-wrap">
+              <video src={resolveMediaUrl(current.content)} autoPlay playsInline className="wa-sv-img" />
+              {current.caption && <div className="wa-sv-caption">{current.caption}</div>}
             </div>
           )}
         </div>
 
-        {/* caption overlay */}
-        {current.caption && current.type !== 'link' && (
-          <div className="wa-sv-caption">{current.caption}</div>
-        )}
+        {/* Navigation tap targets */}
+        <div className="wa-sv-tap-left" onClick={() => setIdx(p => Math.max(0, p - 1))} />
+        <div className="wa-sv-tap-right" onClick={() => {
+          if (idx < statuses.length - 1) setIdx(p => p + 1);
+          else onClose();
+        }} />
 
-        {/* tap zones */}
-        <div className="wa-sv-tap-prev" onClick={() => idx > 0 && setIdx(p => p - 1)} />
-        <div className="wa-sv-tap-next" onClick={() => idx < statuses.length - 1 ? setIdx(p => p + 1) : onClose()} />
-
-        {/* bottom bar */}
-        <div className="wa-sv-bottom">
-          {isOwn ? (
-            /* owner: views count */
-            <button className="wa-sv-views-btn" onClick={() => setShowViewers(v => !v)}>
-              <i className="fa-solid fa-eye"></i>
-              <span>{current.viewCount ?? 0} views</span>
-              <i className={`fa-solid fa-chevron-${showViewers ? 'down' : 'up'}`} style={{ fontSize: 10, marginLeft: 4 }}></i>
-            </button>
-          ) : (
-            /* viewer: reaction + reply */
-            <div className="wa-sv-actions">
-              {/* emoji reaction */}
-              <div style={{ position: 'relative' }}>
-                <button className="wa-sv-react-btn"
-                  onClick={() => { setShowReactions(v => !v); setShowReply(false); }}>
-                  <span style={{ fontSize: 22 }}>{myReaction || '😊'}</span>
-                </button>
-                {showReactions && (
-                  <div className="wa-sv-emoji-tray">
-                    {REACTION_EMOJIS.map(e => (
-                      <button key={e} className="wa-sv-emoji-btn" onClick={() => handleReact(e)}>{e}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* reply */}
-              {showReply ? (
-                <div className="wa-sv-reply-box">
-                  <input
-                    ref={replyRef}
-                    className="wa-sv-reply-input"
-                    placeholder={`Reply to ${userName}...`}
-                    value={replyText}
-                    onChange={e => setReplyText(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSendReply()}
-                  />
-                  <button className="wa-sv-reply-send" onClick={handleSendReply} disabled={sending || !replyText.trim()}>
-                    {sending
-                      ? <i className="fa-solid fa-circle-notch fa-spin"></i>
-                      : <i className="fa-solid fa-paper-plane"></i>}
-                  </button>
-                  <button className="wa-sv-reply-cancel" onClick={() => { setShowReply(false); setReplyText(''); }}>
-                    <i className="fa-solid fa-xmark"></i>
-                  </button>
-                </div>
-              ) : (
-                <button className="wa-sv-reply-btn"
-                  onClick={() => { setShowReply(true); setShowReactions(false); }}>
+        {/* Footer controls */}
+        {!isOwn && (
+          <div className="wa-sv-footer">
+            {!showReply && (
+              <div className="wa-sv-footer-bar">
+                <button className="wa-sv-reply-btn" onClick={() => setShowReply(true)}>
                   <i className="fa-solid fa-reply"></i> Reply
                 </button>
-              )}
-            </div>
-          )}
-        </div>
+                <div className="wa-sv-quick-emojis">
+                  {REACTION_EMOJIS.slice(0, 5).map(em => (
+                    <button key={em} className={`wa-sv-emoji-btn ${myReaction === em ? 'active' : ''}`}
+                      onClick={() => handleReact(em)}>{em}</button>
+                  ))}
+                  <button className="wa-sv-emoji-btn" onClick={() => setShowReactions(r => !r)}>➕</button>
+                </div>
+              </div>
+            )}
 
-        {/* viewers panel */}
-        {isOwn && showViewers && (
+            {showReactions && (
+              <div className="wa-sv-reaction-picker">
+                {REACTION_EMOJIS.map(em => (
+                  <button key={em} className="wa-sv-emoji-btn-lg" onClick={() => handleReact(em)}>{em}</button>
+                ))}
+              </div>
+            )}
+
+            {showReply && (
+              <div className="wa-sv-reply-box">
+                <input
+                  ref={replyRef}
+                  className="wa-sv-reply-input"
+                  placeholder="Type a reply..."
+                  value={replyText}
+                  onChange={e => setReplyText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSendReply(); }}
+                />
+                <button className="wa-sv-send-btn" disabled={!replyText.trim() || sending} onClick={handleSendReply}>
+                  <i className="fa-solid fa-paper-plane"></i>
+                </button>
+                <button className="wa-sv-close-small" onClick={() => setShowReply(false)}>✕</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Viewers panel (for own status) */}
+        {showViewers && (
           <ViewersPanel statusId={current.id} ownerId={ownerId} onClose={() => setShowViewers(false)} />
         )}
       </div>
@@ -289,13 +296,6 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
   const [loading, setLoading] = useState(true);
   const [showComposer, setShowComposer] = useState(false);
   const [viewer, setViewer] = useState(null);
-  const [pullY, setPullY] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
-  const pullStartY = useRef(0);
-  const scrollRef = useRef(null);
-  const PULL_THRESHOLD = 70;
-
-  /* composer */
   const [compType, setCompType] = useState('text');
   const [compText, setCompText] = useState('');
   const [compCaption, setCompCaption] = useState('');
@@ -320,11 +320,21 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
 
   useEffect(() => { load(); }, [userId]);
 
+  const handleStatusViewed = (statusId) => {
+    setContacts(prev => prev.map(s => s.id === statusId ? { ...s, isViewed: true } : s));
+  };
+
   const grouped = contacts.reduce((acc, s) => {
     if (!acc[s.userId]) acc[s.userId] = { statuses: [], userName: s.userName || s.userId, userAvatar: s.userAvatar };
-    acc[s.userId].statuses.push(s);
+    // Prevent any duplicate status IDs inside the same user group
+    if (!acc[s.userId].statuses.some(existing => existing.id === s.id)) {
+      acc[s.userId].statuses.push(s);
+    }
     return acc;
   }, {});
+
+  const recentUpdates = Object.entries(grouped).filter(([_, { statuses }]) => !statuses.every(s => s.isViewed));
+  const viewedUpdates = Object.entries(grouped).filter(([_, { statuses }]) => statuses.every(s => s.isViewed));
 
   const resetComposer = () => {
     setCompText(''); setCompCaption(''); setCompLink('');
@@ -426,14 +436,14 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
         )}
       </div>
 
-      {/* ── Contact statuses ── */}
-      {Object.keys(grouped).length > 0 && (
+      {/* ── Recent Updates (Unviewed) ── */}
+      {recentUpdates.length > 0 && (
         <>
           <div className="wa-section-title">Recent Updates</div>
-          {Object.entries(grouped).map(([uid, { statuses: sts, userName, userAvatar }]) => (
+          {recentUpdates.map(([uid, { statuses: sts, userName, userAvatar }]) => (
             <div key={uid} className="wa-status-my-item"
               onClick={() => setViewer({ statuses: sts, userName, userAvatar, isOwn: false, ownerId: uid })}>
-              <StatusRing avatar={userAvatar} hasNew={!sts.every(s => s.isViewed)} />
+              <StatusRing avatar={userAvatar} hasNew={true} />
               <div className="wa-item-center">
                 <div className="wa-item-top">
                   <span className="wa-item-name">{userName}</span>
@@ -450,8 +460,29 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
         </>
       )}
 
-      {Object.keys(grouped).length === 0 && mine.length === 0 && (
-        <div className="wa-status-empty-text">No recent updates from your contacts</div>
+      {/* ── Viewed Updates (Grey Ring) ── */}
+      {viewedUpdates.length > 0 && (
+        <>
+          <div className="wa-section-title" style={{ marginTop: '14px', opacity: 0.85 }}>Viewed Updates</div>
+          {viewedUpdates.map(([uid, { statuses: sts, userName, userAvatar }]) => (
+            <div key={uid} className="wa-status-my-item viewed"
+              style={{ opacity: 0.82 }}
+              onClick={() => setViewer({ statuses: sts, userName, userAvatar, isOwn: false, ownerId: uid })}>
+              <StatusRing avatar={userAvatar} hasNew={false} />
+              <div className="wa-item-center">
+                <div className="wa-item-top">
+                  <span className="wa-item-name">{userName}</span>
+                  <span className="wa-item-time">
+                    {new Date(sts[sts.length - 1].createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div className="wa-item-bottom">
+                  <span className="wa-item-msg">{sts.length} update{sts.length > 1 ? 's' : ''}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </>
       )}
 
       {/* ── Viewer ── */}
@@ -463,8 +494,12 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
           isOwn={viewer.isOwn}
           ownerId={viewer.isOwn ? userId : (viewer.ownerId || viewer.statuses[0]?.userId || userId)}
           viewerId={userId}
-          onClose={() => setViewer(null)}
+          onClose={() => {
+            setViewer(null);
+            load();
+          }}
           onReply={handleReply}
+          onStatusViewed={handleStatusViewed}
         />
       )}
 

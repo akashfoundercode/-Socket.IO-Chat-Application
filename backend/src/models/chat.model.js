@@ -1853,7 +1853,18 @@ const getContactStatuses = async (userId) => {
 
     const [rows] = await pool.execute(
         `SELECT s.*, 
-                COALESCE(c1.custom_name, u.name, u.full_phone, u.phone, s.user_id) AS display_name,
+                COALESCE(
+                    (
+                        SELECT c.custom_name FROM contacts c 
+                        WHERE c.user_id IN (${placeholders}) 
+                          AND (c.contact_id = s.user_id OR c.contact_id = u.full_phone OR c.contact_id = u.phone OR c.contact_id = CAST(u.id AS CHAR) OR c.contact_id LIKE CONCAT('%', u.phone)) 
+                        LIMIT 1
+                    ),
+                    u.name,
+                    u.full_phone,
+                    u.phone,
+                    s.user_id
+                ) AS display_name,
                 u.name AS profile_name,
                 u.full_phone AS fullPhone,
                 u.avatar,
@@ -1862,27 +1873,30 @@ const getContactStatuses = async (userId) => {
                 EXISTS(SELECT 1 FROM status_views sv WHERE sv.status_id = s.id AND sv.viewer_id IN (${placeholders})) AS is_viewed
          FROM user_statuses s
          LEFT JOIN users u ON (u.full_phone = s.user_id OR u.phone = s.user_id OR CAST(u.id AS CHAR) = s.user_id OR s.user_id LIKE CONCAT('%', u.phone))
-         -- 1. Must be explicitly saved by Viewer (User A saved User B)
-         INNER JOIN contacts c1 ON (
-             c1.user_id IN (${placeholders})
-             AND (c1.contact_id = s.user_id OR c1.contact_id = u.full_phone OR c1.contact_id = u.phone OR c1.contact_id = CAST(u.id AS CHAR) OR c1.contact_id LIKE CONCAT('%', u.phone))
-         )
-         -- 2. Must be explicitly saved by Status Owner (User B saved User A)
-         INNER JOIN contacts c2 ON (
-             (c2.user_id = s.user_id OR c2.user_id = u.full_phone OR c2.user_id = u.phone OR c2.user_id = CAST(u.id AS CHAR) OR c2.user_id LIKE CONCAT('%', u.phone))
-             AND c2.contact_id IN (${placeholders})
-         )
          WHERE s.expires_at > NOW()
            AND s.user_id NOT IN (${placeholders})
-           -- ONLY STATUSES POSTED AFTER BOTH USERS SAVED EACH OTHER AS CONTACTS:
-           AND s.created_at >= c1.created_at
-           AND s.created_at >= c2.created_at
+           -- 1. Must be explicitly saved by Viewer (User A saved User B)
+           AND EXISTS (
+               SELECT 1 FROM contacts c1 
+               WHERE c1.user_id IN (${placeholders}) 
+                 AND (c1.contact_id = s.user_id OR c1.contact_id = u.full_phone OR c1.contact_id = u.phone OR c1.contact_id = CAST(u.id AS CHAR) OR c1.contact_id LIKE CONCAT('%', u.phone))
+                 AND s.created_at >= c1.created_at
+           )
+           -- 2. Must be explicitly saved by Status Owner (User B saved User A)
+           AND EXISTS (
+               SELECT 1 FROM contacts c2 
+               WHERE (c2.user_id = s.user_id OR c2.user_id = u.full_phone OR c2.user_id = u.phone OR c2.user_id = CAST(u.id AS CHAR) OR c2.user_id LIKE CONCAT('%', u.phone))
+                 AND c2.contact_id IN (${placeholders})
+                 AND s.created_at >= c2.created_at
+           )
+         GROUP BY s.id
          ORDER BY s.user_id, s.id ASC`,
         [
+            ...userVars, // display_name subquery
             ...userVars, // is_viewed
+            ...userVars, // NOT IN viewer
             ...userVars, // c1.user_id (Viewer saved Status Owner)
-            ...userVars, // c2.contact_id (Status Owner saved Viewer)
-            ...userVars  // NOT IN viewer
+            ...userVars  // c2.contact_id (Status Owner saved Viewer)
         ]
     );
     return rows.map((r) => ({
@@ -1907,10 +1921,13 @@ const deleteStatus = async (statusId, userId) => {
 
 const recordStatusView = async (statusId, viewerId) => {
     const pool = getPool();
-    await pool.execute(
-        `INSERT IGNORE INTO status_views (status_id, viewer_id) VALUES (?, ?)`,
-        [Number(statusId), String(viewerId).trim()]
-    );
+    const viewerVars = getPhoneVariants(viewerId);
+    for (const v of viewerVars) {
+        await pool.execute(
+            `INSERT IGNORE INTO status_views (status_id, viewer_id) VALUES (?, ?)`,
+            [Number(statusId), String(v).trim()]
+        );
+    }
 };
 
 const getStatusViews = async (statusId, ownerId) => {
