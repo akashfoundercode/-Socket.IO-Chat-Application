@@ -8141,6 +8141,14 @@ body {
   color: #d93025;
 }
 
+.wa-call-message.outgoing-unanswered {
+  color: #54656f;
+}
+
+.wa-call-message.outgoing-unanswered i {
+  color: #8696a0;
+}
+
 .wa-group-call-members {
   display: block;
   margin-top: 2px;

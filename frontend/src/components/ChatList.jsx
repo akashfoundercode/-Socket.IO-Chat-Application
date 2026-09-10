@@ -896,8 +896,15 @@ export default function ChatList({
         }
         return `${callIcon} ${callLabel} ended`;
       } else {
-        if (callData.status === 'missed') return `${callIcon} Missed ${callLabel.toLowerCase()}`;
-        if (callData.status === 'declined') return `${callIcon} ${callLabel} declined`;
+        const senderId = String(item.lastMessageSender || item.senderId || item.from || '').replace(/\D/g, '');
+        const myId = String(userId || '').replace(/\D/g, '');
+        const isCaller = Boolean(senderId && myId && senderId === myId);
+        if (callData.status === 'missed' || callData.status === 'not_accepted') {
+          return isCaller ? `${callIcon} ${callLabel} • No answer` : `${callIcon} Missed ${callLabel.toLowerCase()}`;
+        }
+        if (callData.status === 'declined') {
+          return isCaller ? `${callIcon} ${callLabel} • Declined` : `${callIcon} ${callLabel} declined`;
+        }
         return `${callIcon} ${callLabel} ended`;
       }
     }

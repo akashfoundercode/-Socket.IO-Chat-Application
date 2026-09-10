@@ -795,7 +795,7 @@ export default function MessageList({
                       className={`wa-call-message ${callData?.status === 'not_accepted' ||
                         callData?.status === 'missed' ||
                         (isGroup && callData?.joinedCount <= 1 && callData?.status !== 'completed')
-                        ? 'missed'
+                        ? (isSent ? 'outgoing-unanswered' : 'missed')
                         : ''
                         }`}
                     >
@@ -809,9 +809,13 @@ export default function MessageList({
                               ? 'Group voice call • Not accepted'
                               : `Group voice call • ${callData?.joinedCount || 2} joined`
                           ) : callData?.status === 'missed' ? (
-                            `Missed ${callData?.callType === 'video' ? 'video' : 'voice'} call`
+                            isSent
+                              ? `${callData?.callType === 'video' ? 'Video' : 'Voice'} call • No answer`
+                              : `Missed ${callData?.callType === 'video' ? 'video' : 'voice'} call`
                           ) : callData?.status === 'declined' ? (
-                            `${callData?.callType === 'video' ? 'Video' : 'Voice'} call declined`
+                            isSent
+                              ? `${callData?.callType === 'video' ? 'Video' : 'Voice'} call • Declined`
+                              : `${callData?.callType === 'video' ? 'Video' : 'Voice'} call declined`
                           ) : (
                             `${callData?.callType === 'video' ? 'Video' : 'Voice'} call ended`
                           )}
