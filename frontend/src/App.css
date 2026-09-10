@@ -930,6 +930,10 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 .wa-input-capsule {
@@ -7994,16 +7998,19 @@ body {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background: #ffffff;
   border-radius: 24px;
-  padding: 8px 14px;
-  min-height: 44px;
+  padding: 6px 12px;
+  min-height: 42px;
   box-shadow: 0 1px 3px rgba(11, 20, 26, 0.08);
   position: relative;
   overflow: hidden;
   user-select: none;
   touch-action: none;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .wa-recording-capsule.canceling {
@@ -8014,13 +8021,13 @@ body {
 .wa-rec-timer-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
 .wa-rec-pulse-dot {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   background-color: #ea4335;
   border-radius: 50%;
   animation: recPulse 1.2s infinite ease-in-out;
@@ -8047,29 +8054,33 @@ body {
 }
 
 .wa-rec-timer {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #111b21;
   font-variant-numeric: tabular-nums;
-  min-width: 36px;
+  min-width: 32px;
 }
 
 /* Real-Time Audio Frequency Meter Visualizer Bars */
 .wa-rec-waveform-meter {
   display: flex;
   align-items: center;
-  gap: 3px;
-  height: 26px;
+  gap: 2px;
+  height: 22px;
   flex: 1;
+  min-width: 0;
   justify-content: center;
-  padding: 0 6px;
+  padding: 0 4px;
+  overflow: hidden;
 }
 
 .wa-rec-meter-bar {
-  width: 3px;
+  flex: 1 1 0;
+  min-width: 1.5px;
+  max-width: 3px;
   min-height: 4px;
   background: var(--wa-green);
-  border-radius: 3px;
+  border-radius: 2px;
   transition: height 0.08s ease;
 }
 
@@ -8083,6 +8094,7 @@ body {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  white-space: nowrap;
   transition: transform 0.05s ease-out;
 }
 

@@ -73,10 +73,6 @@ export default function MessageInput({
   React.useEffect(() => {
     return () => {
       cleanupRecordingResources();
-      if (cachedStreamRef.current) {
-        cachedStreamRef.current.getTracks().forEach((t) => t.stop());
-        cachedStreamRef.current = null;
-      }
     };
   }, []);
 
@@ -106,7 +102,9 @@ export default function MessageInput({
     }
     analyserRef.current = null;
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      try {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      } catch (e) { }
       mediaStreamRef.current = null;
     }
     recorderRef.current = null;
@@ -115,30 +113,24 @@ export default function MessageInput({
     setIsCanceling(false);
     setDragOffset(0);
     setRecordDuration(0);
-    setAudioLevels(Array(18).fill(15));
+    setAudioLevels(Array(12).fill(15));
   };
 
-  const startRecording = async () => {
-    if (isBlocked || !canSendMessages || !recipientId.trim()) return;
+  const startRecording = async (forceLock = false) => {
+    if (isBlocked || !canSendMessages || !recipientId?.trim()) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      alert('Voice recording is not supported in this browser');
+      alert('Voice recording is not supported in this browser.');
       cleanupRecordingResources();
       return;
     }
 
     isInitializingMicRef.current = true;
     try {
-      // Use pre-warmed stream if available, else request fresh
-      let stream = cachedStreamRef.current;
-      cachedStreamRef.current = null;
-      if (!stream || stream.getTracks().some((t) => t.readyState === 'ended')) {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-        });
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
       mediaStreamRef.current = stream;
 
-      // If user released pointer immediately or cancelled during getUserMedia
       if (isCancelledRef.current) {
         cleanupRecordingResources();
         return;
@@ -160,7 +152,7 @@ export default function MessageInput({
           const updateAudioLevels = () => {
             if (!analyserRef.current) return;
             analyserRef.current.getByteFrequencyData(dataArray);
-            const barsCount = 18;
+            const barsCount = 12;
             const step = Math.max(1, Math.floor(dataArray.length / barsCount));
             const newLevels = [];
             for (let i = 0; i < barsCount; i++) {
@@ -217,7 +209,6 @@ export default function MessageInput({
         }
 
         const totalBytes = chunksRef.current.reduce((acc, c) => acc + (c.size || 0), 0);
-        // Discard empty recordings (header only < 150 bytes)
         if (totalBytes < 150) {
           chunksRef.current = [];
           cleanupRecordingResources();
@@ -248,7 +239,7 @@ export default function MessageInput({
         cleanupRecordingResources();
       };
 
-      recorder.start(50);
+      recorder.start(100);
       recorderRef.current = recorder;
       isInitializingMicRef.current = false;
       setIsRecording(true);
@@ -256,32 +247,31 @@ export default function MessageInput({
       setRecordDuration(0);
       setDragOffset(0);
 
+      if (forceLock) {
+        setIsLocked(true);
+        isLockedRef.current = true;
+      }
+
       const startTimestamp = Date.now();
       timerIntervalRef.current = setInterval(() => {
         const secs = Math.floor((Date.now() - startTimestamp) / 1000);
         setRecordDuration(secs);
       }, 500);
 
-      // If user released finger while getUserMedia was resolving
-      if (!isPointerDownRef.current && !isLockedRef.current) {
-        // Always record for at least 400ms to collect valid audio packets before stopping
-        setTimeout(() => {
-          if (!isLockedRef.current && recorderRef.current && recorderRef.current.state === 'recording') {
-            stopAndSendRecording(isCancelledRef.current);
-          }
-        }, 400);
-      }
     } catch (error) {
-      alert(`Microphone permission is required: ${error.message}`);
+      isInitializingMicRef.current = false;
       cleanupRecordingResources();
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        alert('Microphone permission is blocked. Please click the Lock/Camera icon in your browser address bar and choose "Allow Microphone".');
+      } else {
+        alert(`Microphone error: ${error.message}`);
+      }
     }
   };
 
   const stopAndSendRecording = (isCancel = false) => {
     isCancelledRef.current = Boolean(isCancel);
     if (recorderRef.current && recorderRef.current.state === 'recording') {
-      // stop() flushes the final dataavailable chunk before onstop runs.
-      // Calling requestData() first can race with onstop on mobile browsers.
       try {
         recorderRef.current.stop();
       } catch (e) {
@@ -295,23 +285,32 @@ export default function MessageInput({
   // Pointer / Touch Handlers for Hold to Record & Drag to Cancel
   const handleMicPointerDown = (e) => {
     if (isBlocked || !recipientId.trim() || text.trim()) return;
+
+    // If already recording in hands-free mode, do nothing on pointer down
+    if (isRecording && isLockedRef.current) return;
+
     e.preventDefault();
     pressStartTimeRef.current = Date.now();
     pointerStartPosRef.current = { x: e.clientX, y: e.clientY };
     isDraggingRef.current = true;
     isPointerDownRef.current = true;
-    isLockedRef.current = false;
     isCancelledRef.current = false;
-    setIsRecording(true);
-    setIsCanceling(false);
-    setIsLocked(false);
-    setDragOffset(0);
-    setRecordDuration(0);
 
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch (err) { }
-    startRecording();
+    const isMouse = e.pointerType === 'mouse';
+    if (isMouse) {
+      // Desktop: Start in click-to-record locked hands-free mode
+      isLockedRef.current = true;
+      setIsLocked(true);
+      startRecording(true);
+    } else {
+      // Mobile touch: Start in hold-to-record mode
+      isLockedRef.current = false;
+      setIsLocked(false);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch (err) { }
+      startRecording(false);
+    }
   };
 
   const handleMicPointerMove = (e) => {
@@ -320,9 +319,9 @@ export default function MessageInput({
     const deltaY = e.clientY - pointerStartPosRef.current.y;
 
     if (deltaX < 0) {
-      const offset = Math.max(-140, deltaX);
+      const offset = Math.max(-120, deltaX);
       setDragOffset(offset);
-      if (deltaX < -65) {
+      if (deltaX < -50) {
         setIsCanceling(true);
         isCancelledRef.current = true;
       } else {
@@ -335,7 +334,7 @@ export default function MessageInput({
       isCancelledRef.current = false;
     }
 
-    if (deltaY < -55) {
+    if (deltaY < -45) {
       setIsLocked(true);
       isLockedRef.current = true;
       setDragOffset(0);
@@ -345,6 +344,11 @@ export default function MessageInput({
   };
 
   const handleMicPointerUp = (e) => {
+    if (e.pointerType === 'mouse') {
+      // Desktop mouse up: keep recording if locked
+      return;
+    }
+
     isPointerDownRef.current = false;
     isDraggingRef.current = false;
     try {
@@ -357,19 +361,18 @@ export default function MessageInput({
     }
 
     if (isLockedRef.current) {
-      // In hands-free mode, do not stop on pointer release
       return;
     }
 
     if (isInitializingMicRef.current) {
-      // Mic is still starting, let startRecording handle the release
       return;
     }
 
     const elapsed = Date.now() - (pressStartTimeRef.current || 0);
-    if (elapsed < 350) {
-      // Accidental short tap: cancel to prevent 0-sec recording
-      stopAndSendRecording(true);
+    if (elapsed < 300) {
+      // Short tap on mobile: switch to locked hands-free recording
+      setIsLocked(true);
+      isLockedRef.current = true;
       return;
     }
 
@@ -377,6 +380,7 @@ export default function MessageInput({
   };
 
   const handleMicPointerCancel = () => {
+    if (isLockedRef.current) return;
     isPointerDownRef.current = false;
     isDraggingRef.current = false;
     stopAndSendRecording(true);
@@ -956,14 +960,12 @@ export default function MessageInput({
               type="button"
               className={`wa-send-mic-btn ${isRecording ? 'recording' : ''} ${isCanceling ? 'canceling' : ''}`}
               disabled={!recipientId.trim()}
-              onPointerEnter={warmUpMic}
-              onFocus={warmUpMic}
               onPointerDown={handleMicPointerDown}
               onPointerMove={handleMicPointerMove}
               onPointerUp={handleMicPointerUp}
               onPointerCancel={handleMicPointerCancel}
-              onClick={isLocked ? () => stopAndSendRecording(false) : undefined}
-              title={isRecording ? (isLocked ? 'Send voice note' : 'Release to send, drag left to cancel') : 'Hold to record, release to send'}
+              onClick={isRecording && isLocked ? () => stopAndSendRecording(false) : undefined}
+              title={isRecording ? (isLocked ? 'Send voice note' : 'Release to send, drag left to cancel') : 'Click or hold to record voice note'}
             >
               {isLocked ? (
                 <i className="fa-solid fa-paper-plane"></i>
