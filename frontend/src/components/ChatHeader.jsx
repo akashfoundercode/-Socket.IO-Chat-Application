@@ -235,13 +235,16 @@ export default function ChatHeader({
                   >
                     <i className="fa-solid fa-circle-info"></i> Group info
                   </button>
-                ) : <button
-                  type="button"
-                  className="wa-menu-item"
-                  onClick={handleOpenRename}
-                >
-                  <i className="fa-solid fa-user-pen"></i> Edit contact name
-                </button>}
+                ) : (
+                  <button
+                    type="button"
+                    className="wa-menu-item"
+                    onClick={handleOpenRename}
+                  >
+                    <i className={`fa-solid ${customName ? 'fa-user-pen' : 'fa-user-plus'}`}></i>
+                    <span>{customName ? 'Edit contact name' : 'Add to contacts / Save'}</span>
+                  </button>
+                )}
 
                 {isGroup ? (
                   <button

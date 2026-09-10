@@ -456,14 +456,16 @@ const saveCustomContactName = async (userId, contactId, customName) => {
         return { userId: cleanUserId, contactId: cleanContactId, customName: "" };
     }
 
-    // Upsert contact while preserving original created_at timestamp
+    // Upsert contact while preserving original created_at timestamp across all phone variants
     for (const u of userVars) {
-        await pool.execute(
-            `INSERT INTO contacts (user_id, contact_id, custom_name, created_at, updated_at)
-             VALUES (?, ?, ?, NOW(), NOW())
-             ON DUPLICATE KEY UPDATE custom_name = VALUES(custom_name), updated_at = NOW()`,
-            [u, cleanContactId, nameToSave]
-        );
+        for (const c of contactVars) {
+            await pool.execute(
+                `INSERT INTO contacts (user_id, contact_id, custom_name, created_at, updated_at)
+                 VALUES (?, ?, ?, NOW(), NOW())
+                 ON DUPLICATE KEY UPDATE custom_name = VALUES(custom_name), updated_at = NOW()`,
+                [u, c, nameToSave]
+            );
+        }
     }
 
     return { userId: cleanUserId, contactId: cleanContactId, customName: nameToSave };
