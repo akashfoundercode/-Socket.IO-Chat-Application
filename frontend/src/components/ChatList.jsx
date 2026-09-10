@@ -563,7 +563,11 @@ export default function ChatList({
   // 2. Search Database by Phone Number
   useEffect(() => {
     const trimmed = searchQuery.trim();
-    if (!trimmed) {
+    const searchDigits = trimmed.replace(/\D/g, '');
+    const isPhoneQuery = trimmed.length > 0 && /^[+\d\s().-]+$/.test(trimmed);
+    const hasCompletePhone = searchDigits.length >= 10;
+
+    if (!trimmed || !isPhoneQuery || !hasCompletePhone) {
       setSearchResults([]);
       setIsSearchingDb(false);
       return;
@@ -833,10 +837,13 @@ export default function ChatList({
     const q = searchQuery.trim().toLowerCase();
     if (!q) return visibleConversations;
     const cleanQ = q.replace(/\D/g, '');
+    const isPhoneQuery = /^[+\d\s().-]+$/.test(q);
+    const hasCompletePhone = cleanQ.length >= 10;
     return visibleConversations.filter((c) => {
       const phone = String(c.fullPhone || c.phone || c.id || '').toLowerCase();
       const name = String(c.name || '').toLowerCase();
       const cleanPhone = phone.replace(/\D/g, '');
+      if (isPhoneQuery && !hasCompletePhone) return false;
       if (name.includes(q) || phone.includes(q)) return true;
       if (cleanQ && cleanPhone && (cleanPhone.includes(cleanQ) || cleanQ.includes(cleanPhone))) return true;
       return false;
@@ -844,6 +851,11 @@ export default function ChatList({
   }, [visibleConversations, searchQuery]);
 
   const newSearchResults = React.useMemo(() => {
+    const trimmed = searchQuery.trim();
+    const searchDigits = trimmed.replace(/\D/g, '');
+    const isCompletePhoneQuery = /^[+\d\s().-]+$/.test(trimmed) && searchDigits.length >= 10;
+    if (!isCompletePhoneQuery) return [];
+
     return searchResults.filter((user) => {
       const rawId = String(user.id || '').toLowerCase();
       const rawPhone = String(user.phone || '').toLowerCase();
@@ -856,7 +868,7 @@ export default function ChatList({
       if (clean && existingConversationKeys.has(clean)) return false;
       return true;
     });
-  }, [searchResults, existingConversationKeys]);
+  }, [searchResults, existingConversationKeys, searchQuery]);
 
   const formatConversationPreview = (item, draftText = '') => {
     if (draftText) return `Draft: ${draftText}`;
@@ -1118,7 +1130,7 @@ export default function ChatList({
             title="Scan Group QR"
             onClick={() => { setQrScanError(''); setShowQrScanner(true); }}
           >
-            <i className="fa-solid fa-qrcode"></i>
+            <i className="fa-solid fa-camera"></i>
           </button>
           <input ref={qrFileInputRef} type="file" accept="image/*" onChange={handleQrImageScan} hidden />
           <button
