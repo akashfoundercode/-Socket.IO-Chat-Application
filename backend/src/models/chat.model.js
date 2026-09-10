@@ -482,17 +482,19 @@ const listUserContacts = async (userId) => {
     const userVars = getPhoneVariants(cleanUserId);
     const placeholders = userVars.map(() => "?").join(",");
 
-    // Only return explicitly saved contacts (contacts table), exclude groups and self
+    // Read directly from contacts so a newly saved, unregistered number is not
+    // lost because of the users-table join or phone-format differences.
     const [rows] = await pool.execute(
         `SELECT
-            MAX(c.contact_id) AS id,
-            MAX(c.custom_name) AS customName,
-            COALESCE(MAX(u.name), MAX(c.custom_name), MAX(c.contact_id)) AS profileName,
-            COALESCE(MAX(u.full_phone), MAX(c.contact_id)) AS fullPhone,
-            MAX(u.phone) AS phone,
-            MAX(u.avatar) AS avatar,
-            MAX(u.about) AS about,
-            MAX(u.last_seen) AS lastSeen
+            c.contact_id AS id,
+            c.custom_name AS customName,
+            u.name AS profileName,
+            COALESCE(u.full_phone, c.contact_id) AS fullPhone,
+            u.phone AS phone,
+            u.avatar AS avatar,
+            u.about AS about,
+            u.last_seen AS lastSeen,
+            c.updated_at AS updatedAt
          FROM contacts c
          LEFT JOIN users u ON (
              u.full_phone = c.contact_id
@@ -503,23 +505,31 @@ const listUserContacts = async (userId) => {
          WHERE c.user_id IN (${placeholders})
            AND c.contact_id NOT IN (${placeholders})
            AND c.contact_id NOT LIKE 'group:%'
-         GROUP BY COALESCE(u.full_phone, c.contact_id)
-         ORDER BY customName ASC`,
+         ORDER BY c.updated_at DESC, c.id DESC`,
         [...userVars, ...userVars]
     );
 
-    return rows.map((r) => ({
-        id: r.fullPhone || r.id,
-        name: r.customName || r.profileName || r.fullPhone || r.id,
-        customName: r.customName || null,
-        profileName: r.profileName || null,
-        fullPhone: r.fullPhone || r.id,
-        phone: r.phone || '',
-        avatar: r.avatar || null,
-        about: r.about || 'Hey there! I am using WhatsApp.',
-        lastSeen: r.lastSeen || null,
-        isSaved: true
-    }));
+    const seen = new Set();
+    return rows.reduce((contacts, r) => {
+        const rawPhone = r.fullPhone || r.phone || r.id || '';
+        const digits = String(rawPhone).replace(/\D/g, '');
+        const key = digits || String(rawPhone).trim();
+        if (!key || seen.has(key)) return contacts;
+        seen.add(key);
+        contacts.push({
+            id: r.fullPhone || r.id,
+            name: r.customName || r.profileName || r.fullPhone || r.id,
+            customName: r.customName || null,
+            profileName: r.profileName || null,
+            fullPhone: r.fullPhone || r.id,
+            phone: r.phone || '',
+            avatar: r.avatar || null,
+            about: r.about || 'Hey there! I am using WhatsApp.',
+            lastSeen: r.lastSeen || null,
+            isSaved: true
+        });
+        return contacts;
+    }, []);
 };
 
 /**
