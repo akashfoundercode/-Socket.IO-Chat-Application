@@ -10920,3 +10920,28 @@ body {
     max-height: 126px;
   }
 }
+
+/* Keep the audience picker and send controls in the same flex flow. */
+.wa-composer-body {
+  min-height: 0;
+}
+
+.wa-status-audience-panel {
+  position: relative;
+  z-index: 45;
+  flex: 0 1 auto;
+  max-height: 238px;
+  overflow-y: auto;
+}
+
+.wa-composer-bottom-dock {
+  position: relative;
+  flex: 0 0 auto;
+  background: #05090b;
+}
+
+@media (max-width: 767px) {
+  .wa-status-audience-panel {
+    max-height: 220px;
+  }
+}
