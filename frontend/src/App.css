@@ -5959,148 +5959,426 @@ body {
   cursor: pointer;
 }
 
-/* ---- Status Composer ---- */
-.wa-status-composer {
-  width: 92%;
-  max-width: 420px;
-  max-height: 90vh;
-  background: #ffffff;
-  border-radius: 20px;
-  padding: 20px;
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.25);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  animation: frameAppear 0.2s ease-out;
-}
+/* =========================================================
+   WHATSAPP PREMIUM STATUS COMPOSER & CAMERA STUDIO
+   ========================================================= */
 
-.wa-status-type-tabs {
+.wa-composer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.94);
+  z-index: 2100;
   display: flex;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.wa-status-type-btn {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px 4px;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 10px;
-  background: #f9fafb;
-  color: #6b7280;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
+  justify-content: center;
+  animation: fadeIn 0.18s ease-out;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
-.wa-status-type-btn i {
-  font-size: 16px;
-}
-
-.wa-status-type-btn.active {
-  border-color: var(--wa-green-header);
-  background: var(--wa-soft-bg);
-  color: var(--wa-green-header);
-}
-
-.wa-status-preview-box {
+.wa-composer-card {
+  position: relative;
   width: 100%;
-  min-height: 140px;
-  border-radius: 12px;
+  max-width: 440px;
+  height: 94vh;
+  max-height: 840px;
+  background: #000000;
+  border-radius: 22px;
   overflow: hidden;
-  background: #111b21;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 14px;
-}
-
-.wa-status-text-preview {
-  width: 100%;
-  min-height: 140px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  font-size: 18px;
-  color: #ffffff;
-  text-align: center;
-  word-break: break-word;
-  line-height: 1.4;
-}
-
-.wa-status-composer-inputs {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  box-shadow: 0 25px 65px rgba(0, 0, 0, 0.75);
 }
 
-.wa-status-text-input {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1.5px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 14px;
-  outline: none;
-  resize: none;
-  font-family: inherit;
-  line-height: 1.4;
-  color: #111827;
+@media (max-width: 767px) {
+  .wa-composer-card {
+    max-width: 100%;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+  }
 }
 
-.wa-status-text-input:focus {
-  border-color: var(--wa-green-header);
-}
-
-.wa-status-bg-picker {
+/* ── Top Header / Action Bar ── */
+.wa-composer-top-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 16px 16px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 40;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, transparent 100%);
 }
 
-.wa-status-bg-swatch {
-  width: 28px;
-  height: 28px;
+.wa-composer-circle-btn {
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  border: 2.5px solid transparent;
-  cursor: pointer;
-  transition: transform 0.15s;
-}
-
-.wa-status-bg-swatch:hover {
-  transform: scale(1.15);
-}
-
-.wa-status-bg-swatch.selected {
-  border-color: #111827;
-  transform: scale(1.2);
-}
-
-.wa-status-font-picker {
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  font-size: 16px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.wa-status-font-btn {
-  padding: 5px 12px;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 20px;
-  background: #f9fafb;
-  color: #374151;
-  font-size: 12px;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  transition: all 0.15s;
+  backdrop-filter: blur(8px);
+  transition: all 0.15s ease;
 }
 
-.wa-status-font-btn.active {
-  border-color: var(--wa-green-header);
-  background: var(--wa-soft-bg);
-  color: var(--wa-green-header);
+.wa-composer-circle-btn:hover {
+  background: rgba(255, 255, 255, 0.32);
+  transform: scale(1.05);
+}
+
+.wa-composer-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wa-composer-pill-btn {
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: all 0.15s ease;
+}
+
+.wa-composer-pill-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
+  transform: scale(1.05);
+}
+
+/* ── Body Viewfinder ── */
+.wa-composer-body {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #0b141a;
+}
+
+.wa-composer-camera-viewfinder {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+
+.wa-composer-camera-feed {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.wa-composer-camera-feed.mirrored {
+  transform: scaleX(-1);
+}
+
+.wa-composer-camera-err-box {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  text-align: center;
+  color: #cbd5e1;
+  font-size: 14px;
+  background: #111b21;
+}
+
+.wa-composer-recording-badge {
+  position: absolute;
+  top: 70px;
+  background: rgba(220, 38, 38, 0.85);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  backdrop-filter: blur(4px);
+  animation: pulse 1.5s infinite;
+}
+
+.wa-composer-red-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+/* ── Text Canvas ── */
+.wa-composer-text-canvas {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px 100px;
+  transition: background 0.25s ease;
+  cursor: text;
+}
+
+.wa-composer-text-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #ffffff;
+  font-size: 28px;
+  text-align: center;
+  resize: none;
+  line-height: 1.4;
+  word-break: break-word;
+  min-height: 200px;
+}
+
+.wa-composer-text-input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ── Preview Container ── */
+.wa-composer-preview-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+
+.wa-composer-media-fit {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ── Bottom Dock Controls ── */
+.wa-composer-bottom-dock {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 16px 20px 24px;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.85) 0%, transparent 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  z-index: 40;
+}
+
+.wa-composer-camera-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+}
+
+.wa-composer-dock-icon-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  backdrop-filter: blur(8px);
+}
+
+.wa-composer-dock-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.08);
+}
+
+.wa-composer-shutter-btn {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: transparent;
+  border: 4.5px solid #ffffff;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.wa-composer-shutter-btn:hover {
+  transform: scale(1.06);
+}
+
+.wa-composer-shutter-btn:active {
+  transform: scale(0.92);
+}
+
+.wa-composer-shutter-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.wa-composer-record-btn {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: transparent;
+  border: 4.5px solid #ffffff;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.wa-composer-record-btn:hover {
+  transform: scale(1.06);
+}
+
+.wa-composer-record-btn:active {
+  transform: scale(0.92);
+}
+
+.wa-composer-record-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #ef4444;
+  transition: all 0.2s ease;
+}
+
+.wa-composer-record-btn.recording .wa-composer-record-inner {
+  width: 44%;
+  height: 44%;
+  border-radius: 6px;
+  background: #ef4444;
+}
+
+/* ── Mode Switcher Tabs ── */
+.wa-composer-mode-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 4px 0 0;
+}
+
+.wa-composer-tab {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  padding: 6px 10px;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.wa-composer-tab.active {
+  color: #25D366;
+  text-shadow: 0 0 12px rgba(37, 211, 102, 0.4);
+}
+
+.wa-composer-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #25D366;
+}
+
+/* ── Caption Bar & Send FAB ── */
+.wa-composer-caption-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(31, 44, 52, 0.95);
+  border-radius: 28px;
+  padding: 6px 8px 6px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+}
+
+.wa-composer-caption-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #ffffff;
+  font-size: 14.5px;
+}
+
+.wa-composer-caption-input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.wa-composer-text-dock {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.wa-composer-send-fab {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #25D366;
+  border: none;
+  color: #ffffff;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(37, 211, 102, 0.4);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.wa-composer-send-fab:hover:not(:disabled) {
+  background: #1ebe5d;
+  transform: scale(1.08);
+}
+
+.wa-composer-send-fab:disabled {
+  background: #475569;
+  cursor: not-allowed;
+  opacity: 0.65;
+  box-shadow: none;
 }
 
 @media (max-width: 767px) {

@@ -56,6 +56,12 @@ const saveMediaBase64 = async (mediaUrl, type = "media") => {
             else if (mimeType.includes("webp")) ext = "webp";
             else if (mimeType.includes("gif")) ext = "gif";
             else ext = "jpg";
+        } else if (mimeType.includes("video") || type === "video") {
+            subDir = "media";
+            if (mimeType.includes("mp4")) ext = "mp4";
+            else if (mimeType.includes("webm")) ext = "webm";
+            else if (mimeType.includes("ogg")) ext = "ogv";
+            else ext = "mp4";
         }
 
         const uploadDir = path.join(UPLOAD_ROOT, subDir);

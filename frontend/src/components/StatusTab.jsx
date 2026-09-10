@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { statusApi, resolveMediaUrl } from '../services/api';
 import { socket } from '../socket/socket';
 import Avatar from './Avatar';
+import StatusComposer from './StatusComposer';
 
 const BG_COLORS = [
   '#c2410c', '#ea580c', '#f97316', '#1a1a2e', '#16213e',
@@ -345,17 +346,6 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
   const [loading, setLoading] = useState(true);
   const [showComposer, setShowComposer] = useState(false);
   const [viewer, setViewer] = useState(null);
-  const [compType, setCompType] = useState('text');
-  const [compText, setCompText] = useState('');
-  const [compCaption, setCompCaption] = useState('');
-  const [compBg, setCompBg] = useState('#c2410c');
-  const [compFont, setCompFont] = useState('normal');
-  const [compLink, setCompLink] = useState('');
-  const [compImage, setCompImage] = useState(null);
-  const [compVideo, setCompVideo] = useState(null);
-  const [posting, setPosting] = useState(false);
-  const fileRef = useRef(null);
-  const videoRef = useRef(null);
 
   const load = async (showSpinner = true) => {
     if (!userId) return;
@@ -398,58 +388,6 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
 
   const recentUpdates = Object.entries(grouped).filter(([_, { statuses }]) => !statuses.every(s => s.isViewed));
   const viewedUpdates = Object.entries(grouped).filter(([_, { statuses }]) => statuses.every(s => s.isViewed));
-
-  const resetComposer = () => {
-    setCompText(''); setCompCaption(''); setCompLink('');
-    setCompImage(null); setCompVideo(null);
-    setCompType('text'); setCompBg('#c2410c'); setCompFont('normal');
-  };
-
-  const handlePost = async () => {
-    const content = compType === 'text' ? compText.trim()
-      : compType === 'link' ? compLink.trim()
-        : compType === 'image' ? compImage : compVideo;
-    if (!content) return;
-    setPosting(true);
-    try {
-      await statusApi.createStatus({ userId, type: compType, content, caption: compCaption.trim() || null, bgColor: compBg, fontStyle: compFont });
-      socket.emit('status_posted', { userId });
-      setShowComposer(false); resetComposer(); load();
-      const res = await statusApi.createStatus({ userId, type: compType, content, caption: compCaption.trim() || null, bgColor: compBg, fontStyle: compFont });
-      socket.emit('status_posted', { userId, status: res?.status });
-      setShowComposer(false);
-      resetComposer();
-      load(false);
-    } catch (_) { alert('Failed to post status'); }
-    finally { setPosting(false); }
-  };
-
-  const handleImageFile = (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const r = Math.min(800 / img.width, 800 / img.height, 1);
-        canvas.width = img.width * r; canvas.height = img.height * r;
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        setCompImage(canvas.toDataURL('image/jpeg', 0.82)); setCompType('image');
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file); e.target.value = '';
-  };
-
-  const handleVideoFile = (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith('video/')) return;
-    if (file.size > 10 * 1024 * 1024) { alert('Video must be under 10MB'); return; }
-    const reader = new FileReader();
-    reader.onload = ev => { setCompVideo(ev.target.result); setCompType('video'); };
-    reader.readAsDataURL(file); e.target.value = '';
-  };
 
   const handleDeleteMine = async (id) => {
     try {
@@ -577,118 +515,13 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
         />
       )}
 
-      {/* ── Composer ── */}
+      {/* ── Premium Status Composer & Studio ── */}
       {showComposer && (
-        <div className="wa-modal-overlay" onClick={() => { setShowComposer(false); resetComposer(); }}>
-          <div className="wa-status-composer" onClick={e => e.stopPropagation()}>
-            <div className="wa-modal-header">
-              <h3>Add Status</h3>
-              <button className="wa-modal-close" onClick={() => { setShowComposer(false); resetComposer(); }}>✕</button>
-            </div>
-
-            {/* type tabs */}
-            <div className="wa-status-type-tabs">
-              {[{ v: 'text', icon: 'fa-font', label: 'Text' }, { v: 'image', icon: 'fa-image', label: 'Image' }, { v: 'video', icon: 'fa-video', label: 'Video' }, { v: 'link', icon: 'fa-link', label: 'Link' }]
-                .map(({ v, icon, label }) => (
-                  <button key={v} className={`wa-status-type-btn ${compType === v ? 'active' : ''}`}
-                    onClick={() => { setCompType(v); setCompImage(null); setCompVideo(null); }}>
-                    <i className={`fa-solid ${icon}`}></i><span>{label}</span>
-                  </button>
-                ))}
-            </div>
-
-            {/* preview */}
-            <div className="wa-status-preview-box">
-              {compType === 'text' && (
-                <div className="wa-status-text-preview"
-                  style={{ background: compBg, fontFamily: FONT_MAP[compFont], fontWeight: compFont === 'bold' ? 700 : 400 }}>
-                  {compText || <span style={{ opacity: 0.4 }}>Your text here…</span>}
-                </div>
-              )}
-              {compType === 'image' && compImage && <img src={compImage} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 8 }} />}
-              {compType === 'video' && compVideo && <video src={compVideo} controls style={{ width: '100%', maxHeight: 200, borderRadius: 8 }} />}
-              {compType === 'link' && (
-                <div className="wa-status-text-preview" style={{ background: compBg, fontSize: 13, wordBreak: 'break-all' }}>
-                  {compLink || <span style={{ opacity: 0.4 }}>https://example.com</span>}
-                </div>
-              )}
-              {compType === 'image' && !compImage && (
-                <div style={{ color: '#9ca3af', textAlign: 'center', padding: 24 }}>
-                  <i className="fa-solid fa-image" style={{ fontSize: 36, display: 'block', marginBottom: 8 }}></i>Select an image
-                </div>
-              )}
-              {compType === 'video' && !compVideo && (
-                <div style={{ color: '#9ca3af', textAlign: 'center', padding: 24 }}>
-                  <i className="fa-solid fa-video" style={{ fontSize: 36, display: 'block', marginBottom: 8 }}></i>Select a video (max 10MB)
-                </div>
-              )}
-            </div>
-
-            {/* inputs */}
-            <div className="wa-status-composer-inputs">
-              {compType === 'text' && (
-                <textarea className="wa-status-text-input" placeholder="Type your status…"
-                  value={compText} onChange={e => setCompText(e.target.value)} maxLength={700} rows={3} />
-              )}
-              {compType === 'link' && (
-                <input type="url" className="wa-inline-input" placeholder="https://example.com"
-                  value={compLink} onChange={e => setCompLink(e.target.value)} style={{ marginBottom: 8 }} />
-              )}
-              {(compType === 'image' || compType === 'video' || compType === 'link') && (
-                <input type="text" className="wa-inline-input" placeholder="Caption (optional)"
-                  value={compCaption} onChange={e => setCompCaption(e.target.value)} maxLength={200} />
-              )}
-              {compType === 'image' && (
-                <><input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageFile} />
-                  <button className="wa-upload-photo-btn" style={{ marginTop: 8 }} onClick={() => fileRef.current?.click()}>
-                    <i className="fa-solid fa-cloud-arrow-up"></i> {compImage ? 'Change Image' : 'Upload Image'}
-                  </button></>
-              )}
-              {compType === 'video' && (
-                <><input ref={videoRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={handleVideoFile} />
-                  <button className="wa-upload-photo-btn" style={{ marginTop: 8 }} onClick={() => videoRef.current?.click()}>
-                    <i className="fa-solid fa-cloud-arrow-up"></i> {compVideo ? 'Change Video' : 'Upload Video'}
-                  </button></>
-              )}
-
-              {(compType === 'text' || compType === 'link') && (
-                <>
-                  <div className="wa-comp-section-label">BACKGROUND</div>
-                  <div className="wa-status-bg-picker">
-                    {BG_COLORS.map(c => (
-                      <button key={c} className={`wa-status-bg-swatch ${compBg === c ? 'selected' : ''}`}
-                        style={{ background: c }} onClick={() => setCompBg(c)} />
-                    ))}
-                  </div>
-                </>
-              )}
-              {compType === 'text' && (
-                <>
-                  <div className="wa-comp-section-label">FONT</div>
-                  <div className="wa-status-font-picker">
-                    {FONT_STYLES.map(({ value, label }) => (
-                      <button key={value} className={`wa-status-font-btn ${compFont === value ? 'active' : ''}`}
-                        style={{ fontFamily: FONT_MAP[value], fontWeight: value === 'bold' ? 700 : 400 }}
-                        onClick={() => setCompFont(value)}>{label}</button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
-            <button className="wa-auth-green-btn" style={{ width: '100%', maxWidth: '100%', margin: '14px 0 0' }}
-              disabled={posting
-                || (compType === 'text' && !compText.trim())
-                || (compType === 'link' && !compLink.trim())
-                || (compType === 'image' && !compImage)
-                || (compType === 'video' && !compVideo)}
-              onClick={handlePost}>
-              {posting
-                ? <><i className="fa-solid fa-circle-notch fa-spin"></i> Posting…</>
-                : <><i className="fa-solid fa-paper-plane"></i> Post Status</>}
-            </button>
-          </div>
-        </div>
+        <StatusComposer
+          userId={userId}
+          onClose={() => setShowComposer(false)}
+          onPosted={() => load(false)}
+        />
       )}
     </div>
   );
