@@ -631,7 +631,7 @@ export default function ChatList({
 
     setAddingContact(true);
     try {
-      const data = await chatApi.addContact(newCountryCode, cleanPhone, newName);
+      const data = await chatApi.addContact(newCountryCode, cleanPhone, newName, userId);
       const fullPhone = data.contact?.fullPhone || `${newCountryCode}${cleanPhone}`;
 
       setShowNewChatModal(false);

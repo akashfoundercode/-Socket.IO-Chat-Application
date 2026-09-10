@@ -5,7 +5,7 @@ const normalizeId = (value) => String(value || "").trim();
 const addContact = async (req, res) => {
     try {
         let { countryCode, phone, name, userId } = req.body;
-        const currentUserId = normalizeId(userId || req.query.userId);
+        const currentUserId = normalizeId(userId || req.query.userId || req.headers["x-user-id"]);
 
         if (!phone) {
             return res.status(400).json({ success: false, message: "Phone number is required" });

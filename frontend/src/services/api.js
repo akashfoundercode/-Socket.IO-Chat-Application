@@ -132,9 +132,19 @@ export const chatApi = {
    * POST /api/chat/contacts
    */
   addContact: (countryCode, phone, name = '', userId = '') => {
+    let effectiveUserId = userId;
+    if (!effectiveUserId && typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('wa_session');
+        if (saved) {
+          const user = JSON.parse(saved);
+          effectiveUserId = user.fullPhone || user.phone || user.id || '';
+        }
+      } catch (e) { }
+    }
     return request('/api/chat/contacts', {
       method: 'POST',
-      body: JSON.stringify({ countryCode, phone, name, userId })
+      body: JSON.stringify({ countryCode, phone, name, userId: effectiveUserId })
     });
   },
 
