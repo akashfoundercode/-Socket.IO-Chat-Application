@@ -5,6 +5,8 @@ const normalizeId = (value) => String(value || "").trim();
 const addContact = async (req, res) => {
     try {
         let { countryCode, phone, name } = req.body;
+        let { countryCode, phone, name, userId } = req.body;
+        const currentUserId = normalizeId(userId || req.query.userId);
 
         if (!phone) {
             return res.status(400).json({ success: false, message: "Phone number is required" });
@@ -31,13 +33,46 @@ const addContact = async (req, res) => {
             name: contactName
         });
 
+        if (currentUserId) {
+            await chatModel.saveCustomContactName(currentUserId, fullPhone, contactName);
+        }
+
         return res.status(200).json({
             success: true,
             message: "Contact added successfully",
             contact
+            contact: {
+                ...contact,
+                customName: contactName
+            }
         });
     } catch (error) {
         console.error("addContact error:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const getContacts = async (req, res) => {
+    try {
+        const userId = normalizeId(req.params.userId || req.query.userId || req.body.userId);
+        if (!userId) return res.status(400).json({ success: false, message: "userId is required" });
+        const contacts = await chatModel.listUserContacts(userId);
+        return res.json({ success: true, count: contacts.length, contacts });
+    } catch (error) {
+        console.error("getContacts error:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const deleteContact = async (req, res) => {
+    try {
+        const userId = normalizeId(req.body.userId || req.query.userId);
+        const contactId = normalizeId(req.params.contactId || req.body.contactId || req.query.contactId);
+        if (!userId || !contactId) return res.status(400).json({ success: false, message: "userId and contactId are required" });
+        await chatModel.deleteUserContact(userId, contactId);
+        return res.json({ success: true, message: "Contact deleted successfully" });
+    } catch (error) {
+        console.error("deleteContact error:", error);
         return res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -674,6 +709,8 @@ const markGroupSeen = async (req, res) => {
 
 module.exports = {
     addContact,
+    getContacts,
+    deleteContact,
     renameContact,
     searchUsers,
     getConversations,

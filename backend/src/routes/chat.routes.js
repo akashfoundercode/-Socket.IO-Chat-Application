@@ -5,6 +5,10 @@ const router = express.Router();
 
 router.post("/contacts", chatController.addContact);
 router.post("/add-contact", chatController.addContact);
+router.get("/contacts/:userId", chatController.getContacts);
+router.get("/contacts", chatController.getContacts);
+router.delete("/contacts/:contactId", chatController.deleteContact);
+router.delete("/contacts", chatController.deleteContact);
 router.put("/contacts/rename", chatController.renameContact);
 router.post("/contacts/rename", chatController.renameContact);
 router.put("/contacts/:contactId/rename", chatController.renameContact);

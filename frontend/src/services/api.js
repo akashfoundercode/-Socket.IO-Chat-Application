@@ -132,9 +132,30 @@ export const chatApi = {
    * POST /api/chat/contacts
    */
   addContact: (countryCode, phone, name = '') => {
+  addContact: (countryCode, phone, name = '', userId = '') => {
     return request('/api/chat/contacts', {
       method: 'POST',
       body: JSON.stringify({ countryCode, phone, name })
+      body: JSON.stringify({ countryCode, phone, name, userId })
+    });
+  },
+
+  /**
+   * Get saved contact book / contacts log for a user
+   * GET /api/chat/contacts/:userId
+   */
+  getContacts: (userId) => {
+    return request(`/api/chat/contacts/${encodeURIComponent(userId)}`);
+  },
+
+  /**
+   * Delete contact from saved contacts
+   * DELETE /api/chat/contacts/:contactId
+   */
+  deleteContact: (contactId, userId) => {
+    return request(`/api/chat/contacts/${encodeURIComponent(contactId)}?userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ userId, contactId })
     });
   },
 

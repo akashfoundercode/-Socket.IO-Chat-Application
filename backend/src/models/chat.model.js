@@ -464,6 +464,128 @@ const saveCustomContactName = async (userId, contactId, customName) => {
 };
 
 /**
+ * List all saved and interacted contacts for a specific user (Per-user private Contact Book / Log)
+ */
+const listUserContacts = async (userId) => {
+    const pool = getPool();
+    const cleanUserId = String(userId || "").trim();
+    if (!cleanUserId) return [];
+
+    const userVars = getPhoneVariants(cleanUserId);
+    const placeholders = userVars.map(() => "?").join(",");
+
+    const [rows] = await pool.execute(
+        `SELECT 
+            c_union.contact_id AS id,
+            COALESCE(
+                (
+                    SELECT c.custom_name FROM contacts c 
+                    WHERE c.user_id IN (${placeholders}) 
+                      AND (c.contact_id = c_union.contact_id OR c.contact_id = u.full_phone OR c.contact_id = u.phone OR c.contact_id = CAST(u.id AS CHAR))
+                    LIMIT 1
+                ),
+                u.name,
+                u.full_phone,
+                c_union.contact_id
+            ) AS name,
+            (
+                SELECT c.custom_name FROM contacts c 
+                WHERE c.user_id IN (${placeholders}) 
+                  AND (c.contact_id = c_union.contact_id OR c.contact_id = u.full_phone OR c.contact_id = u.phone OR c.contact_id = CAST(u.id AS CHAR))
+                LIMIT 1
+            ) AS customName,
+            u.name AS profileName,
+            COALESCE(u.full_phone, c_union.contact_id) AS fullPhone,
+            u.phone AS phone,
+            u.avatar AS avatar,
+            u.about AS about,
+            u.last_seen AS lastSeen,
+            EXISTS (
+                SELECT 1 FROM contacts c3 
+                WHERE c3.user_id IN (${placeholders}) 
+                  AND (c3.contact_id = c_union.contact_id OR c3.contact_id = u.full_phone OR c3.contact_id = u.phone OR c3.contact_id = CAST(u.id AS CHAR))
+            ) AS isSaved,
+            (
+                SELECT m.text FROM messages m 
+                WHERE ((m.sender_id IN (${placeholders}) AND (m.recipient_id = c_union.contact_id OR m.recipient_id = u.full_phone OR m.recipient_id = u.phone))
+                    OR (m.recipient_id IN (${placeholders}) AND (m.sender_id = c_union.contact_id OR m.sender_id = u.full_phone OR m.sender_id = u.phone)))
+                ORDER BY m.id DESC LIMIT 1
+            ) AS lastMessage,
+            (
+                SELECT m.created_at FROM messages m 
+                WHERE ((m.sender_id IN (${placeholders}) AND (m.recipient_id = c_union.contact_id OR m.recipient_id = u.full_phone OR m.recipient_id = u.phone))
+                    OR (m.recipient_id IN (${placeholders}) AND (m.sender_id = c_union.contact_id OR m.sender_id = u.full_phone OR m.sender_id = u.phone)))
+                ORDER BY m.id DESC LIMIT 1
+            ) AS lastMessageAt
+         FROM (
+            SELECT contact_id FROM contacts WHERE user_id IN (${placeholders})
+            UNION
+            SELECT DISTINCT 
+                CASE 
+                    WHEN sender_id IN (${placeholders}) THEN recipient_id 
+                    ELSE sender_id 
+                END AS contact_id
+            FROM messages
+            WHERE (sender_id IN (${placeholders}) OR recipient_id IN (${placeholders}))
+         ) AS c_union
+         LEFT JOIN users u ON (u.full_phone = c_union.contact_id OR u.phone = c_union.contact_id OR CAST(u.id AS CHAR) = c_union.contact_id OR c_union.contact_id LIKE CONCAT('%', u.phone))
+         WHERE c_union.contact_id NOT IN (${placeholders})
+         ORDER BY name ASC`,
+        [
+            ...userVars, // custom_name 1
+            ...userVars, // custom_name 2
+            ...userVars, // isSaved
+            ...userVars, // lastMessage sender
+            ...userVars, // lastMessage recipient
+            ...userVars, // lastMessageAt sender
+            ...userVars, // lastMessageAt recipient
+            ...userVars, // union contacts
+            ...userVars, // union messages sender
+            ...userVars, // union messages recipient
+            ...userVars  // NOT IN viewer
+        ]
+    );
+
+    return rows.map((r) => ({
+        id: r.id,
+        name: r.name || r.fullPhone || r.id,
+        customName: r.customName || null,
+        profileName: r.profileName || null,
+        fullPhone: r.fullPhone || r.id,
+        phone: r.phone || '',
+        avatar: r.avatar || null,
+        about: r.about || 'Hey there! I am using WhatsApp.',
+        lastSeen: r.lastSeen || null,
+        isSaved: Boolean(r.isSaved),
+        lastMessage: r.lastMessage || null,
+        lastMessageAt: r.lastMessageAt || null
+    }));
+};
+
+/**
+ * Delete contact from user's contacts table
+ */
+const deleteUserContact = async (userId, contactId) => {
+    const pool = getPool();
+    const cleanUserId = String(userId || "").trim();
+    const cleanContactId = String(contactId || "").trim();
+    if (!cleanUserId || !cleanContactId) return false;
+
+    const userVars = getPhoneVariants(cleanUserId);
+    const contactVars = getPhoneVariants(cleanContactId);
+
+    for (const u of userVars) {
+        for (const c of contactVars) {
+            await pool.execute(
+                "DELETE FROM contacts WHERE user_id = ? AND contact_id = ?",
+                [u, c]
+            );
+        }
+    }
+    return true;
+};
+
+/**
  * List active conversations for a user with per-user custom contact alias support (Guaranteed unique).
  */
 const listConversations = async (userId) => {
@@ -1736,8 +1858,10 @@ const getContactStatuses = async (userId) => {
                         SELECT c.custom_name FROM contacts c 
                         WHERE c.user_id IN (${placeholders}) 
                           AND (c.contact_id = s.user_id OR c.contact_id = u.full_phone OR c.contact_id = u.phone OR c.contact_id = CAST(u.id AS CHAR)) 
+                          AND (c.contact_id = s.user_id OR c.contact_id = u.full_phone OR c.contact_id = u.phone OR c.contact_id = CAST(u.id AS CHAR) OR c.contact_id LIKE CONCAT('%', u.phone)) 
                         LIMIT 1
                     ),
+                    u.name,
                     u.full_phone,
                     u.phone,
                     s.user_id
@@ -1752,8 +1876,46 @@ const getContactStatuses = async (userId) => {
          LEFT JOIN users u ON (u.full_phone = s.user_id OR u.phone = s.user_id OR CAST(u.id AS CHAR) = s.user_id OR s.user_id LIKE CONCAT('%', u.phone))
          WHERE s.expires_at > NOW()
            AND s.user_id NOT IN (${placeholders})
+           -- MUTUAL CONTACT REQUIREMENT:
+           -- 1. Viewer has saved Status Owner or has chatted with Status Owner
+           AND (
+               EXISTS (
+                   SELECT 1 FROM contacts c1 
+                   WHERE c1.user_id IN (${placeholders}) 
+                     AND (c1.contact_id = s.user_id OR c1.contact_id = u.full_phone OR c1.contact_id = u.phone OR c1.contact_id = CAST(u.id AS CHAR) OR c1.contact_id LIKE CONCAT('%', u.phone))
+               )
+               OR EXISTS (
+                   SELECT 1 FROM messages m1 
+                   WHERE (m1.sender_id IN (${placeholders}) AND (m1.recipient_id = s.user_id OR m1.recipient_id = u.full_phone OR m1.recipient_id = u.phone OR m1.recipient_id = CAST(u.id AS CHAR) OR m1.recipient_id LIKE CONCAT('%', u.phone)))
+                      OR (m1.recipient_id IN (${placeholders}) AND (m1.sender_id = s.user_id OR m1.sender_id = u.full_phone OR m1.sender_id = u.phone OR m1.sender_id = CAST(u.id AS CHAR) OR m1.sender_id LIKE CONCAT('%', u.phone)))
+               )
+           )
+           -- 2. Status Owner has saved Viewer or has chatted with Viewer
+           AND (
+               EXISTS (
+                   SELECT 1 FROM contacts c2 
+                   WHERE (c2.user_id = s.user_id OR c2.user_id = u.full_phone OR c2.user_id = u.phone OR c2.user_id = CAST(u.id AS CHAR) OR c2.user_id LIKE CONCAT('%', u.phone))
+                     AND c2.contact_id IN (${placeholders})
+               )
+               OR EXISTS (
+                   SELECT 1 FROM messages m2 
+                   WHERE (m2.sender_id IN (${placeholders}) AND (m2.recipient_id = s.user_id OR m2.recipient_id = u.full_phone OR m2.recipient_id = u.phone OR m2.recipient_id = CAST(u.id AS CHAR) OR m2.recipient_id LIKE CONCAT('%', u.phone)))
+                      OR (m2.recipient_id IN (${placeholders}) AND (m2.sender_id = s.user_id OR m2.sender_id = u.full_phone OR m2.sender_id = u.phone OR m2.sender_id = CAST(u.id AS CHAR) OR m2.sender_id LIKE CONCAT('%', u.phone)))
+               )
+           )
          ORDER BY s.user_id, s.id ASC`,
         [...userVars, ...userVars, ...userVars]
+        [
+            ...userVars, // display_name
+            ...userVars, // is_viewed
+            ...userVars, // NOT IN viewer
+            ...userVars, // c1.user_id
+            ...userVars, // m1.sender_id
+            ...userVars, // m1.recipient_id
+            ...userVars, // c2.contact_id
+            ...userVars, // m2.sender_id
+            ...userVars  // m2.recipient_id
+        ]
     );
     return rows.map((r) => ({
         ...mapStatus(r),
@@ -1794,6 +1956,7 @@ const getStatusViews = async (statusId, ownerId) => {
                 COALESCE(MAX(u.full_phone), sv.viewer_id) AS phone,
                 MAX(u.avatar) AS avatar,
                 COALESCE(MAX(c.custom_name), MAX(u.full_phone), sv.viewer_id) AS name,
+                COALESCE(MAX(c.custom_name), MAX(u.name), MAX(u.full_phone), sv.viewer_id) AS name,
                 MAX(sr.emoji) AS reaction
          FROM status_views sv
          LEFT JOIN users u ON (u.full_phone = sv.viewer_id OR u.phone = sv.viewer_id OR CAST(u.id AS CHAR) = sv.viewer_id)
@@ -1814,6 +1977,10 @@ const addStatusReaction = async (statusId, reactorId, emoji) => {
         `INSERT INTO status_reactions (status_id, reactor_id, emoji) VALUES (?, ?, ?)
          ON DUPLICATE KEY UPDATE emoji = VALUES(emoji), created_at = NOW()`,
         [Number(statusId), cleanReactor, String(emoji).trim()]
+        `INSERT INTO status_reactions (status_id, reactor_id, emoji) 
+         VALUES (?, ?, ?) 
+         ON DUPLICATE KEY UPDATE emoji = VALUES(emoji)`,
+        [Number(statusId), String(reactorId).trim(), String(emoji).trim()]
     );
     // Ensure reaction is also counted as a unique status view
     await recordStatusView(statusId, cleanReactor);
@@ -1822,6 +1989,7 @@ const addStatusReaction = async (statusId, reactorId, emoji) => {
 const addStatusReply = async (statusId, senderId, message) => {
     const pool = getPool();
     const [result] = await pool.execute(
+    await pool.execute(
         `INSERT INTO status_replies (status_id, sender_id, message) VALUES (?, ?, ?)`,
         [Number(statusId), String(senderId).trim(), String(message).trim()]
     );
@@ -1845,6 +2013,16 @@ module.exports = {
     getConversation,
     deleteConversation,
     createUser,
+    saveCustomContactName,
+    listUserContacts,
+    deleteUserContact,
+    listConversations,
+    getChatHistory,
+    saveMessage,
+    updateMessageStatus,
+    deleteMessageForMe,
+    deleteMessageForEveryone,
+    clearChatHistory,
     getUser,
     authenticateUser,
     updateUser,
@@ -1857,6 +2035,8 @@ module.exports = {
     deleteMessage,
     blockUser,
     unblockUser,
+    blockContact,
+    unblockContact,
     getBlockStatus,
     getBlockedUsers,
     getUnreadCount,

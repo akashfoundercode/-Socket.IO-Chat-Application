@@ -5,6 +5,7 @@ import StatusTab from './StatusTab';
 import QrScanner from 'qr-scanner';
 import Avatar from './Avatar';
 import MetaAiModal from './MetaAiModal';
+import ContactLogModal from './ContactLogModal';
 
 const COUNTRY_OPTIONS = [
   { code: '+91', name: 'India', flag: '🇮🇳', digits: 10 },
@@ -58,6 +59,7 @@ export default function ChatList({
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [qrScanError, setQrScanError] = useState('');
   const [showMetaAi, setShowMetaAi] = useState(false);
+  const [showContactLog, setShowContactLog] = useState(false);
 
   const confirmQrJoin = (scannedUrl) => {
     const url = new URL(scannedUrl);
@@ -1122,6 +1124,14 @@ export default function ChatList({
           <button
             type="button"
             className="wa-inbox-icon"
+            title="Contacts Log / Saved Contacts"
+            onClick={() => setShowContactLog(true)}
+          >
+            <i className="fa-solid fa-address-book"></i>
+          </button>
+          <button
+            type="button"
+            className="wa-inbox-icon"
             title="Search"
             onClick={() => {
               const el = document.getElementById('chat-search');
@@ -1174,6 +1184,16 @@ export default function ChatList({
                   }}
                 >
                   <i className="fa-solid fa-users"></i> New Group
+                </button>
+                <button
+                  type="button"
+                  className="wa-menu-item"
+                  onClick={() => {
+                    setShowMenu(false);
+                    setShowContactLog(true);
+                  }}
+                >
+                  <i className="fa-solid fa-address-book"></i> Contacts Log
                 </button>
                 <button
                   type="button"
@@ -1965,6 +1985,19 @@ export default function ChatList({
 
       {/* Floating Meta AI Button */}
       <div className="wa-floating-meta-ai-wrap">
+      {/* Floating Action Buttons Container (Contacts Log + Meta AI) */}
+      <div className="wa-floating-actions-stack">
+        {/* Floating Contacts / Contact Book Button */}
+        <button
+          type="button"
+          className="wa-floating-contacts-btn"
+          title="Contacts Log / Saved Contacts"
+          onClick={() => setShowContactLog(true)}
+        >
+          <i className="fa-solid fa-address-book"></i>
+        </button>
+
+        {/* Floating Meta AI Button */}
         <button
           type="button"
           className="wa-floating-meta-ai-btn"
@@ -1981,6 +2014,18 @@ export default function ChatList({
       <MetaAiModal
         isOpen={showMetaAi}
         onClose={() => setShowMetaAi(false)}
+        theme={theme}
+      />
+
+      {/* Contact Log / Saved Contacts Book Modal */}
+      <ContactLogModal
+        isOpen={showContactLog}
+        onClose={() => setShowContactLog(false)}
+        userId={userId}
+        currentUser={currentUser}
+        onlineUsers={onlineUsers}
+        onSelectChat={handleSelectUser}
+        onStartCall={onStartCall}
         theme={theme}
       />
     </div>
