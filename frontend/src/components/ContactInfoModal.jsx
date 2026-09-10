@@ -538,7 +538,86 @@ export default function ContactInfoModal({
                           </span>
                           <span>{member.role === 'admin' ? 'Admin' : 'Member'}</span>
                         </small>
+                {groupDetails?.members?.map((member) => {
+                  const memberPhone = member.fullPhone || member.userId;
+                  const hasCustomName = member.name && member.name.trim() !== '' && member.name !== memberPhone;
+                  const memberDisplayName = hasCustomName ? member.name : memberPhone;
+                  const isOnline = isMemberOnline(member);
+
+                  return (
+                    <div className="wa-group-info-member" key={member.userId}>
+                      <div className="wa-group-info-member-main">
+                        <Avatar
+                          src={member.avatar}
+                          name={memberDisplayName}
+                          size={42}
+                          showOnline={false}
+                        />
+                        <div className="wa-group-member-info-col">
+                          <div className="wa-group-member-name-row">
+                            <strong className="wa-group-member-name">{memberDisplayName}</strong>
+                            {isOnline && <span className="wa-group-online-dot" title="Online"></span>}
+                          </div>
+                          <div className="wa-group-member-meta">
+                            {hasCustomName && (
+                              <span className="wa-group-member-phone-sub">{memberPhone}</span>
+                            )}
+                            <span className={isOnline ? 'wa-group-member-online-text' : 'wa-group-member-offline-text'}>
+                              {isOnline ? 'Online' : 'Offline'}
+                            </span>
+                            <span className={`wa-group-member-role-badge ${member.role === 'admin' ? 'admin' : 'member'}`}>
+                              {member.role === 'admin' ? 'Admin' : 'Member'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
+                      {isGroupAdmin &&
+                        String(member.userId).replace(/^\+/, '') !== String(currentUserId).replace(/^\+/, '') &&
+                        String(member.userId).replace(/^\+/, '') !== String(groupDetails?.creatorId || '').replace(/^\+/, '') && (
+                          <div className="wa-group-member-action-btns">
+                            <button
+                              type="button"
+                              className="wa-group-role-btn"
+                              onClick={() => {
+                                const nextRole = member.role === 'admin' ? 'member' : 'admin';
+                                const isMake = nextRole === 'admin';
+                                setConfirmDialog({
+                                  title: isMake ? `Make ${memberDisplayName} admin?` : `Dismiss ${memberDisplayName} as admin?`,
+                                  message: isMake
+                                    ? `This member will be able to edit group info, add or remove members.`
+                                    : `This member will no longer have admin rights.`,
+                                  confirmText: isMake ? 'Make admin' : 'Dismiss admin',
+                                  confirmColor: isMake ? '#00a884' : '#ea4335',
+                                  onConfirm: async () => {
+                                    setConfirmDialog(null);
+                                    await onUpdateGroupMemberRole?.(recipientId, member.userId, nextRole);
+                                  }
+                                });
+                              }}
+                            >
+                              {member.role === 'admin' ? 'Remove admin' : 'Make admin'}
+                            </button>
+                            <button
+                              type="button"
+                              className="wa-group-remove-btn"
+                              onClick={() => {
+                                setConfirmDialog({
+                                  title: `Remove ${memberDisplayName}?`,
+                                  message: `Remove ${memberDisplayName} from "${displayName}"? They will no longer be able to send or view messages.`,
+                                  confirmText: 'Remove',
+                                  confirmColor: '#ea4335',
+                                  onConfirm: async () => {
+                                    setConfirmDialog(null);
+                                    await onRemoveGroupMember?.(recipientId, member.userId);
+                                  }
+                                });
+                              }}
+                              title="Remove member"
+                            >
+                              <i className="fa-solid fa-user-xmark"></i> Remove
+                            </button>
+                          </div>
+                        )}
                     </div>
                     {isGroupAdmin &&
                       String(member.userId).replace(/^\+/, '') !== String(currentUserId).replace(/^\+/, '') &&
@@ -591,6 +670,8 @@ export default function ContactInfoModal({
                       )}
                   </div>
                 ))}
+                  );
+                })}
               </div>
 
               {/* Exit / Leave Group Section */}
