@@ -498,7 +498,7 @@ const listUserContacts = async (userId) => {
              u.full_phone = c.contact_id
              OR u.phone = c.contact_id
              OR CAST(u.id AS CHAR) = c.contact_id
-             OR c.contact_id LIKE CONCAT('%', u.phone)
+             OR (u.phone IS NOT NULL AND LENGTH(u.phone) >= 6 AND c.contact_id LIKE CONCAT('%', u.phone))
          )
          WHERE c.user_id IN (${placeholders})
            AND c.contact_id NOT IN (${placeholders})

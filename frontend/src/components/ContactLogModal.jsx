@@ -28,7 +28,7 @@ export default function ContactLogModal({
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Add Contact Form State
   const [showAddForm, setShowAddForm] = useState(false);
   const [newPhone, setNewPhone] = useState('');
@@ -190,7 +190,7 @@ export default function ContactLogModal({
   return (
     <div className="wa-contact-log-overlay" onClick={onClose}>
       <div className="wa-contact-log-modal" onClick={(e) => e.stopPropagation()}>
-        
+
         {/* Header */}
         <div className="wa-contact-log-header">
           <div className="wa-contact-log-header-left">
@@ -425,7 +425,7 @@ export default function ContactLogModal({
                       )}
 
                       <div className="wa-contact-phone-row">
-                        <span className="wa-contact-phone">{contact.fullPhone || contact.id}</span>
+                        <span className="wa-contact-phone">{contact.fullPhone || contact.phone || contact.id}</span>
                         {online ? (
                           <span className="wa-contact-status-online">Online</span>
                         ) : contact.lastSeen ? (
