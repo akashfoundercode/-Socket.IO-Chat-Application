@@ -7425,6 +7425,13 @@ body {
   text-transform: capitalize;
 }
 
+.wa-group-member-role-badge.creator {
+  background: var(--wa-header-gradient, var(--wa-green-header, #008069));
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
 .wa-group-member-role-badge.admin {
   background: var(--wa-soft-bg, #f0fdf4);
   color: var(--wa-green-dark, var(--theme-primary, #008069));

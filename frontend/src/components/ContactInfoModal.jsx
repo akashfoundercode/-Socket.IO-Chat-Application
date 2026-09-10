@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { chatApi } from '../services/api';
 import QRCode from 'qrcode';
 import Avatar from './Avatar';
@@ -114,6 +114,35 @@ export default function ContactInfoModal({
     const variants = [id, id.startsWith('+') ? id.slice(1) : `+${id}`, id.replace(/^\+/, '')];
     return variants.some((variant) => onlineUsers?.has(variant));
   };
+
+  const sortedMembers = useMemo(() => {
+    if (!groupDetails?.members || !Array.isArray(groupDetails.members)) return [];
+    const creator = String(groupDetails.creatorId || '').replace(/^\+/, '');
+
+    return [...groupDetails.members].sort((a, b) => {
+      const aId = String(a.userId || a.fullPhone || '').replace(/^\+/, '');
+      const bId = String(b.userId || b.fullPhone || '').replace(/^\+/, '');
+
+      const aIsCreator = creator && (aId === creator || a.role === 'super_admin');
+      const bIsCreator = creator && (bId === creator || b.role === 'super_admin');
+
+      // 1. Group Creator (Main Admin) on top
+      if (aIsCreator && !bIsCreator) return -1;
+      if (!aIsCreator && bIsCreator) return 1;
+
+      // 2. Co-Admins next
+      const aIsAdmin = a.role === 'admin';
+      const bIsAdmin = b.role === 'admin';
+
+      if (aIsAdmin && !bIsAdmin) return -1;
+      if (!aIsAdmin && bIsAdmin) return 1;
+
+      // 3. Regular members alphabetical
+      const aName = (a.name || a.fullPhone || a.userId || '').toLowerCase();
+      const bName = (b.name || b.fullPhone || b.userId || '').toLowerCase();
+      return aName.localeCompare(bName);
+    });
+  }, [groupDetails?.members, groupDetails?.creatorId]);
 
   const handleStartEdit = () => {
     setNameInput(isGroup ? (groupDetails?.name || '') : (customName || ''));
@@ -516,33 +545,16 @@ export default function ContactInfoModal({
               )}
 
               <div className="wa-group-info-section">
-                <div className="wa-group-info-section-title">Members</div>
-                {groupDetails?.members?.map((member) => (
-                  <div className="wa-group-info-member" key={member.userId}>
-                    <div className="wa-group-info-member-main">
-                      <Avatar
-                        src={member.avatar}
-                        name={member.name || member.fullPhone || member.userId}
-                        size={40}
-                        showOnline={false}
-                      />
-                      <div>
-                        <strong className="wa-group-member-name-line">
-                          {member.name || member.fullPhone || member.userId}
-                          {isMemberOnline(member) && <span className="wa-group-online-dot" title="Online"></span>}
-                        </strong>
-                        <small className="wa-group-member-meta">
-                          <span>{member.fullPhone || member.userId}</span>
-                          <span className={isMemberOnline(member) ? 'wa-group-member-online-text' : 'wa-group-member-offline-text'}>
-                            {isMemberOnline(member) ? 'Online' : 'Offline'}
-                          </span>
-                          <span>{member.role === 'admin' ? 'Admin' : 'Member'}</span>
-                        </small>
-                {groupDetails?.members?.map((member) => {
+                <div className="wa-group-info-section-title">Members ({sortedMembers.length})</div>
+                {sortedMembers.map((member) => {
                   const memberPhone = member.fullPhone || member.userId;
                   const hasCustomName = member.name && member.name.trim() !== '' && member.name !== memberPhone;
                   const memberDisplayName = hasCustomName ? member.name : memberPhone;
                   const isOnline = isMemberOnline(member);
+                  const cleanMemberId = String(member.userId || member.fullPhone || '').replace(/^\+/, '');
+                  const cleanCreatorId = String(groupDetails?.creatorId || '').replace(/^\+/, '');
+                  const isCreator = cleanCreatorId && cleanMemberId === cleanCreatorId;
+                  const isMe = String(currentUserId || '').replace(/^\+/, '') === cleanMemberId;
 
                   return (
                     <div className="wa-group-info-member" key={member.userId}>
@@ -555,7 +567,9 @@ export default function ContactInfoModal({
                         />
                         <div className="wa-group-member-info-col">
                           <div className="wa-group-member-name-row">
-                            <strong className="wa-group-member-name">{memberDisplayName}</strong>
+                            <strong className="wa-group-member-name">
+                              {memberDisplayName} {isMe && <span style={{ color: '#667781', fontWeight: 'normal', fontSize: '11.5px' }}>(You)</span>}
+                            </strong>
                             {isOnline && <span className="wa-group-online-dot" title="Online"></span>}
                           </div>
                           <div className="wa-group-member-meta">
@@ -565,71 +579,20 @@ export default function ContactInfoModal({
                             <span className={isOnline ? 'wa-group-member-online-text' : 'wa-group-member-offline-text'}>
                               {isOnline ? 'Online' : 'Offline'}
                             </span>
-                            <span className={`wa-group-member-role-badge ${member.role === 'admin' ? 'admin' : 'member'}`}>
-                              {member.role === 'admin' ? 'Admin' : 'Member'}
+                            <span className={`wa-group-member-role-badge ${isCreator ? 'creator' : member.role === 'admin' ? 'admin' : 'member'}`}>
+                              {isCreator ? 'Group Creator' : member.role === 'admin' ? 'Admin' : 'Member'}
                             </span>
                           </div>
                         </div>
                       </div>
-                      {isGroupAdmin &&
-                        String(member.userId).replace(/^\+/, '') !== String(currentUserId).replace(/^\+/, '') &&
-                        String(member.userId).replace(/^\+/, '') !== String(groupDetails?.creatorId || '').replace(/^\+/, '') && (
-                          <div className="wa-group-member-action-btns">
-                            <button
-                              type="button"
-                              className="wa-group-role-btn"
-                              onClick={() => {
-                                const nextRole = member.role === 'admin' ? 'member' : 'admin';
-                                const isMake = nextRole === 'admin';
-                                setConfirmDialog({
-                                  title: isMake ? `Make ${memberDisplayName} admin?` : `Dismiss ${memberDisplayName} as admin?`,
-                                  message: isMake
-                                    ? `This member will be able to edit group info, add or remove members.`
-                                    : `This member will no longer have admin rights.`,
-                                  confirmText: isMake ? 'Make admin' : 'Dismiss admin',
-                                  confirmColor: isMake ? '#00a884' : '#ea4335',
-                                  onConfirm: async () => {
-                                    setConfirmDialog(null);
-                                    await onUpdateGroupMemberRole?.(recipientId, member.userId, nextRole);
-                                  }
-                                });
-                              }}
-                            >
-                              {member.role === 'admin' ? 'Remove admin' : 'Make admin'}
-                            </button>
-                            <button
-                              type="button"
-                              className="wa-group-remove-btn"
-                              onClick={() => {
-                                setConfirmDialog({
-                                  title: `Remove ${memberDisplayName}?`,
-                                  message: `Remove ${memberDisplayName} from "${displayName}"? They will no longer be able to send or view messages.`,
-                                  confirmText: 'Remove',
-                                  confirmColor: '#ea4335',
-                                  onConfirm: async () => {
-                                    setConfirmDialog(null);
-                                    await onRemoveGroupMember?.(recipientId, member.userId);
-                                  }
-                                });
-                              }}
-                              title="Remove member"
-                            >
-                              <i className="fa-solid fa-user-xmark"></i> Remove
-                            </button>
-                          </div>
-                        )}
-                    </div>
-                    {isGroupAdmin &&
-                      String(member.userId).replace(/^\+/, '') !== String(currentUserId).replace(/^\+/, '') &&
-                      String(member.userId).replace(/^\+/, '') !== String(groupDetails?.creatorId || '').replace(/^\+/, '') && (
-                        <div className="wa-group-member-action-btns" style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      {isGroupAdmin && !isMe && !isCreator && (
+                        <div className="wa-group-member-action-btns">
                           <button
                             type="button"
                             className="wa-group-role-btn"
                             onClick={() => {
                               const nextRole = member.role === 'admin' ? 'member' : 'admin';
                               const isMake = nextRole === 'admin';
-                              const memberDisplayName = member.name || member.fullPhone || member.userId;
                               setConfirmDialog({
                                 title: isMake ? `Make ${memberDisplayName} admin?` : `Dismiss ${memberDisplayName} as admin?`,
                                 message: isMake
@@ -650,7 +613,6 @@ export default function ContactInfoModal({
                             type="button"
                             className="wa-group-remove-btn"
                             onClick={() => {
-                              const memberDisplayName = member.name || member.fullPhone || member.userId;
                               setConfirmDialog({
                                 title: `Remove ${memberDisplayName}?`,
                                 message: `Remove ${memberDisplayName} from "${displayName}"? They will no longer be able to send or view messages.`,
@@ -668,8 +630,7 @@ export default function ContactInfoModal({
                           </button>
                         </div>
                       )}
-                  </div>
-                ))}
+                    </div>
                   );
                 })}
               </div>

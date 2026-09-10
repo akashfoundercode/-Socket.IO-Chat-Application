@@ -1104,11 +1104,22 @@ const getGroup = async (groupId, viewerId = null) => {
     );
     if (!rows[0]) return null;
     if (viewerId && !(await isGroupMember(groupId, viewerId))) return null;
+    const creatorId = String(rows[0].creatorId || "").trim();
+    const creatorVars = getPhoneVariants(creatorId);
+    const creatorPlaceholders = creatorVars.map(() => "?").join(",");
+
     const [members] = await getPool().execute(
-        `SELECT gm.user_id AS userId, gm.role, u.name, u.full_phone AS fullPhone, u.avatar
-         FROM group_members gm LEFT JOIN users u ON (u.full_phone = gm.user_id OR u.phone = gm.user_id OR CAST(u.id AS CHAR) = gm.user_id)
-         WHERE gm.group_id = ? ORDER BY gm.role DESC, gm.joined_at ASC`,
-        [cleanId]
+        `SELECT gm.user_id AS userId, gm.role, u.name, u.full_phone AS fullPhone, u.avatar,
+                CASE 
+                    WHEN gm.user_id IN (${creatorPlaceholders}) OR u.full_phone IN (${creatorPlaceholders}) OR u.phone IN (${creatorPlaceholders}) THEN 1
+                    WHEN gm.role = 'admin' THEN 2
+                    ELSE 3
+                END AS sortRank
+         FROM group_members gm 
+         LEFT JOIN users u ON (u.full_phone = gm.user_id OR u.phone = gm.user_id OR CAST(u.id AS CHAR) = gm.user_id)
+         WHERE gm.group_id = ? 
+         ORDER BY sortRank ASC, gm.joined_at ASC, COALESCE(u.name, gm.user_id) ASC`,
+        [...creatorVars, ...creatorVars, ...creatorVars, cleanId]
     );
     return { ...rows[0], id: String(rows[0].id), memberCount: Number(rows[0].memberCount), members };
 };
