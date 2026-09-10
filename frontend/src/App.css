@@ -7267,18 +7267,10 @@ body {
 }
 
 .wa-group-member-online-text {
-  color: var(--wa-green-dark) !important;
+  color: var(--wa-green, var(--theme-primary, #00a884)) !important;
+  background: transparent !important;
+  background-color: transparent !important;
   font-weight: 600;
-}
-
-.wa-group-info-member:has(.wa-group-online-dot) {
-  background: var(--wa-accent-light);
-  border-color: var(--wa-accent-border);
-}
-
-.wa-group-info-member:has(.wa-group-online-dot) .wa-group-info-member-avatar {
-  background: linear-gradient(135deg, var(--wa-green-header), var(--wa-green));
-  color: #ffffff;
 }
 
 .wa-group-member-meta {
@@ -7477,9 +7469,7 @@ body {
   background: var(--wa-green-dark);
 }
 
-.wa-group-member-online-text,
 .wa-group-online-dot {
-  color: var(--wa-green-header) !important;
   background-color: var(--wa-online, var(--wa-green));
 }
 
