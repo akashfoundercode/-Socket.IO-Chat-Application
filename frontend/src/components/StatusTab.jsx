@@ -107,7 +107,13 @@ function ViewersPanel({ statusId, ownerId, onClose }) {
 
 /* ── Full-screen Status Viewer ── */
 function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId, onClose, onReply, onStatusViewed }) {
-  const [idx, setIdx] = useState(0);
+  const initialIndex = (() => {
+    if (isOwn) return 0;
+    const firstUnviewed = statuses.findIndex(s => !s.isViewed);
+    return firstUnviewed !== -1 ? firstUnviewed : 0;
+  })();
+
+  const [idx, setIdx] = useState(initialIndex);
   const [progress, setProgress] = useState(0);
   const [showReactions, setShowReactions] = useState(false);
   const [showViewers, setShowViewers] = useState(false);
