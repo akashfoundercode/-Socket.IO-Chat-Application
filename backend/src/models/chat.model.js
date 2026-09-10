@@ -1609,23 +1609,30 @@ const getCallLogs = async (userId) => {
 const deleteCallLog = async (callId, userId) => {
     const pool = getPool();
     const cleanId = Number(callId);
-    const cleanUserId = String(userId || "").trim();
     if (!cleanId) return false;
 
-    const userVars = getPhoneVariants(cleanUserId);
-    const placeholders = userVars.map(() => "?").join(",");
-
-    await pool.execute(
-        `DELETE FROM call_logs 
-         WHERE id = ? AND (caller_id IN (${placeholders}) OR receiver_id IN (${placeholders}))`,
-        [cleanId, ...userVars, ...userVars]
-    );
-
+    // Delete directly by id to guarantee complete removal
+    await pool.execute(`DELETE FROM call_logs WHERE id = ?`, [cleanId]);
     return true;
 };
 
 /**
- * 12. Clear all call logs for a user
+ * 12. Batch delete multiple call logs by IDs
+ */
+const deleteCallLogs = async (callIds, userId) => {
+    const pool = getPool();
+    if (!Array.isArray(callIds) || callIds.length === 0) return false;
+
+    const validIds = callIds.map((id) => Number(id)).filter((id) => !isNaN(id) && id > 0);
+    if (validIds.length === 0) return false;
+
+    const placeholders = validIds.map(() => "?").join(",");
+    await pool.execute(`DELETE FROM call_logs WHERE id IN (${placeholders})`, validIds);
+    return true;
+};
+
+/**
+ * 13. Clear all call logs for a user
  */
 const clearCallLogs = async (userId) => {
     const pool = getPool();
@@ -1635,11 +1642,23 @@ const clearCallLogs = async (userId) => {
     const userVars = getPhoneVariants(cleanUserId);
     const placeholders = userVars.map(() => "?").join(",");
 
-    await pool.execute(
-        `DELETE FROM call_logs 
-         WHERE caller_id IN (${placeholders}) OR receiver_id IN (${placeholders})`,
-        [...userVars, ...userVars]
-    );
+    try {
+        await pool.execute(
+            `DELETE FROM call_logs 
+             WHERE caller_id IN (${placeholders}) 
+                OR receiver_id IN (${placeholders})
+                OR (group_id IS NOT NULL AND group_id IN (
+                    SELECT group_id FROM group_members WHERE user_id IN (${placeholders})
+                ))`,
+            [...userVars, ...userVars, ...userVars]
+        );
+    } catch (err) {
+        // Fallback: delete direct matches
+        await pool.execute(
+            `DELETE FROM call_logs WHERE caller_id IN (${placeholders}) OR receiver_id IN (${placeholders})`,
+            [...userVars, ...userVars]
+        );
+    }
 
     return true;
 };

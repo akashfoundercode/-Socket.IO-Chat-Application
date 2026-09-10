@@ -6924,12 +6924,27 @@ body {
 
 .wa-group-role-btn {
   border: 1px solid #bbf7d0;
+  border: 1px solid var(--wa-accent-border, #bbf7d0);
   border-radius: 6px;
   background: var(--wa-soft-bg);
   color: var(--wa-green-dark);
   padding: 5px 8px;
+  background: var(--wa-soft-bg, #f0fdf4);
+  color: var(--wa-green-dark, var(--wa-green-header, #15803d));
+  padding: 5px 9px;
   font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wa-group-role-btn:hover:not(:disabled) {
+  background: var(--wa-green-header, var(--wa-green, #008069)) !important;
+  color: #ffffff !important;
+  border-color: var(--wa-green-header, var(--wa-green, #008069)) !important;
 }
 
 .wa-group-role-btn:disabled {
@@ -7413,6 +7428,7 @@ body {
 .wa-group-role-btn:hover,
 .wa-group-member-result:hover,
 .wa-group-contact-result:hover {
+.wa-group-avatar-edit {
   background-color: var(--wa-green-header);
 }
 
@@ -7424,6 +7440,7 @@ body {
 .wa-group-info-member-avatar,
 .wa-contact-phone-sub,
 .wa-group-role-btn {
+.wa-contact-phone-sub {
   color: var(--wa-green-header);
 }
 
@@ -7456,6 +7473,7 @@ body {
 .wa-contact-card-edit-btn:hover,
 .wa-group-member-result:hover,
 .wa-group-contact-result:hover {
+.wa-contact-card-edit-btn:hover {
   color: var(--wa-green-dark);
 }
 
