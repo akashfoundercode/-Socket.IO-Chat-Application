@@ -440,28 +440,36 @@ body {
 .wa-auth-green-btn {
   width: 100%;
   max-width: 240px;
-  background: var(--theme-primary);
-  color: var(--theme-primary-text);
+  background: var(--wa-green, #008069);
+  color: #ffffff !important;
   border: none;
   border-radius: 24px;
   padding: 12px 24px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   margin-bottom: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.2;
 }
 
 .wa-auth-green-btn:hover:not(:disabled) {
-  background: var(--theme-primary-hover);
+  background: var(--wa-green-dark, #006653);
+  color: #ffffff !important;
   transform: translateY(-1px);
 }
 
 .wa-auth-green-btn:disabled {
-  background: #d1d5db;
+  background: #d1d5db !important;
+  color: #6b7280 !important;
   box-shadow: none;
   cursor: not-allowed;
+  transform: none;
 }
 
 .wa-auth-green-btn.done-btn {
@@ -7407,7 +7415,6 @@ body {
 .wa-chat-header,
 .wa-profile-header,
 .wa-tabs-bar,
-.wa-auth-green-btn,
 .wa-send-mic-btn,
 .wa-contact-action-btn,
 .wa-group-avatar-edit,
@@ -7434,7 +7441,6 @@ body {
 .wa-group-contact-avatar,
 .wa-group-info-member-avatar,
 .wa-contact-phone-sub,
-.wa-auth-green-btn,
 .wa-group-role-btn {
   color: var(--wa-green-header);
   color: #ea580c;
