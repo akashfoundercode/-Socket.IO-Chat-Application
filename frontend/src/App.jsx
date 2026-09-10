@@ -283,6 +283,17 @@ export default function App() {
 
   const userId = currentUser ? (currentUser.fullPhone || currentUser.id) : '';
 
+  // Warn user before closing/refreshing tab
+  useEffect(() => {
+    if (!userId) return;
+    const handler = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [userId]);
+
   // Cleanup helper for Agora Calling
   const cleanupCall = useCallback(() => {
     isEndingCallRef.current = false;
