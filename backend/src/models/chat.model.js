@@ -438,26 +438,26 @@ const saveCustomContactName = async (userId, contactId, customName) => {
 
     const userVars = getPhoneVariants(cleanUserId);
     const contactVars = getPhoneVariants(cleanContactId);
+    const cPlaceholders = contactVars.map(() => "?").join(",");
 
-    // Delete existing custom alias for all variations to prevent multiple rows
-    for (const u of userVars) {
-        for (const c of contactVars) {
-            await pool.execute(
-                "DELETE FROM contacts WHERE user_id = ? AND contact_id = ?",
-                [u, c]
-            );
-        }
-    }
-
-    if (nameToSave) {
+    if (!nameToSave) {
         for (const u of userVars) {
             await pool.execute(
-                `INSERT INTO contacts (user_id, contact_id, custom_name)
-                 VALUES (?, ?, ?)
-                 ON DUPLICATE KEY UPDATE custom_name = VALUES(custom_name)`,
-                [u, cleanContactId, nameToSave]
+                `DELETE FROM contacts WHERE user_id = ? AND contact_id IN (${cPlaceholders})`,
+                [u, ...contactVars]
             );
         }
+        return { userId: cleanUserId, contactId: cleanContactId, customName: "" };
+    }
+
+    // Upsert contact while preserving original created_at timestamp
+    for (const u of userVars) {
+        await pool.execute(
+            `INSERT INTO contacts (user_id, contact_id, custom_name, created_at, updated_at)
+             VALUES (?, ?, ?, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE custom_name = VALUES(custom_name), updated_at = NOW()`,
+            [u, cleanContactId, nameToSave]
+        );
     }
 
     return { userId: cleanUserId, contactId: cleanContactId, customName: nameToSave };
@@ -1853,19 +1853,7 @@ const getContactStatuses = async (userId) => {
 
     const [rows] = await pool.execute(
         `SELECT s.*, 
-                COALESCE(
-                    (
-                        SELECT c.custom_name FROM contacts c 
-                        WHERE c.user_id IN (${placeholders}) 
-                          AND (c.contact_id = s.user_id OR c.contact_id = u.full_phone OR c.contact_id = u.phone OR c.contact_id = CAST(u.id AS CHAR)) 
-                          AND (c.contact_id = s.user_id OR c.contact_id = u.full_phone OR c.contact_id = u.phone OR c.contact_id = CAST(u.id AS CHAR) OR c.contact_id LIKE CONCAT('%', u.phone)) 
-                        LIMIT 1
-                    ),
-                    u.name,
-                    u.full_phone,
-                    u.phone,
-                    s.user_id
-                ) AS display_name,
+                COALESCE(c1.custom_name, u.name, u.full_phone, u.phone, s.user_id) AS display_name,
                 u.name AS profile_name,
                 u.full_phone AS fullPhone,
                 u.avatar,
@@ -1874,46 +1862,27 @@ const getContactStatuses = async (userId) => {
                 EXISTS(SELECT 1 FROM status_views sv WHERE sv.status_id = s.id AND sv.viewer_id IN (${placeholders})) AS is_viewed
          FROM user_statuses s
          LEFT JOIN users u ON (u.full_phone = s.user_id OR u.phone = s.user_id OR CAST(u.id AS CHAR) = s.user_id OR s.user_id LIKE CONCAT('%', u.phone))
+         -- 1. Must be explicitly saved by Viewer (User A saved User B)
+         INNER JOIN contacts c1 ON (
+             c1.user_id IN (${placeholders})
+             AND (c1.contact_id = s.user_id OR c1.contact_id = u.full_phone OR c1.contact_id = u.phone OR c1.contact_id = CAST(u.id AS CHAR) OR c1.contact_id LIKE CONCAT('%', u.phone))
+         )
+         -- 2. Must be explicitly saved by Status Owner (User B saved User A)
+         INNER JOIN contacts c2 ON (
+             (c2.user_id = s.user_id OR c2.user_id = u.full_phone OR c2.user_id = u.phone OR c2.user_id = CAST(u.id AS CHAR) OR c2.user_id LIKE CONCAT('%', u.phone))
+             AND c2.contact_id IN (${placeholders})
+         )
          WHERE s.expires_at > NOW()
            AND s.user_id NOT IN (${placeholders})
-           -- MUTUAL CONTACT REQUIREMENT:
-           -- 1. Viewer has saved Status Owner or has chatted with Status Owner
-           AND (
-               EXISTS (
-                   SELECT 1 FROM contacts c1 
-                   WHERE c1.user_id IN (${placeholders}) 
-                     AND (c1.contact_id = s.user_id OR c1.contact_id = u.full_phone OR c1.contact_id = u.phone OR c1.contact_id = CAST(u.id AS CHAR) OR c1.contact_id LIKE CONCAT('%', u.phone))
-               )
-               OR EXISTS (
-                   SELECT 1 FROM messages m1 
-                   WHERE (m1.sender_id IN (${placeholders}) AND (m1.recipient_id = s.user_id OR m1.recipient_id = u.full_phone OR m1.recipient_id = u.phone OR m1.recipient_id = CAST(u.id AS CHAR) OR m1.recipient_id LIKE CONCAT('%', u.phone)))
-                      OR (m1.recipient_id IN (${placeholders}) AND (m1.sender_id = s.user_id OR m1.sender_id = u.full_phone OR m1.sender_id = u.phone OR m1.sender_id = CAST(u.id AS CHAR) OR m1.sender_id LIKE CONCAT('%', u.phone)))
-               )
-           )
-           -- 2. Status Owner has saved Viewer or has chatted with Viewer
-           AND (
-               EXISTS (
-                   SELECT 1 FROM contacts c2 
-                   WHERE (c2.user_id = s.user_id OR c2.user_id = u.full_phone OR c2.user_id = u.phone OR c2.user_id = CAST(u.id AS CHAR) OR c2.user_id LIKE CONCAT('%', u.phone))
-                     AND c2.contact_id IN (${placeholders})
-               )
-               OR EXISTS (
-                   SELECT 1 FROM messages m2 
-                   WHERE (m2.sender_id IN (${placeholders}) AND (m2.recipient_id = s.user_id OR m2.recipient_id = u.full_phone OR m2.recipient_id = u.phone OR m2.recipient_id = CAST(u.id AS CHAR) OR m2.recipient_id LIKE CONCAT('%', u.phone)))
-                      OR (m2.recipient_id IN (${placeholders}) AND (m2.sender_id = s.user_id OR m2.sender_id = u.full_phone OR m2.sender_id = u.phone OR m2.sender_id = CAST(u.id AS CHAR) OR m2.sender_id LIKE CONCAT('%', u.phone)))
-               )
-           )
+           -- ONLY STATUSES POSTED AFTER BOTH USERS SAVED EACH OTHER AS CONTACTS:
+           AND s.created_at >= c1.created_at
+           AND s.created_at >= c2.created_at
          ORDER BY s.user_id, s.id ASC`,
         [
-            ...userVars, // display_name
             ...userVars, // is_viewed
-            ...userVars, // NOT IN viewer
-            ...userVars, // c1.user_id
-            ...userVars, // m1.sender_id
-            ...userVars, // m1.recipient_id
-            ...userVars, // c2.contact_id
-            ...userVars, // m2.sender_id
-            ...userVars  // m2.recipient_id
+            ...userVars, // c1.user_id (Viewer saved Status Owner)
+            ...userVars, // c2.contact_id (Status Owner saved Viewer)
+            ...userVars  // NOT IN viewer
         ]
     );
     return rows.map((r) => ({
