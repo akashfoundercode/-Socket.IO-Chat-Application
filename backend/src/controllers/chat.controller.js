@@ -383,9 +383,18 @@ const clearCallLogs = async (req, res) => {
 const createStatus = async (req, res) => {
     try {
         const userId = normalizeId(req.body.userId);
-        const { type, content, caption, bgColor, fontStyle } = req.body;
+        const { type, content, caption, bgColor, fontStyle, privacyMode, audienceUserIds } = req.body;
         if (!userId || !content) return res.status(400).json({ success: false, message: 'userId and content are required' });
-        const status = await chatModel.createStatus({ userId, type, content, caption, bgColor, fontStyle });
+        const status = await chatModel.createStatus({
+            userId,
+            type,
+            content,
+            caption,
+            bgColor,
+            fontStyle,
+            privacyMode,
+            audienceUserIds
+        });
 
         const io = req.app.get('io');
         if (io) {

@@ -1769,17 +1769,44 @@ const clearCallLogs = async (userId) => {
 /**
  * Status CRUD
  */
-const createStatus = async ({ userId, type, content, caption, bgColor, fontStyle }) => {
+const createStatus = async ({ userId, type, content, caption, bgColor, fontStyle, privacyMode = 'everyone', audienceUserIds = [] }) => {
     const pool = getPool();
     const cleanUserId = String(userId || '').trim();
     if (!cleanUserId || !content) return null;
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const cleanPrivacyMode = privacyMode === 'private' ? 'private' : 'everyone';
     const [result] = await pool.execute(
-        `INSERT INTO user_statuses (user_id, type, content, caption, bg_color, font_style, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [cleanUserId, type || 'text', content, caption || null, bgColor || '#075e54', fontStyle || 'normal', expiresAt]
+        `INSERT INTO user_statuses (user_id, type, content, caption, bg_color, font_style, privacy_mode, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [cleanUserId, type || 'text', content, caption || null, bgColor || '#075e54', fontStyle || 'normal', cleanPrivacyMode, expiresAt]
     );
+
+    if (cleanPrivacyMode === 'private' && Array.isArray(audienceUserIds)) {
+        const ownerVars = getPhoneVariants(cleanUserId);
+        for (const audienceUserId of audienceUserIds.slice(0, 200)) {
+            const audienceVars = getPhoneVariants(audienceUserId);
+            if (!audienceVars.length) continue;
+            const ownerPlaceholders = ownerVars.map(() => '?').join(',');
+            const audiencePlaceholders = audienceVars.map(() => '?').join(',');
+            const [savedRows] = await pool.execute(
+                `SELECT 1 FROM contacts
+                 WHERE user_id IN (${ownerPlaceholders})
+                   AND contact_id IN (${audiencePlaceholders})
+                 LIMIT 1`,
+                [...ownerVars, ...audienceVars]
+            );
+            if (!savedRows.length) continue;
+
+            for (const viewerId of audienceVars) {
+                await pool.execute(
+                    'INSERT IGNORE INTO status_audience (status_id, viewer_id) VALUES (?, ?)',
+                    [result.insertId, viewerId]
+                );
+            }
+        }
+    }
+
     const [rows] = await pool.execute('SELECT * FROM user_statuses WHERE id = ?', [result.insertId]);
     return rows[0] ? mapStatus(rows[0]) : null;
 };
@@ -1792,6 +1819,7 @@ const mapStatus = (row) => ({
     caption: row.caption || null,
     bgColor: row.bg_color || '#075e54',
     fontStyle: row.font_style || 'normal',
+    privacyMode: row.privacy_mode || 'everyone',
     expiresAt: row.expires_at,
     createdAt: row.created_at,
     viewCount: Number(row.view_count || row.viewCount || 0),
@@ -1845,28 +1873,32 @@ const getContactStatuses = async (userId) => {
          LEFT JOIN users u ON (u.full_phone = s.user_id OR u.phone = s.user_id OR CAST(u.id AS CHAR) = s.user_id OR s.user_id LIKE CONCAT('%', u.phone))
          WHERE s.expires_at > NOW()
            AND s.user_id NOT IN (${placeholders})
-           -- 1. Must be explicitly saved by Viewer (User A saved User B)
-           AND EXISTS (
-               SELECT 1 FROM contacts c1 
-               WHERE c1.user_id IN (${placeholders}) 
-                 AND (c1.contact_id = s.user_id OR c1.contact_id = u.full_phone OR c1.contact_id = u.phone OR c1.contact_id = CAST(u.id AS CHAR) OR c1.contact_id LIKE CONCAT('%', u.phone))
-                 AND s.created_at >= c1.created_at
-           )
-           -- 2. Must be explicitly saved by Status Owner (User B saved User A)
-           AND EXISTS (
-               SELECT 1 FROM contacts c2 
-               WHERE (c2.user_id = s.user_id OR c2.user_id = u.full_phone OR c2.user_id = u.phone OR c2.user_id = CAST(u.id AS CHAR) OR c2.user_id LIKE CONCAT('%', u.phone))
-                 AND c2.contact_id IN (${placeholders})
-                 AND s.created_at >= c2.created_at
-           )
+                     AND (
+                             (
+                                     COALESCE(s.privacy_mode, 'everyone') = 'everyone'
+                                     AND EXISTS (
+                                             SELECT 1 FROM contacts c1
+                                             WHERE (c1.user_id = s.user_id OR c1.user_id = u.full_phone OR c1.user_id = u.phone OR c1.user_id = CAST(u.id AS CHAR))
+                                                 AND c1.contact_id IN (${placeholders})
+                                     )
+                             )
+                             OR (
+                                     COALESCE(s.privacy_mode, 'everyone') = 'private'
+                                     AND EXISTS (
+                                             SELECT 1 FROM status_audience sa
+                                             WHERE sa.status_id = s.id
+                                                 AND sa.viewer_id IN (${placeholders})
+                                     )
+                             )
+                     )
          GROUP BY s.id
          ORDER BY s.user_id, s.id ASC`,
         [
             ...userVars, // display_name subquery
             ...userVars, // is_viewed
             ...userVars, // NOT IN viewer
-            ...userVars, // c1.user_id (Viewer saved Status Owner)
-            ...userVars  // c2.contact_id (Status Owner saved Viewer)
+            ...userVars, // everyone audience (Status Owner saved Viewer)
+            ...userVars  // private audience
         ]
     );
     return rows.map((r) => ({

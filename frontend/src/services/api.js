@@ -408,10 +408,10 @@ export const callApi = {
 export const statusApi = {
   getStatuses: (userId) => request(`/api/chat/status/${encodeURIComponent(userId)}`),
 
-  createStatus: ({ userId, type, content, caption, bgColor, fontStyle }) =>
+  createStatus: ({ userId, type, content, caption, bgColor, fontStyle, privacyMode, audienceUserIds }) =>
     request('/api/chat/status', {
       method: 'POST',
-      body: JSON.stringify({ userId, type, content, caption, bgColor, fontStyle })
+      body: JSON.stringify({ userId, type, content, caption, bgColor, fontStyle, privacyMode, audienceUserIds })
     }),
 
   deleteStatus: (statusId, userId) =>

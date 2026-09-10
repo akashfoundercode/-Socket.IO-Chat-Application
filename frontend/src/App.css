@@ -10712,3 +10712,211 @@ body {
     max-width: 170px;
   }
 }
+
+.wa-status-audience-panel {
+  margin: 0 18px 12px;
+  padding: 12px;
+  border: 1px solid rgba(15, 118, 110, 0.2);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.08);
+}
+
+.wa-status-audience-heading,
+.wa-status-audience-heading>div:first-child {
+  display: flex;
+  align-items: center;
+}
+
+.wa-status-audience-heading {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wa-status-audience-heading>div:first-child {
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.wa-status-audience-heading strong {
+  color: #123b3a;
+  font-size: 12px;
+}
+
+.wa-status-audience-heading strong i {
+  color: #0f766e;
+  margin-right: 5px;
+}
+
+.wa-status-audience-heading span {
+  color: #6b7c7d;
+  font-size: 11px;
+}
+
+.wa-status-audience-modes {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #eef3f3;
+}
+
+.wa-status-audience-modes button,
+.wa-status-select-all {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #607273;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 7px 9px;
+}
+
+.wa-status-audience-modes button.active {
+  background: #0f766e;
+  color: #ffffff;
+  box-shadow: 0 3px 8px rgba(15, 118, 110, 0.22);
+}
+
+.wa-status-audience-picker {
+  margin-top: 10px;
+  border-top: 1px solid rgba(15, 118, 110, 0.12);
+  padding-top: 9px;
+}
+
+.wa-status-select-all {
+  color: #0f766e;
+  padding: 5px 0;
+}
+
+.wa-status-select-all:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.wa-status-audience-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  max-height: 116px;
+  margin-top: 5px;
+  overflow-y: auto;
+}
+
+.wa-status-audience-contact {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 7px;
+  row-gap: 1px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #f5f8f8;
+  color: #263b3b;
+  cursor: pointer;
+  text-align: left;
+}
+
+.wa-status-audience-contact.selected {
+  border-color: rgba(15, 118, 110, 0.35);
+  background: rgba(20, 184, 166, 0.12);
+}
+
+.wa-status-audience-contact>span:nth-child(2),
+.wa-status-audience-contact small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-status-audience-contact>span:nth-child(2) {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.wa-status-audience-contact small {
+  grid-column: 2;
+  color: #778889;
+  font-size: 9px;
+}
+
+.wa-status-audience-check {
+  display: flex;
+  width: 17px;
+  height: 17px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #b8c8c8;
+  border-radius: 5px;
+  color: #ffffff;
+  font-size: 9px;
+}
+
+.selected .wa-status-audience-check {
+  border-color: #0f766e;
+  background: #0f766e;
+}
+
+.wa-status-no-audience {
+  color: #78898a;
+  font-size: 11px;
+}
+
+.dark .wa-status-audience-panel,
+[data-theme="dark"] .wa-status-audience-panel {
+  border-color: rgba(45, 212, 191, 0.2);
+  background: #18272c;
+}
+
+.dark .wa-status-audience-heading strong,
+[data-theme="dark"] .wa-status-audience-heading strong {
+  color: #d4eeeb;
+}
+
+.dark .wa-status-audience-heading span,
+[data-theme="dark"] .wa-status-audience-heading span,
+.dark .wa-status-audience-contact small,
+[data-theme="dark"] .wa-status-audience-contact small {
+  color: #91aaa9;
+}
+
+.dark .wa-status-audience-modes,
+[data-theme="dark"] .wa-status-audience-modes {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dark .wa-status-audience-contact,
+[data-theme="dark"] .wa-status-audience-contact {
+  background: #21343a;
+  color: #e1efee;
+}
+
+@media (max-width: 560px) {
+  .wa-status-audience-panel {
+    margin-left: 12px;
+    margin-right: 12px;
+  }
+
+  .wa-status-audience-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .wa-status-audience-modes {
+    width: 100%;
+  }
+
+  .wa-status-audience-modes button {
+    flex: 1;
+  }
+
+  .wa-status-audience-list {
+    grid-template-columns: 1fr;
+    max-height: 126px;
+  }
+}

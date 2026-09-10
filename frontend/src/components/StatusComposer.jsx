@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { statusApi } from '../services/api';
+import { chatApi, statusApi } from '../services/api';
 import { socket } from '../socket/socket';
 
 const BG_COLORS = [
@@ -35,6 +35,9 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
   const [textContent, setTextContent] = useState('');
   const [bgIndex, setBgIndex] = useState(0);
   const [fontIndex, setFontIndex] = useState(0);
+  const [privacyMode, setPrivacyMode] = useState('everyone');
+  const [audienceContacts, setAudienceContacts] = useState([]);
+  const [selectedAudienceIds, setSelectedAudienceIds] = useState([]);
 
   // Refs
   const videoRef = useRef(null);
@@ -102,6 +105,16 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
       setTimeout(() => textareaRef.current?.focus(), 150);
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    let cancelled = false;
+    chatApi.getContacts(userId).then((data) => {
+      if (!cancelled) setAudienceContacts(Array.isArray(data?.contacts) ? data.contacts : []);
+    }).catch(() => {
+      if (!cancelled) setAudienceContacts([]);
+    });
+    return () => { cancelled = true; };
+  }, [userId]);
 
   /* ── 2. Photo Capture ── */
   const handleCapturePhoto = () => {
@@ -248,9 +261,26 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
     setCaption('');
   };
 
+  const getAudienceId = (contact) => String(contact.fullPhone || contact.phone || contact.id || '').trim();
+
+  const toggleAudienceContact = (contactId) => {
+    setSelectedAudienceIds((previous) => previous.includes(contactId)
+      ? previous.filter((id) => id !== contactId)
+      : [...previous, contactId]);
+  };
+
+  const selectAllAudience = () => {
+    setSelectedAudienceIds(audienceContacts.map(getAudienceId).filter(Boolean));
+  };
+
   /* ── 6. Final Status Submission ── */
   const handlePostStatus = async () => {
     if (posting) return;
+
+    if (privacyMode === 'private' && selectedAudienceIds.length === 0) {
+      alert('Select at least one saved contact for private status.');
+      return;
+    }
 
     let payload = null;
     if (activeTab === 'text') {
@@ -262,7 +292,9 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
         content: text,
         caption: null,
         bgColor: BG_COLORS[bgIndex],
-        fontStyle: FONT_STYLES[fontIndex].value
+        fontStyle: FONT_STYLES[fontIndex].value,
+        privacyMode,
+        audienceUserIds: selectedAudienceIds
       };
     } else if (capturedMedia) {
       payload = {
@@ -271,7 +303,9 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
         content: capturedMedia.url,
         caption: caption.trim() || null,
         bgColor: '#075e54',
-        fontStyle: 'normal'
+        fontStyle: 'normal',
+        privacyMode,
+        audienceUserIds: selectedAudienceIds
       };
     }
 
@@ -407,6 +441,44 @@ export default function StatusComposer({ userId, onClose, onPosted }) {
                   <span>00:{recordDuration < 10 ? `0${recordDuration}` : recordDuration}</span>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+
+        <div className="wa-status-audience-panel">
+          <div className="wa-status-audience-heading">
+            <div>
+              <strong><i className="fa-solid fa-eye"></i> Status audience</strong>
+              <span>{privacyMode === 'everyone' ? 'All saved contacts can view this update' : `${selectedAudienceIds.length} contact${selectedAudienceIds.length === 1 ? '' : 's'} selected`}</span>
+            </div>
+            <div className="wa-status-audience-modes">
+              <button type="button" className={privacyMode === 'everyone' ? 'active' : ''} onClick={() => setPrivacyMode('everyone')}>
+                <i className="fa-solid fa-users"></i> Everyone
+              </button>
+              <button type="button" className={privacyMode === 'private' ? 'active' : ''} onClick={() => setPrivacyMode('private')}>
+                <i className="fa-solid fa-user-lock"></i> Private
+              </button>
+            </div>
+          </div>
+
+          {privacyMode === 'private' && (
+            <div className="wa-status-audience-picker">
+              <button type="button" className="wa-status-select-all" onClick={selectAllAudience} disabled={!audienceContacts.length}>
+                <i className="fa-solid fa-check-double"></i> Select all
+              </button>
+              <div className="wa-status-audience-list">
+                {audienceContacts.length ? audienceContacts.map((contact) => {
+                  const contactId = getAudienceId(contact);
+                  const selected = selectedAudienceIds.includes(contactId);
+                  return (
+                    <button type="button" key={contactId} className={`wa-status-audience-contact ${selected ? 'selected' : ''}`} onClick={() => toggleAudienceContact(contactId)}>
+                      <span className="wa-status-audience-check">{selected && <i className="fa-solid fa-check"></i>}</span>
+                      <span>{contact.customName || contact.name || contactId}</span>
+                      <small>{contact.fullPhone || contact.phone || contactId}</small>
+                    </button>
+                  );
+                }) : <span className="wa-status-no-audience">No saved contacts available.</span>}
+              </div>
             </div>
           )}
         </div>

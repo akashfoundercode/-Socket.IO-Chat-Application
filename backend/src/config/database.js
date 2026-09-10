@@ -188,10 +188,27 @@ const initializeDatabase = async () => {
             caption TEXT NULL,
             bg_color VARCHAR(20) NULL DEFAULT '#075e54',
             font_style VARCHAR(30) NULL DEFAULT 'normal',
+            privacy_mode VARCHAR(20) NOT NULL DEFAULT 'everyone',
             expires_at DATETIME NOT NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_user_id (user_id),
             INDEX idx_expires_at (expires_at)
+        )
+    `);
+
+    try {
+        await pool.query("ALTER TABLE user_statuses ADD COLUMN privacy_mode VARCHAR(20) NOT NULL DEFAULT 'everyone'");
+    } catch (e) {
+        // Column already exists.
+    }
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS status_audience (
+            status_id BIGINT UNSIGNED NOT NULL,
+            viewer_id VARCHAR(100) NOT NULL,
+            PRIMARY KEY (status_id, viewer_id),
+            INDEX idx_status_audience_viewer (viewer_id),
+            FOREIGN KEY (status_id) REFERENCES user_statuses(id) ON DELETE CASCADE
         )
     `);
 
