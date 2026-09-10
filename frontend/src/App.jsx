@@ -281,6 +281,34 @@ export default function App() {
     callStateRef.current = callState;
   }, [callState]);
 
+  // Synchronize mobile viewport height when virtual keyboard appears
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const updateViewportHeight = () => {
+      const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      document.documentElement.style.setProperty('--app-viewport-height', `${height}px`);
+    };
+
+    updateViewportHeight();
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', updateViewportHeight);
+      window.visualViewport.addEventListener('scroll', updateViewportHeight);
+    } else {
+      window.addEventListener('resize', updateViewportHeight);
+    }
+
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', updateViewportHeight);
+        window.visualViewport.removeEventListener('scroll', updateViewportHeight);
+      } else {
+        window.removeEventListener('resize', updateViewportHeight);
+      }
+    };
+  }, []);
+
   const userId = currentUser ? (currentUser.fullPhone || currentUser.id) : '';
 
   // Warn user before closing/refreshing tab

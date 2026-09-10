@@ -910,6 +910,15 @@ export default function MessageInput({
                 placeholder={recipientId ? 'Message' : 'Set recipient first'}
                 value={text}
                 onChange={handleTextChange}
+                onFocus={() => {
+                  setTimeout(() => {
+                    window.scrollTo(0, 0);
+                    const msgContainer = document.querySelector('.wa-messages-container') || document.querySelector('.wa-chat-pane');
+                    if (msgContainer) {
+                      msgContainer.scrollTop = msgContainer.scrollHeight;
+                    }
+                  }, 250);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();

@@ -8972,9 +8972,19 @@ body {
 }
 
 /* Authentic WhatsApp Avatar Styles (Circular with fallback silhouette) */
-.wa-custom-avatar {
+.wa-custom-avatar-wrapper {
   position: relative;
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.wa-custom-avatar {
+  position: relative;
+  display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50% !important;
@@ -8984,6 +8994,8 @@ body {
   flex-shrink: 0;
   user-select: none;
   box-sizing: border-box;
+  width: 100%;
+  height: 100%;
 }
 
 .dark .wa-custom-avatar,
@@ -9030,14 +9042,14 @@ body {
 
 .wa-custom-avatar-online-dot {
   position: absolute;
-  bottom: 1px;
-  right: 1px;
-  width: 10px;
-  height: 10px;
+  bottom: 0px;
+  right: 0px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   border: 2px solid #ffffff;
-  box-sizing: content-box;
-  z-index: 2;
+  box-sizing: border-box;
+  z-index: 4;
 }
 
 .dark .wa-custom-avatar-online-dot,
@@ -9047,6 +9059,7 @@ body {
 
 .wa-custom-avatar-online-dot.online {
   background-color: var(--wa-online, var(--wa-green, #22c55e));
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
 .wa-custom-avatar-online-dot.offline {

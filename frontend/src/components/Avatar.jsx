@@ -45,34 +45,50 @@ export default function Avatar({
 
   return (
     <div
-      className={`wa-custom-avatar ${isGroup ? 'group-avatar' : ''} ${className}`}
-      style={{ ...sizeStyle, ...style }}
+      className={`wa-custom-avatar-wrapper ${className}`}
+      style={{
+        position: 'relative',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: `${numSize}px`,
+        height: `${numSize}px`,
+        minWidth: `${numSize}px`,
+        minHeight: `${numSize}px`,
+        flexShrink: 0,
+        ...style
+      }}
       onClick={onClick}
       title={name || (isGroup ? 'Group' : 'User')}
     >
-      {!isInvalid && !hasError ? (
-        isEmoji ? (
-          <span className="wa-custom-avatar-emoji" style={{ fontSize: emojiFontSize }}>
-            {rawSrc}
-          </span>
-        ) : (
-          <img
-            src={rawSrc}
-            alt=""
-            className="wa-custom-avatar-img"
-            onError={() => setHasError(true)}
-            loading="lazy"
-          />
-        )
-      ) : (
-        <div className="wa-custom-avatar-dummy" style={{ fontSize: iconFontSize }}>
-          {isGroup ? (
-            <i className="fa-solid fa-users" aria-hidden="true"></i>
+      <div
+        className={`wa-custom-avatar ${isGroup ? 'group-avatar' : ''}`}
+        style={sizeStyle}
+      >
+        {!isInvalid && !hasError ? (
+          isEmoji ? (
+            <span className="wa-custom-avatar-emoji" style={{ fontSize: emojiFontSize }}>
+              {rawSrc}
+            </span>
           ) : (
-            <i className="fa-solid fa-user" aria-hidden="true"></i>
-          )}
-        </div>
-      )}
+            <img
+              src={rawSrc}
+              alt=""
+              className="wa-custom-avatar-img"
+              onError={() => setHasError(true)}
+              loading="lazy"
+            />
+          )
+        ) : (
+          <div className="wa-custom-avatar-dummy" style={{ fontSize: iconFontSize }}>
+            {isGroup ? (
+              <i className="fa-solid fa-users" aria-hidden="true"></i>
+            ) : (
+              <i className="fa-solid fa-user" aria-hidden="true"></i>
+            )}
+          </div>
+        )}
+      </div>
 
       {showOnline && (
         <span
