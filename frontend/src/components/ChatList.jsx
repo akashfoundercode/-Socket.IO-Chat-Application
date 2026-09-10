@@ -794,8 +794,8 @@ export default function ChatList({
     return bTime - aTime;
   });
 
-  const chatConversations = React.useMemo(() => {
-    return orderedConversations.filter((item) => !item.isGroup && !item.isDeletedForMe);
+  const allConversations = React.useMemo(() => {
+    return orderedConversations.filter((item) => !item.isDeletedForMe);
   }, [orderedConversations]);
 
   const groupConversations = React.useMemo(() => {
@@ -804,7 +804,7 @@ export default function ChatList({
 
   const visibleConversations = activeTab === 'groups'
     ? groupConversations
-    : chatConversations;
+    : allConversations;
 
   const existingConversationKeys = React.useMemo(() => {
     const set = new Set();
@@ -1238,12 +1238,12 @@ export default function ChatList({
           }}
         >
           CHATS
-          {chatConversations.some((c) => (c.unreadCount || 0) > 0) ? (
+          {allConversations.some((c) => (c.unreadCount || 0) > 0) ? (
             <span className="wa-tab-badge unread-pill">
-              {chatConversations.reduce((acc, c) => acc + (Number(c.unreadCount) || 0), 0)}
+              {allConversations.reduce((acc, c) => acc + (Number(c.unreadCount) || 0), 0)}
             </span>
-          ) : chatConversations.length > 0 ? (
-            <span className="wa-tab-badge">{chatConversations.length}</span>
+          ) : allConversations.length > 0 ? (
+            <span className="wa-tab-badge">{allConversations.length}</span>
           ) : null}
         </button>
         <button
@@ -1682,12 +1682,12 @@ export default function ChatList({
             </div>
           ) : (
             /* --- NORMAL CONVERSATIONS LIST --- */
-            loading && chatConversations.length === 0 ? (
+            loading && allConversations.length === 0 ? (
               <div className="wa-inbox-loading">
                 <i className="fa-solid fa-circle-notch fa-spin"></i>
                 <span>Loading chats...</span>
               </div>
-            ) : chatConversations.length === 0 ? (
+            ) : allConversations.length === 0 ? (
               <div className="wa-inbox-empty">
                 <div className="wa-empty-icon-circle">
                   <i className="fa-solid fa-comments"></i>
@@ -1696,7 +1696,7 @@ export default function ChatList({
                 <p>Type any mobile number in the search bar above or tap 💬 below to start chatting!</p>
               </div>
             ) : (
-              chatConversations.map((item) => renderConversationItem(item))
+              allConversations.map((item) => renderConversationItem(item))
             )
           )
         )}
