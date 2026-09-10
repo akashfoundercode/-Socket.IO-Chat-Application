@@ -5485,23 +5485,125 @@ body {
   letter-spacing: 0.5px;
 }
 
+.wa-calls-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wa-calls-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wa-calls-select-mode-btn,
+.wa-calls-select-all-btn,
+.wa-calls-cancel-btn {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #4b5563;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.wa-calls-select-all-btn.active {
+  background-color: var(--wa-soft-bg, #f0fdf4);
+  color: var(--wa-green-dark, #15803d);
+  border-color: var(--wa-green, #00a884);
+}
+
+.wa-calls-select-mode-btn:hover,
+.wa-calls-select-all-btn:hover,
+.wa-calls-cancel-btn:hover {
+  background-color: var(--wa-soft-bg, #f0fdf4);
+  color: var(--wa-green-dark, #15803d);
+  border-color: var(--wa-accent-border, #86efac);
+}
+
+.wa-calls-delete-selected-btn {
+  background-color: #ef4444;
+  color: #ffffff !important;
+  border: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.3);
+}
+
+.wa-calls-delete-selected-btn:hover {
+  background-color: #dc2626;
+  transform: translateY(-1px);
+}
+
 .wa-calls-clear-btn {
   background: none;
-  border: none;
-  font-size: 12px;
+  border: 1px solid transparent;
+  font-size: 11.5px;
   color: #8696a0;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 5px;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: 6px;
   transition: all 0.15s ease;
 }
 
 .wa-calls-clear-btn:hover {
   color: #ef4444;
   background-color: #fee2e2;
+  border-color: #fca5a5;
+}
+
+.wa-call-select-box {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #9ca3af;
+  margin-right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  background-color: #ffffff;
+}
+
+.wa-call-select-box i {
+  font-size: 10px;
+  color: transparent;
+  transition: all 0.15s ease;
+}
+
+.wa-call-select-box.checked {
+  background-color: var(--wa-green, #00a884);
+  border-color: var(--wa-green, #00a884);
+  box-shadow: 0 0 0 2px rgba(0, 168, 132, 0.2);
+}
+
+.wa-call-select-box.checked i {
+  color: #ffffff;
+}
+
+.wa-call-item-row.wa-call-selected {
+  background-color: var(--wa-soft-bg, #f0fdf4) !important;
 }
 
 /* Call Item Row */
@@ -7424,10 +7526,6 @@ body {
 .wa-tabs-bar,
 .wa-send-mic-btn,
 .wa-contact-action-btn,
-.wa-group-avatar-edit,
-.wa-group-role-btn:hover,
-.wa-group-member-result:hover,
-.wa-group-contact-result:hover {
 .wa-group-avatar-edit {
   background-color: var(--wa-green-header);
 }
@@ -7438,8 +7536,6 @@ body {
 .wa-group-contact-result>i,
 .wa-group-contact-avatar,
 .wa-group-info-member-avatar,
-.wa-contact-phone-sub,
-.wa-group-role-btn {
 .wa-contact-phone-sub {
   color: var(--wa-green-header);
 }
@@ -7462,7 +7558,6 @@ body {
 .wa-tab-badge,
 .wa-empty-icon-circle,
 .wa-group-member-chip,
-.wa-group-role-btn,
 .wa-group-contact-avatar,
 .wa-group-info-member-avatar {
   background: var(--wa-outgoing-bubble);
@@ -7470,9 +7565,6 @@ body {
 }
 
 .wa-contact-edit-pencil:hover,
-.wa-contact-card-edit-btn:hover,
-.wa-group-member-result:hover,
-.wa-group-contact-result:hover {
 .wa-contact-card-edit-btn:hover {
   color: var(--wa-green-dark);
 }

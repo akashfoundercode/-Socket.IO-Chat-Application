@@ -342,6 +342,17 @@ export const callApi = {
   },
 
   /**
+   * Batch delete call logs
+   * POST /api/chat/calls/batch-delete
+   */
+  deleteCallLogs: (callIds, userId) => {
+    return request('/api/chat/calls/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({ callIds, userId })
+    });
+  },
+
+  /**
    * Clear all call logs for a user
    * DELETE /api/chat/calls/clear/:userId
    */

@@ -53,6 +53,8 @@ router.post("/mark-seen", chatController.markSeen);
 router.get("/calls/:userId", chatController.getCallLogs);
 router.get("/calls", chatController.getCallLogs);
 router.delete("/calls/clear/:userId", chatController.clearCallLogs);
+router.post("/calls/batch-delete", chatController.deleteCallLogsBatch);
+router.delete("/calls/batch", chatController.deleteCallLogsBatch);
 router.delete("/calls/:callId", chatController.deleteCallLog);
 
 router.post("/status", chatController.createStatus);

@@ -1854,6 +1854,7 @@ module.exports = {
     updateCallLog,
     getCallLogs,
     deleteCallLog,
+    deleteCallLogs,
     clearCallLogs,
     createStatus,
     getMyStatuses,

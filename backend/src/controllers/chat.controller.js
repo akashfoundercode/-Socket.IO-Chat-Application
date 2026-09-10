@@ -310,6 +310,25 @@ const deleteCallLog = async (req, res) => {
 };
 
 /**
+ * Batch delete multiple call logs
+ * POST /api/chat/calls/batch-delete
+ */
+const deleteCallLogsBatch = async (req, res) => {
+    try {
+        const { callIds, userId } = req.body;
+        if (!Array.isArray(callIds) || callIds.length === 0) {
+            return res.status(400).json({ success: false, message: "callIds array is required" });
+        }
+
+        await chatModel.deleteCallLogs(callIds, userId);
+        return res.json({ success: true, message: `${callIds.length} call logs deleted`, count: callIds.length });
+    } catch (error) {
+        console.error("deleteCallLogsBatch error:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
  * Clear all call logs for a user
  * DELETE /api/chat/calls/clear/:userId
  */
@@ -669,6 +688,7 @@ module.exports = {
     getUnreadNotifications,
     getCallLogs,
     deleteCallLog,
+    deleteCallLogsBatch,
     clearCallLogs,
     createStatus,
     getStatuses,

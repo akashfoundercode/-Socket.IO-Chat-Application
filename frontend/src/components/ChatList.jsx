@@ -106,6 +106,8 @@ export default function ChatList({
   // Call Logs state
   const [callLogs, setCallLogs] = useState([]);
   const [callLogsLoading, setCallLogsLoading] = useState(false);
+  const [selectedCallIds, setSelectedCallIds] = useState(new Set());
+  const [isSelectingCalls, setIsSelectingCalls] = useState(false);
 
   // Swipe-to-Delete state
   const [swipedId, setSwipedId] = useState(null);
@@ -446,11 +448,50 @@ export default function ChatList({
     }
   }, [userId, callLogsTrigger, activeTab]);
 
+  const handleToggleCallSelect = (callId) => {
+    setSelectedCallIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(callId)) {
+        next.delete(callId);
+      } else {
+        next.add(callId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAllCalls = (filteredList) => {
+    if (selectedCallIds.size === filteredList.length && filteredList.length > 0) {
+      setSelectedCallIds(new Set());
+    } else {
+      setSelectedCallIds(new Set(filteredList.map((c) => c.id)));
+    }
+  };
+
+  const handleDeleteSelectedCalls = async () => {
+    if (selectedCallIds.size === 0 || !userId) return;
+    const idsToDelete = Array.from(selectedCallIds);
+    if (!window.confirm(`Delete ${idsToDelete.length} selected call log${idsToDelete.length > 1 ? 's' : ''}?`)) return;
+    try {
+      await callApi.deleteCallLogs(idsToDelete, userId);
+      setCallLogs((prev) => prev.filter((c) => !selectedCallIds.has(c.id)));
+      setSelectedCallIds(new Set());
+      setIsSelectingCalls(false);
+    } catch (err) {
+      console.error('Failed to delete selected call logs:', err);
+    }
+  };
+
   const handleDeleteCallLog = async (callId) => {
     if (!callId || !userId) return;
     try {
       await callApi.deleteCallLog(callId, userId);
       setCallLogs((prev) => prev.filter((c) => c.id !== callId));
+      setSelectedCallIds((prev) => {
+        const next = new Set(prev);
+        next.delete(callId);
+        return next;
+      });
     } catch (err) {
       console.error('Failed to delete call log:', err);
     }
@@ -459,8 +500,14 @@ export default function ChatList({
   const handleClearCallLogs = async () => {
     if (!userId || !window.confirm('Clear all call history logs?')) return;
     try {
+      const allIds = callLogs.map((c) => c.id);
       await callApi.clearCallLogs(userId);
+      if (allIds.length > 0) {
+        await callApi.deleteCallLogs(allIds, userId);
+      }
       setCallLogs([]);
+      setSelectedCallIds(new Set());
+      setIsSelectingCalls(false);
     } catch (err) {
       console.error('Failed to clear call logs:', err);
     }
@@ -1429,152 +1476,237 @@ export default function ChatList({
             </div>
           ) : (
             <div className="wa-calls-history-wrapper">
-              <div className="wa-calls-header-row">
-                <span className="wa-calls-header-title">Recent Calls</span>
-                {callLogs.length > 0 && (
-                  <button
-                    type="button"
-                    className="wa-calls-clear-btn"
-                    onClick={handleClearCallLogs}
-                    title="Clear All Call Logs"
-                  >
-                    <i className="fa-solid fa-trash-can"></i> Clear All
-                  </button>
-                )}
-              </div>
-
-              {callLogs
-                .filter((call) => {
+              {(() => {
+                const filteredCalls = callLogs.filter((call) => {
                   if (!searchQuery.trim()) return true;
                   const q = searchQuery.toLowerCase();
                   const name = (call.peerName || '').toLowerCase();
                   const phone = (call.peerPhone || call.peerId || '').toLowerCase();
                   return name.includes(q) || phone.includes(q);
-                })
-                .map((call) => {
-                  const isMissed = call.direction === 'missed' || call.rawStatus === 'missed';
-                  const isDeclined = call.direction === 'declined' || call.rawStatus === 'declined';
-                  const isOutgoing = call.direction === 'outgoing';
-                  const isGroupCall = Boolean(call.isGroup);
-                  const peerPhoneDisplay = call.peerPhone || call.peerId;
-                  const displayName = call.peerName || peerPhoneDisplay;
-                  const isOnline = isUserOnline(peerPhoneDisplay);
+                });
+                const allCallsSelected = filteredCalls.length > 0 && selectedCallIds.size === filteredCalls.length;
 
-                  return (
-                    <div
-                      key={call.id}
-                      className={`wa-chat-item-row wa-call-item-row ${isMissed ? 'wa-call-missed' : ''}`}
-                      onClick={() => handleSelectUser(isGroupCall ? `group:${call.groupId}` : peerPhoneDisplay)}
-                      title="Tap to open conversation"
-                    >
-                      <Avatar
-                        src={call.peerAvatar}
-                        isGroup={isGroupCall}
-                        name={displayName}
-                        size={46}
-                        showOnline={!isGroupCall && isOnline}
-                        isOnline={isOnline}
-                      />
-
-                      <div className="wa-item-center">
-                        <div className="wa-item-top">
-                          <span className={`wa-item-name ${isMissed ? 'wa-missed-title' : ''}`}>
-                            {displayName}
-                            {isGroupCall && <span className="wa-group-tag-small">Group</span>}
-                          </span>
-                          <span className="wa-item-time">{formatCallTime(call.createdAt)}</span>
-                        </div>
-                        <div className="wa-item-bottom">
-                          <span className="wa-call-subtitle-info">
-                            {isGroupCall ? (
-                              isMissed || call.status === 'not_accepted' ? (
-                                <>
-                                  <i className="fa-solid fa-arrow-down-left" style={{ color: '#ef4444', marginRight: '5px', fontSize: '13px' }}></i>
-                                  <span style={{ color: '#ef4444', fontWeight: '600' }}>Not accepted</span>
-                                  <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
-                                </>
-                              ) : (
-                                <>
-                                  <i className="fa-solid fa-arrow-up-right" style={{ color: '#f97316', marginRight: '5px', fontSize: '13px' }}></i>
-                                  <span style={{ color: '#f97316', fontWeight: '600' }}>
-                                    {call.joinedCount > 0 ? `${call.joinedCount} joined` : 'Completed'}
-                                  </span>
-                                  {call.duration > 0 && (
-                                    <span style={{ color: '#8696a0', marginLeft: '5px' }}>({formatDuration(call.duration)})</span>
-                                  )}
-                                  <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
-                                  {call.groupMembers?.length > 0 && (
-                                    <small className="wa-call-members-preview">• {call.groupMembers.slice(0, 3).join(', ')}</small>
-                                  )}
-                                </>
-                              )
-                            ) : isMissed ? (
-                              <>
-                                <i className="fa-solid fa-arrow-down-left" style={{ color: '#ef4444', marginRight: '5px', fontSize: '13px' }}></i>
-                                <span style={{ color: '#ef4444', fontWeight: '600' }}>Missed</span>
-                                <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
-                              </>
-                            ) : isDeclined ? (
-                              <>
-                                <i className="fa-solid fa-arrow-down-left" style={{ color: '#ef4444', marginRight: '5px', fontSize: '13px' }}></i>
-                                <span style={{ color: '#ef4444' }}>Declined</span>
-                                <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
-                              </>
-                            ) : isOutgoing ? (
-                              <>
-                                <i className="fa-solid fa-arrow-up-right" style={{ color: '#f97316', marginRight: '5px', fontSize: '13px' }}></i>
-                                <span>Outgoing</span>
-                                {call.duration > 0 ? (
-                                  <span style={{ color: '#8696a0', marginLeft: '5px' }}>({formatDuration(call.duration)})</span>
-                                ) : (
-                                  <span style={{ color: '#8696a0', marginLeft: '5px' }}>• Unanswered</span>
-                                )}
-                                <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
-                              </>
-                            ) : (
-                              <>
-                                <i className="fa-solid fa-arrow-down-left" style={{ color: '#f97316', marginRight: '5px', fontSize: '13px' }}></i>
-                                <span>Incoming</span>
-                                {call.duration > 0 && (
-                                  <span style={{ color: '#8696a0', marginLeft: '5px' }}>({formatDuration(call.duration)})</span>
-                                )}
-                                <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
-                              </>
-                            )}
-                          </span>
-                        </div>
+                return (
+                  <>
+                    <div className="wa-calls-header-row">
+                      <div className="wa-calls-header-left">
+                        <span className="wa-calls-header-title">
+                          {isSelectingCalls ? `${selectedCallIds.size} Selected` : 'Recent Calls'}
+                        </span>
                       </div>
 
-                      {/* 1-Tap Callback Actions & Delete */}
-                      <div className="wa-call-item-actions" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          className="wa-call-action-btn-small voice"
-                          title={`Voice call ${displayName}`}
-                          onClick={() => onStartCall && onStartCall('voice', peerPhoneDisplay)}
-                        >
-                          <i className="fa-solid fa-phone"></i>
-                        </button>
-                        <button
-                          type="button"
-                          className="wa-call-action-btn-small video"
-                          title={`Video call ${displayName}`}
-                          onClick={() => onStartCall && onStartCall('video', peerPhoneDisplay)}
-                        >
-                          <i className="fa-solid fa-video"></i>
-                        </button>
-                        <button
-                          type="button"
-                          className="wa-call-action-btn-small delete"
-                          title="Delete call record"
-                          onClick={() => handleDeleteCallLog(call.id)}
-                        >
-                          <i className="fa-solid fa-trash-can"></i>
-                        </button>
+                      <div className="wa-calls-header-actions">
+                        {isSelectingCalls ? (
+                          <>
+                            <button
+                              type="button"
+                              className={`wa-calls-select-all-btn ${allCallsSelected ? 'active' : ''}`}
+                              onClick={() => handleToggleSelectAllCalls(filteredCalls)}
+                              title={allCallsSelected ? 'Deselect All' : 'Select All'}
+                            >
+                              <i className={allCallsSelected ? 'fa-solid fa-square-check' : 'fa-regular fa-square-check'}></i>
+                              <span>{allCallsSelected ? 'Deselect All' : 'Select All'}</span>
+                            </button>
+                            {selectedCallIds.size > 0 && (
+                              <button
+                                type="button"
+                                className="wa-calls-delete-selected-btn"
+                                onClick={handleDeleteSelectedCalls}
+                                title="Delete Selected"
+                              >
+                                <i className="fa-solid fa-trash-can"></i>
+                                <span>Delete ({selectedCallIds.size})</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="wa-calls-cancel-btn"
+                              onClick={() => {
+                                setIsSelectingCalls(false);
+                                setSelectedCallIds(new Set());
+                              }}
+                              title="Cancel"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {callLogs.length > 0 && (
+                              <button
+                                type="button"
+                                className="wa-calls-select-mode-btn"
+                                onClick={() => setIsSelectingCalls(true)}
+                                title="Select multiple calls"
+                              >
+                                <i className="fa-solid fa-list-check"></i> Select
+                              </button>
+                            )}
+                            {callLogs.length > 0 && (
+                              <button
+                                type="button"
+                                className="wa-calls-clear-btn"
+                                onClick={handleClearCallLogs}
+                                title="Clear All Call Logs"
+                              >
+                                <i className="fa-solid fa-trash-can"></i> Clear All
+                              </button>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
-                  );
-                })}
+
+                    {filteredCalls.map((call) => {
+                      const isMissed = call.direction === 'missed' || call.rawStatus === 'missed';
+                      const isDeclined = call.direction === 'declined' || call.rawStatus === 'declined';
+                      const isOutgoing = call.direction === 'outgoing';
+                      const isGroupCall = Boolean(call.isGroup);
+                      const peerPhoneDisplay = call.peerPhone || call.peerId;
+                      const displayName = call.peerName || peerPhoneDisplay;
+                      const isOnline = isUserOnline(peerPhoneDisplay);
+                      const isSelected = selectedCallIds.has(call.id);
+
+                      return (
+                        <div
+                          key={call.id}
+                          className={`wa-chat-item-row wa-call-item-row ${isMissed ? 'wa-call-missed' : ''} ${isSelected ? 'wa-call-selected' : ''}`}
+                          onClick={() => {
+                            if (isSelectingCalls) {
+                              handleToggleCallSelect(call.id);
+                            } else {
+                              handleSelectUser(isGroupCall ? `group:${call.groupId}` : peerPhoneDisplay);
+                            }
+                          }}
+                          title={isSelectingCalls ? (isSelected ? 'Click to deselect' : 'Click to select') : 'Tap to open conversation'}
+                        >
+                          {isSelectingCalls && (
+                            <div
+                              className={`wa-call-select-box ${isSelected ? 'checked' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleCallSelect(call.id);
+                              }}
+                            >
+                              <i className="fa-solid fa-check"></i>
+                            </div>
+                          )}
+
+                          <Avatar
+                            src={call.peerAvatar}
+                            isGroup={isGroupCall}
+                            name={displayName}
+                            size={46}
+                            showOnline={!isGroupCall && isOnline}
+                            isOnline={isOnline}
+                          />
+
+                          <div className="wa-item-center">
+                            <div className="wa-item-top">
+                              <span className={`wa-item-name ${isMissed ? 'wa-missed-title' : ''}`}>
+                                {displayName}
+                                {isGroupCall && <span className="wa-group-tag-small">Group</span>}
+                              </span>
+                              <span className="wa-item-time">{formatCallTime(call.createdAt)}</span>
+                            </div>
+                            <div className="wa-item-bottom">
+                              <span className="wa-call-subtitle-info">
+                                {isGroupCall ? (
+                                  isMissed || call.status === 'not_accepted' ? (
+                                    <>
+                                      <i className="fa-solid fa-arrow-down-left" style={{ color: '#ef4444', marginRight: '5px', fontSize: '13px' }}></i>
+                                      <span style={{ color: '#ef4444', fontWeight: '600' }}>Not accepted</span>
+                                      <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <i className="fa-solid fa-arrow-up-right" style={{ color: '#f97316', marginRight: '5px', fontSize: '13px' }}></i>
+                                      <span style={{ color: '#f97316', fontWeight: '600' }}>
+                                        {call.joinedCount > 0 ? `${call.joinedCount} joined` : 'Completed'}
+                                      </span>
+                                      {call.duration > 0 && (
+                                        <span style={{ color: '#8696a0', marginLeft: '5px' }}>({formatDuration(call.duration)})</span>
+                                      )}
+                                      <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
+                                      {call.groupMembers?.length > 0 && (
+                                        <small className="wa-call-members-preview">• {call.groupMembers.slice(0, 3).join(', ')}</small>
+                                      )}
+                                    </>
+                                  )
+                                ) : isMissed ? (
+                                  <>
+                                    <i className="fa-solid fa-arrow-down-left" style={{ color: '#ef4444', marginRight: '5px', fontSize: '13px' }}></i>
+                                    <span style={{ color: '#ef4444', fontWeight: '600' }}>Missed</span>
+                                    <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
+                                  </>
+                                ) : isDeclined ? (
+                                  <>
+                                    <i className="fa-solid fa-arrow-down-left" style={{ color: '#ef4444', marginRight: '5px', fontSize: '13px' }}></i>
+                                    <span style={{ color: '#ef4444' }}>Declined</span>
+                                    <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
+                                  </>
+                                ) : isOutgoing ? (
+                                  <>
+                                    <i className="fa-solid fa-arrow-up-right" style={{ color: '#f97316', marginRight: '5px', fontSize: '13px' }}></i>
+                                    <span>Outgoing</span>
+                                    {call.duration > 0 ? (
+                                      <span style={{ color: '#8696a0', marginLeft: '5px' }}>({formatDuration(call.duration)})</span>
+                                    ) : (
+                                      <span style={{ color: '#8696a0', marginLeft: '5px' }}>• Unanswered</span>
+                                    )}
+                                    <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <i className="fa-solid fa-arrow-down-left" style={{ color: '#f97316', marginRight: '5px', fontSize: '13px' }}></i>
+                                    <span>Incoming</span>
+                                    {call.duration > 0 && (
+                                      <span style={{ color: '#8696a0', marginLeft: '5px' }}>({formatDuration(call.duration)})</span>
+                                    )}
+                                    <span style={{ color: '#8696a0', marginLeft: '5px' }}>• {call.callType === 'video' ? 'Video' : 'Voice'}</span>
+                                  </>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 1-Tap Callback Actions & Delete */}
+                          <div className="wa-call-item-actions" onClick={(e) => e.stopPropagation()}>
+                            {!isSelectingCalls && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="wa-call-action-btn-small voice"
+                                  title={`Voice call ${displayName}`}
+                                  onClick={() => onStartCall && onStartCall('voice', peerPhoneDisplay)}
+                                >
+                                  <i className="fa-solid fa-phone"></i>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="wa-call-action-btn-small video"
+                                  title={`Video call ${displayName}`}
+                                  onClick={() => onStartCall && onStartCall('video', peerPhoneDisplay)}
+                                >
+                                  <i className="fa-solid fa-video"></i>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="wa-call-action-btn-small delete"
+                                  title="Delete call record"
+                                  onClick={() => handleDeleteCallLog(call.id)}
+                                >
+                                  <i className="fa-solid fa-trash-can"></i>
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                );
+              })()}
             </div>
           )
         ) : activeTab === 'status' ? (
