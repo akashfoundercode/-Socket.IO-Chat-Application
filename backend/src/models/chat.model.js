@@ -31,10 +31,10 @@ const saveMediaBase64 = async (mediaUrl, type = "media") => {
         const base64Data = matches[2].replace(/\s/g, "");
         const buffer = Buffer.from(base64Data, "base64");
 
-        // Discard recordings that are too small to be valid audio (< 1KB)
+        // Discard recordings that are completely empty / zero bytes (< 150 bytes header only)
         if (mimeType.includes("audio") || type === "voice") {
-            if (buffer.length < 1000) {
-                console.warn(`Discarding tiny audio blob: ${buffer.length} bytes`);
+            if (buffer.length < 150) {
+                console.warn(`Discarding empty audio blob: ${buffer.length} bytes`);
                 return null;
             }
         }

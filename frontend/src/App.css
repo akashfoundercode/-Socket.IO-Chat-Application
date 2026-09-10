@@ -8169,32 +8169,50 @@ body {
    WHATSAPP VOICE NOTE CARD & AUDIO WAVEFORM PLAYER IN CHAT
    ========================================================================== */
 
+.wa-bubble.voice-bubble {
+  max-width: min(86vw, 340px) !important;
+  width: auto;
+  box-sizing: border-box;
+  padding: 6px 8px 4px 8px;
+  overflow: hidden;
+}
+
+.wa-voice-note-wrapper {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
 .wa-voice-note-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 4px 2px;
-  min-width: 250px;
-  max-width: 330px;
+  gap: 8px;
+  padding: 2px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 180px;
+  box-sizing: border-box;
 }
 
 .wa-vn-avatar-wrap {
   position: relative;
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   flex-shrink: 0;
 }
 
 .wa-vn-avatar {
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background: #dfe5e7;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  font-size: 18px;
+  font-size: 15px;
   color: #54656f;
 }
 
@@ -8206,15 +8224,15 @@ body {
 
 .wa-vn-avatar .fa-whatsapp {
   color: var(--wa-green);
-  font-size: 24px;
+  font-size: 20px;
 }
 
 .wa-vn-mic-badge {
   position: absolute;
   bottom: -2px;
   right: -2px;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   background: var(--wa-green);
   border-radius: 50%;
   border: 2px solid #ffffff;
@@ -8222,12 +8240,12 @@ body {
   align-items: center;
   justify-content: center;
   color: #ffffff;
-  font-size: 9px;
+  font-size: 8px;
 }
 
 .wa-vn-play-btn {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: none;
   background: transparent;
@@ -8236,7 +8254,7 @@ body {
   justify-content: center;
   cursor: pointer;
   color: #54656f;
-  font-size: 18px;
+  font-size: 15px;
   flex-shrink: 0;
   transition: all 0.15s ease;
 }
@@ -8247,31 +8265,35 @@ body {
 
 .wa-vn-play-btn:hover {
   background: rgba(11, 20, 26, 0.05);
-  transform: scale(1.08);
+  transform: scale(1.06);
 }
 
 .wa-vn-body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .wa-vn-waveform-container {
   display: flex;
   align-items: center;
-  gap: 2px;
-  height: 30px;
+  gap: 1.5px;
+  height: 26px;
   cursor: pointer;
-  padding: 2px 0;
+  padding: 1px 0;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .wa-vn-wave-bar {
-  flex: 1;
-  min-width: 2px;
-  max-width: 4px;
-  border-radius: 3px;
+  flex: 1 1 0;
+  min-width: 1.5px;
+  max-width: 3.5px;
+  border-radius: 2px;
   background: #8696a0;
   opacity: 0.55;
   transition: background 0.1s ease, opacity 0.1s ease;

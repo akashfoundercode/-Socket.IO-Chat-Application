@@ -543,7 +543,7 @@ export default function MessageList({
               <div className={`wa-bubble-wrap ${isSent ? 'sent' : 'received'} ${msg.isPinned ? 'pinned-message-wrap' : ''}`}>
                 <div
                   id={`msg-${msg.id}`}
-                  className={`wa-bubble ${isSent ? 'sent' : 'received'} ${isLocation ? 'location-bubble' : ''} ${isStatusTag ? 'status-tag-bubble' : ''} ${isDeleted ? 'deleted-bubble' : ''} ${msg.isPinned ? 'pinned-bubble' : ''} ${activeMenuMessageId === msg.id ? 'menu-open' : ''}`}
+                  className={`wa-bubble ${isSent ? 'sent' : 'received'} ${isVoice ? 'voice-bubble' : ''} ${isLocation ? 'location-bubble' : ''} ${isStatusTag ? 'status-tag-bubble' : ''} ${isDeleted ? 'deleted-bubble' : ''} ${msg.isPinned ? 'pinned-bubble' : ''} ${activeMenuMessageId === msg.id ? 'menu-open' : ''}`}
                   onDoubleClick={() => !isDeleted && onReplyMessage?.(msg)}
                 >
                   {isGroup && !isSent && (

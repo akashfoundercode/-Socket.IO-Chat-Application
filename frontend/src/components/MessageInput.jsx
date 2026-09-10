@@ -217,8 +217,8 @@ export default function MessageInput({
         }
 
         const totalBytes = chunksRef.current.reduce((acc, c) => acc + (c.size || 0), 0);
-        // Discard 0-sec empty recordings (header only < 800 bytes)
-        if (totalBytes < 800) {
+        // Discard empty recordings (header only < 150 bytes)
+        if (totalBytes < 150) {
           chunksRef.current = [];
           cleanupRecordingResources();
           return;
@@ -226,7 +226,7 @@ export default function MessageInput({
 
         const mime = recorder.mimeType || supportedType || 'audio/webm';
         const blob = new Blob(chunksRef.current, { type: mime });
-        if (blob.size >= 800) {
+        if (blob.size >= 150) {
           const reader = new FileReader();
           reader.onloadend = () => {
             const replySnippet = replyTo ? (

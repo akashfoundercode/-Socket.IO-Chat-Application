@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 
 // Generates consistent waveform pattern based on mediaUrl string or random seed
-const generateWaveformData = (seedString, count = 34) => {
+const generateWaveformData = (seedString, count = 26) => {
   let hash = 0;
   for (let i = 0; i < (seedString || '').length; i++) {
     hash = (hash << 5) - hash + seedString.charCodeAt(i);
@@ -11,7 +11,7 @@ const generateWaveformData = (seedString, count = 34) => {
   for (let i = 0; i < count; i++) {
     const x = Math.sin((i + Math.abs(hash % 100)) * 0.45) * 0.5 + 0.5;
     const y = Math.cos((i * 1.3) + Math.abs(hash % 50)) * 0.3 + 0.5;
-    const height = Math.max(18, Math.min(100, Math.round(((x + y) / 2) * 82 + 18)));
+    const height = Math.max(20, Math.min(100, Math.round(((x + y) / 2) * 80 + 20)));
     bars.push(height);
   }
   return bars;
@@ -21,12 +21,13 @@ export default function VoiceNotePlayer({
   mediaUrl,
   isSent,
   senderAvatar,
-  senderName
+  senderName,
+  initialDuration = 0
 }) {
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(initialDuration || 0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const isRetriedRef = useRef(false);
 
@@ -51,7 +52,59 @@ export default function VoiceNotePlayer({
     return mediaUrl;
   }, [mediaUrl]);
 
-  const waveformBars = useRef(generateWaveformData(mediaUrl, 34)).current;
+  const waveformBars = useRef(generateWaveformData(mediaUrl, 26)).current;
+
+  // Use Web Audio API to decode true audio duration if HTMLAudioElement reports 0 or Infinity
+  useEffect(() => {
+    if (!normalizedMediaUrl) return;
+
+    let isCancelled = false;
+
+    const fetchExactDuration = async () => {
+      try {
+        let arrayBuffer;
+        if (normalizedMediaUrl.startsWith('data:')) {
+          const base64Data = normalizedMediaUrl.split(',')[1];
+          const binaryString = window.atob(base64Data);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          arrayBuffer = bytes.buffer;
+        } else {
+          const resp = await fetch(normalizedMediaUrl);
+          if (!resp.ok) return;
+          arrayBuffer = await resp.arrayBuffer();
+        }
+
+        if (arrayBuffer && !isCancelled) {
+          const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtxClass) {
+            const tempCtx = new AudioCtxClass();
+            try {
+              const decoded = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
+              if (decoded && decoded.duration > 0 && !isCancelled) {
+                setDuration(decoded.duration);
+              }
+            } catch (e) {
+              // Ignore decoding error
+            } finally {
+              try { tempCtx.close(); } catch (e) { }
+            }
+          }
+        }
+      } catch (err) {
+        // Fetch failed, fallback to audio element metadata
+      }
+    };
+
+    fetchExactDuration();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [normalizedMediaUrl]);
 
   // Setup HTMLAudioElement listeners
   useEffect(() => {
@@ -62,45 +115,28 @@ export default function VoiceNotePlayer({
     setCurrentTime(0);
     isRetriedRef.current = false;
 
-    const probeWebMDuration = () => {
-      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration > 0) {
-        setDuration(audio.duration);
-      } else if (audio.duration === Infinity || isNaN(audio.duration) || audio.duration === 0) {
-        // Fix for Chromium WebM duration bug: seek to a large time, browser recalculates duration
-        const onProbeSeeked = () => {
-          audio.removeEventListener('seeked', onProbeSeeked);
-          if (audio.duration && isFinite(audio.duration) && audio.duration > 0) {
-            setDuration(audio.duration);
-          }
-          audio.currentTime = 0;
-        };
-        audio.addEventListener('seeked', onProbeSeeked);
-        audio.currentTime = 1e101;
+    const onLoadedMetadata = () => {
+      if (audio.duration && isFinite(audio.duration) && audio.duration > 0) {
+        setDuration((prev) => (prev > 0 ? prev : audio.duration));
       }
     };
 
-    const onLoadedMetadata = () => {
-      probeWebMDuration();
-    };
-
     const onCanPlay = () => {
-      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
-        setDuration(audio.duration);
+      if (audio.duration && isFinite(audio.duration) && audio.duration > 0) {
+        setDuration((prev) => (prev > 0 ? prev : audio.duration));
       }
     };
 
     const onDurationChange = () => {
-      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
-        setDuration(audio.duration);
+      if (audio.duration && isFinite(audio.duration) && audio.duration > 0) {
+        setDuration((prev) => (prev > 0 ? prev : audio.duration));
       }
     };
 
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
-      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
-        if (duration === 0 || duration !== audio.duration) {
-          setDuration(audio.duration);
-        }
+      if (audio.duration && isFinite(audio.duration) && audio.duration > 0) {
+        setDuration((prev) => (prev > 0 ? prev : audio.duration));
       }
     };
 
@@ -126,7 +162,6 @@ export default function VoiceNotePlayer({
           ? window.location.origin
           : `http://${host}:5000`);
         const fallbackUrl = `${fallbackBase.replace(/\/$/, '')}${normalizedMediaUrl}`;
-        console.log('Retrying audio with fallback:', fallbackUrl);
         audio.src = fallbackUrl;
         audio.load();
       }
