@@ -1904,7 +1904,6 @@ const getContactStatuses = async (userId) => {
                )
            )
          ORDER BY s.user_id, s.id ASC`,
-        [...userVars, ...userVars, ...userVars]
         [
             ...userVars, // display_name
             ...userVars, // is_viewed
@@ -1977,10 +1976,6 @@ const addStatusReaction = async (statusId, reactorId, emoji) => {
         `INSERT INTO status_reactions (status_id, reactor_id, emoji) VALUES (?, ?, ?)
          ON DUPLICATE KEY UPDATE emoji = VALUES(emoji), created_at = NOW()`,
         [Number(statusId), cleanReactor, String(emoji).trim()]
-        `INSERT INTO status_reactions (status_id, reactor_id, emoji) 
-         VALUES (?, ?, ?) 
-         ON DUPLICATE KEY UPDATE emoji = VALUES(emoji)`,
-        [Number(statusId), String(reactorId).trim(), String(emoji).trim()]
     );
     // Ensure reaction is also counted as a unique status view
     await recordStatusView(statusId, cleanReactor);
@@ -1989,7 +1984,6 @@ const addStatusReaction = async (statusId, reactorId, emoji) => {
 const addStatusReply = async (statusId, senderId, message) => {
     const pool = getPool();
     const [result] = await pool.execute(
-    await pool.execute(
         `INSERT INTO status_replies (status_id, sender_id, message) VALUES (?, ?, ?)`,
         [Number(statusId), String(senderId).trim(), String(message).trim()]
     );
@@ -2006,37 +2000,28 @@ const getStatusOwner = async (statusId) => {
 };
 
 module.exports = {
-    addMessage,
-    findOrCreateContact,
-    markMessagesAsDelivered,
-    markMessagesAsSeen,
-    getConversation,
-    deleteConversation,
     createUser,
+    authenticateUser,
+    getUser,
+    updateUser,
+    updateLastSeen,
+    findOrCreateContact,
     saveCustomContactName,
     listUserContacts,
     deleteUserContact,
     listConversations,
-    getChatHistory,
-    saveMessage,
-    updateMessageStatus,
-    deleteMessageForMe,
-    deleteMessageForEveryone,
-    clearChatHistory,
-    getUser,
-    authenticateUser,
-    updateUser,
-    updateLastSeen,
-    saveCustomContactName,
-    listConversations,
     searchUsersByPhone,
+    addMessage,
+    reactToMessage,
+    markMessagesAsDelivered,
+    markMessagesAsSeen,
     updateMessage,
     updateMessagePin,
     deleteMessage,
+    deleteConversation,
+    getConversation,
     blockUser,
     unblockUser,
-    blockContact,
-    unblockContact,
     getBlockStatus,
     getBlockedUsers,
     getUnreadCount,
@@ -2068,6 +2053,5 @@ module.exports = {
     updateGroupMemberRole,
     getGroupMessages,
     addGroupMessage,
-    reactToGroupMessage,
-    reactToMessage
+    reactToGroupMessage
 };

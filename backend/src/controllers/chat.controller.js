@@ -4,7 +4,6 @@ const normalizeId = (value) => String(value || "").trim();
 
 const addContact = async (req, res) => {
     try {
-        let { countryCode, phone, name } = req.body;
         let { countryCode, phone, name, userId } = req.body;
         const currentUserId = normalizeId(userId || req.query.userId);
 
@@ -40,7 +39,6 @@ const addContact = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Contact added successfully",
-            contact
             contact: {
                 ...contact,
                 customName: contactName

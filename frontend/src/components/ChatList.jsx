@@ -1983,8 +1983,6 @@ export default function ChatList({
         </div>
       )}
 
-      {/* Floating Meta AI Button */}
-      <div className="wa-floating-meta-ai-wrap">
       {/* Floating Action Buttons Container (Contacts Log + Meta AI) */}
       <div className="wa-floating-actions-stack">
         {/* Floating Contacts / Contact Book Button */}

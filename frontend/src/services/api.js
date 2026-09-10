@@ -131,11 +131,9 @@ export const chatApi = {
    * Add / Create contact to start chatting
    * POST /api/chat/contacts
    */
-  addContact: (countryCode, phone, name = '') => {
   addContact: (countryCode, phone, name = '', userId = '') => {
     return request('/api/chat/contacts', {
       method: 'POST',
-      body: JSON.stringify({ countryCode, phone, name })
       body: JSON.stringify({ countryCode, phone, name, userId })
     });
   },
