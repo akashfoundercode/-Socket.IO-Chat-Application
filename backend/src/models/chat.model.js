@@ -63,7 +63,7 @@ const saveMediaBase64 = async (mediaUrl, type = "media") => {
             else if (mimeType.includes("ogg")) ext = "ogv";
             else ext = "mp4";
         }
-//hello
+
         const uploadDir = path.join(UPLOAD_ROOT, subDir);
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
