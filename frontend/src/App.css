@@ -3009,6 +3009,46 @@ body {
   line-height: 1;
 }
 
+.cav-dummy {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15), 0 4px 14px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
+}
+
+.cav-dummy i {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cav-dummy.cav-sm {
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+}
+
+.cav-dummy.cav-md {
+  width: 52px;
+  height: 52px;
+  font-size: 24px;
+}
+
+.cav-dummy.cav-lg {
+  width: 72px;
+  height: 72px;
+  font-size: 32px;
+}
+
+.cav-dummy.cav-xl {
+  width: 96px;
+  height: 96px;
+  font-size: 46px;
+}
+
 .cav-sm {
   width: 36px;
   height: 36px;
@@ -3361,13 +3401,14 @@ body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  background: radial-gradient(circle at center, #182833 0%, #0d1a22 65%, #081015 100%);
 }
 
 .voice-bg-blur {
   position: absolute;
   inset: 0;
-  opacity: 0.18;
-  filter: blur(60px);
+  opacity: 0.28;
+  filter: blur(65px);
   transform: scale(1.4);
 }
 
@@ -3380,8 +3421,8 @@ body {
 }
 
 .voice-avatar-ring {
-  width: 140px;
-  height: 140px;
+  width: 144px;
+  height: 144px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -3413,11 +3454,12 @@ body {
   width: 130px;
   height: 130px;
   border-radius: 50%;
-  background: #1f2c34;
+  background: #182833;
+  border: 3px solid rgba(255, 255, 255, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.6);
   overflow: hidden;
 }
 
@@ -3460,7 +3502,7 @@ body {
 .video-stage {
   flex: 1;
   position: relative;
-  background: #000;
+  background: radial-gradient(circle at center, #15222b 0%, #0b141a 75%, #050a0d 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3484,14 +3526,15 @@ body {
 }
 
 .video-waiting-avatar {
-  width: 100px;
-  height: 100px;
+  width: 110px;
+  height: 110px;
   border-radius: 50%;
-  background: #1f2c34;
+  background: #182833;
+  border: 3px solid rgba(255, 255, 255, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
 

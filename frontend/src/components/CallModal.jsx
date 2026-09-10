@@ -18,19 +18,18 @@ const getAvatarColor = (str) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
-function CallAvatar({ avatar, name, size = 'md' }) {
+function CallAvatar({ avatar, name, isGroup = false, size = 'md' }) {
   const [failed, setFailed] = useState(false);
   const val = String(avatar || '').trim();
-  const invalid = !val || val === 'null' || val === 'undefined' || val.toLowerCase() === 'avatar';
+  const invalid = !val || val === 'null' || val === 'undefined' || val.toLowerCase() === 'avatar' || val.toLowerCase() === 'contact avatar' || val.toLowerCase() === 'user' || val.toLowerCase() === 'group';
   const isEmoji = !invalid && val.length <= 4 && !val.startsWith('/') && !val.startsWith('data:') && !val.startsWith('http');
 
   if (!invalid && !failed && isEmoji) return <span className={`cav-emoji cav-${size}`}>{val}</span>;
   if (!invalid && !failed) return <img src={val} alt="" className={`cav-img cav-${size}`} onError={() => setFailed(true)} />;
 
-  const initial = (name || 'U').charAt(0).toUpperCase();
   return (
-    <div className={`cav-initial cav-${size}`} style={{ background: getAvatarColor(name || 'user') }}>
-      <span>{initial}</span>
+    <div className={`cav-dummy cav-${size}`} style={{ background: getAvatarColor(name || (isGroup ? 'group' : 'user')) }}>
+      <i className={`fa-solid ${isGroup ? 'fa-users' : 'fa-user'}`}></i>
     </div>
   );
 }
@@ -60,7 +59,7 @@ function VideoTile({ participant, videoTrack, isSpeaking, isMuted, count, onClic
       {!videoTrack && (
         <div className="tile-avatar-bg">
           <div className={`tile-avatar-ring ${isSpeaking ? 'ring-active' : ''}`}>
-            <CallAvatar avatar={participant.avatar} name={participant.name} size={count > 4 ? 'sm' : 'md'} />
+            <CallAvatar avatar={participant.avatar} name={participant.name} isGroup={Boolean(participant.isGroup)} size={count > 4 ? 'sm' : 'md'} />
           </div>
           {isSpeaking && (
             <div className="tile-eq">
@@ -103,7 +102,7 @@ function VideoThumbnailTile({ participant, videoTrack, isSpeaking, isMuted, isSe
       <div ref={containerRef} className="thumb-video-container" style={{ display: videoTrack ? 'block' : 'none' }} />
       {!videoTrack && (
         <div className="thumb-avatar-bg">
-          <CallAvatar avatar={participant.avatar} name={participant.name} size="sm" />
+          <CallAvatar avatar={participant.avatar} name={participant.name} isGroup={Boolean(participant.isGroup)} size="sm" />
         </div>
       )}
       <div className="thumb-footer">
@@ -136,7 +135,7 @@ function MainVideoStage({ participant, videoTrack, isSpeaking, isMuted, isVideoO
       {(!videoTrack || isVideoOff) && (
         <div className="main-stage-avatar-bg">
           <div className={`main-stage-avatar-ring ${isSpeaking ? 'ring-pulse' : ''}`}>
-            <CallAvatar avatar={participant?.avatar} name={participant?.name || 'User'} size="xl" />
+            <CallAvatar avatar={participant?.avatar} name={participant?.name || 'User'} isGroup={Boolean(participant?.isGroup)} size="xl" />
           </div>
           <span className="main-stage-status">
             {isVideoOff ? 'Camera is off' : 'Waiting for video...'}
@@ -314,7 +313,7 @@ export default function CallModal({
             <span>{isGroup ? 'Group' : 'Incoming'} {isVideo ? 'Video' : 'Voice'} Call</span>
           </div>
           <div className="incoming-avatar-wrap">
-            <CallAvatar avatar={peerAvatar} name={peerName} size="xl" />
+            <CallAvatar avatar={peerAvatar} name={peerName} isGroup={isGroup} size="xl" />
             <div className="pulse-ring r1" /><div className="pulse-ring r2" /><div className="pulse-ring r3" />
           </div>
           <h3 className="incoming-name">{peerName}</h3>
@@ -497,15 +496,15 @@ export default function CallModal({
                 {!remoteVideoTrack && !swap1on1 && (
                   <div className="video-waiting">
                     <div className="video-waiting-avatar">
-                      <CallAvatar avatar={peerAvatar} name={peerName} size="xl" />
+                      <CallAvatar avatar={peerAvatar} name={peerName} isGroup={isGroup} size="xl" />
                     </div>
-                    <span>Waiting for video...</span>
+                    <span>{callState.isAccepted ? 'Waiting for video...' : (callState.isRinging ? 'Ringing...' : 'Calling...')}</span>
                   </div>
                 )}
                 {swap1on1 && isVideoOff && (
                   <div className="video-waiting">
                     <div className="video-waiting-avatar">
-                      <CallAvatar avatar={currentUser?.avatar} name={currentUser?.name || 'You'} size="xl" />
+                      <CallAvatar avatar={currentUser?.avatar} name={currentUser?.name || 'You'} isGroup={false} size="xl" />
                     </div>
                     <span>Camera is off</span>
                   </div>
@@ -536,7 +535,7 @@ export default function CallModal({
                 <div className="voice-center">
                   <div className={`voice-avatar-ring ${callState.isAccepted ? 'ring-pulse' : ''}`}>
                     <div className="voice-avatar-inner">
-                      <CallAvatar avatar={peerAvatar} name={peerName} size="xl" />
+                      <CallAvatar avatar={peerAvatar} name={peerName} isGroup={isGroup} size="xl" />
                     </div>
                   </div>
                   {callState.isAccepted && (
