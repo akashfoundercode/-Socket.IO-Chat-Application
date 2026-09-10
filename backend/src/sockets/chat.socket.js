@@ -53,6 +53,8 @@ module.exports = (io) => {
 
             socket.data.userId = normalizedUserId;
             socket.join(normalizedUserId);
+            const userPhoneVariants = chatModel.getPhoneVariants(normalizedUserId);
+            userPhoneVariants.forEach(v => socket.join(v));
 
             try {
                 const groups = await chatModel.listGroups(normalizedUserId);
@@ -973,36 +975,90 @@ module.exports = (io) => {
         });
 
         // Status Real-Time Socket Handlers
-        socket.on("status_posted", ({ userId }) => {
-            io.emit("status_updated", { userId: userId || socket.data.userId });
+        socket.on("status_posted", ({ userId, status }) => {
+            io.emit("status_updated", { userId: userId || socket.data.userId, status });
         });
 
-        socket.on("status_deleted", ({ userId }) => {
-            io.emit("status_updated", { userId: userId || socket.data.userId });
+        socket.on("status_deleted", ({ userId, statusId }) => {
+            io.emit("status_updated", { userId: userId || socket.data.userId, statusId, deleted: true });
         });
 
-        socket.on("status_viewed", ({ statusId, ownerId, viewerId }) => {
-            if (!ownerId) return;
-            const cleanOwner = String(ownerId).trim();
-            const altOwner = cleanOwner.startsWith('+') ? cleanOwner.replace(/^\+/, '') : `+${cleanOwner}`;
-            io.to(cleanOwner).emit("status_view_updated", { statusId, viewerId: viewerId || socket.data.userId });
-            io.to(altOwner).emit("status_view_updated", { statusId, viewerId: viewerId || socket.data.userId });
+        socket.on("status_viewed", async ({ statusId, ownerId, viewerId }) => {
+            const cleanViewer = viewerId || socket.data.userId;
+            if (statusId && cleanViewer) {
+                try {
+                    await chatModel.recordStatusView(statusId, cleanViewer);
+                } catch (err) {
+                    // Ignore duplicate view error
+                }
+            }
+
+            let cleanOwner = ownerId;
+            if (!cleanOwner && statusId) {
+                try {
+                    cleanOwner = await chatModel.getStatusOwner(statusId);
+                } catch (_) { }
+            }
+
+            if (cleanOwner) {
+                chatModel.getPhoneVariants(cleanOwner).forEach((variant) => {
+                    io.to(variant).emit("status_view_updated", { statusId, viewerId: cleanViewer });
+                });
+            }
+
+            io.emit("status_updated", { statusId, viewerId: cleanViewer });
         });
 
-        socket.on("status_reaction", ({ statusId, ownerId, emoji }) => {
-            if (!ownerId) return;
-            const cleanOwner = String(ownerId).trim();
-            const altOwner = cleanOwner.startsWith('+') ? cleanOwner.replace(/^\+/, '') : `+${cleanOwner}`;
-            io.to(cleanOwner).emit("status_reaction_updated", {
-                statusId,
-                reactorId: socket.data.userId,
-                emoji
-            });
-            io.to(altOwner).emit("status_reaction_updated", {
-                statusId,
-                reactorId: socket.data.userId,
-                emoji
-            });
+        socket.on("status_reaction", async ({ statusId, ownerId, emoji, reactorId }) => {
+            const cleanReactor = reactorId || socket.data.userId;
+            if (statusId && cleanReactor && emoji) {
+                try {
+                    await chatModel.addStatusReaction(statusId, cleanReactor, emoji);
+                } catch (_) { }
+            }
+
+            let cleanOwner = ownerId;
+            if (!cleanOwner && statusId) {
+                try {
+                    cleanOwner = await chatModel.getStatusOwner(statusId);
+                } catch (_) { }
+            }
+
+            if (cleanOwner) {
+                chatModel.getPhoneVariants(cleanOwner).forEach((variant) => {
+                    io.to(variant).emit("status_reaction_updated", {
+                        statusId,
+                        reactorId: cleanReactor,
+                        emoji
+                    });
+                });
+            }
+        });
+
+        socket.on("status_reply", async ({ statusId, ownerId, message, senderId }) => {
+            const cleanSender = senderId || socket.data.userId;
+            if (statusId && cleanSender && message) {
+                try {
+                    await chatModel.addStatusReply(statusId, cleanSender, message);
+                } catch (_) { }
+            }
+
+            let cleanOwner = ownerId;
+            if (!cleanOwner && statusId) {
+                try {
+                    cleanOwner = await chatModel.getStatusOwner(statusId);
+                } catch (_) { }
+            }
+
+            if (cleanOwner) {
+                chatModel.getPhoneVariants(cleanOwner).forEach((variant) => {
+                    io.to(variant).emit("status_reply_received", {
+                        statusId,
+                        senderId: cleanSender,
+                        message
+                    });
+                });
+            }
         });
 
         socket.on("logout", async () => {

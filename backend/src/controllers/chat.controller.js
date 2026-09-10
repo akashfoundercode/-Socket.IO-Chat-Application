@@ -386,6 +386,12 @@ const createStatus = async (req, res) => {
         const { type, content, caption, bgColor, fontStyle } = req.body;
         if (!userId || !content) return res.status(400).json({ success: false, message: 'userId and content are required' });
         const status = await chatModel.createStatus({ userId, type, content, caption, bgColor, fontStyle });
+
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('status_updated', { userId, status });
+        }
+
         return res.json({ success: true, status });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });
@@ -412,6 +418,12 @@ const deleteStatus = async (req, res) => {
         const userId = normalizeId(req.query.userId || req.body.userId);
         if (!statusId || !userId) return res.status(400).json({ success: false, message: 'statusId and userId are required' });
         await chatModel.deleteStatus(statusId, userId);
+
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('status_updated', { userId, statusId, deleted: true });
+        }
+
         return res.json({ success: true });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });
@@ -424,6 +436,16 @@ const viewStatus = async (req, res) => {
         const viewerId = normalizeId(req.body.viewerId || req.query.viewerId);
         if (!statusId || !viewerId) return res.status(400).json({ success: false, message: 'statusId and viewerId required' });
         await chatModel.recordStatusView(statusId, viewerId);
+
+        const ownerId = await chatModel.getStatusOwner(statusId);
+        const io = req.app.get('io');
+        if (io && ownerId) {
+            chatModel.getPhoneVariants(ownerId).forEach(v => {
+                io.to(v).emit('status_view_updated', { statusId, viewerId });
+            });
+            io.emit('status_updated', { statusId, viewerId });
+        }
+
         return res.json({ success: true });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });
@@ -449,8 +471,15 @@ const reactToStatus = async (req, res) => {
         const { emoji } = req.body;
         if (!statusId || !reactorId || !emoji) return res.status(400).json({ success: false, message: 'statusId, reactorId, emoji required' });
         await chatModel.addStatusReaction(statusId, reactorId, emoji);
+
         // Notify status owner via socket
         const ownerId = await chatModel.getStatusOwner(statusId);
+        const io = req.app.get('io');
+        if (io && ownerId) {
+            chatModel.getPhoneVariants(ownerId).forEach(v => {
+                io.to(v).emit('status_reaction_updated', { statusId, reactorId, emoji });
+            });
+        }
         return res.json({ success: true, ownerId });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });
@@ -465,6 +494,12 @@ const replyToStatus = async (req, res) => {
         if (!statusId || !senderId || !message) return res.status(400).json({ success: false, message: 'statusId, senderId, message required' });
         await chatModel.addStatusReply(statusId, senderId, message);
         const ownerId = await chatModel.getStatusOwner(statusId);
+        const io = req.app.get('io');
+        if (io && ownerId) {
+            chatModel.getPhoneVariants(ownerId).forEach(v => {
+                io.to(v).emit('status_reply_received', { statusId, senderId, message });
+            });
+        }
         return res.json({ success: true, ownerId });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });

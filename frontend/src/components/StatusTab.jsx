@@ -51,10 +51,27 @@ function ViewersPanel({ statusId, ownerId, onClose }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    statusApi.getViewers(statusId, ownerId)
-      .then(d => { if (d?.success) setViewers(d.viewers || []); })
-      .finally(() => setLoading(false));
-  }, [statusId]);
+    const fetchViewers = () => {
+      statusApi.getViewers(statusId, ownerId)
+        .then(d => { if (d?.success) setViewers(d.viewers || []); })
+        .finally(() => setLoading(false));
+    };
+
+    fetchViewers();
+
+    const handleLiveView = (data) => {
+      if (!data?.statusId || String(data.statusId) === String(statusId)) {
+        fetchViewers();
+      }
+    };
+
+    socket.on('status_view_updated', handleLiveView);
+    socket.on('status_reaction_updated', handleLiveView);
+    return () => {
+      socket.off('status_view_updated', handleLiveView);
+      socket.off('status_reaction_updated', handleLiveView);
+    };
+  }, [statusId, ownerId]);
 
   return (
     <div className="wa-sv-viewers-panel" onClick={e => e.stopPropagation()}>
@@ -73,7 +90,7 @@ function ViewersPanel({ statusId, ownerId, onClose }) {
             {viewers.map((v, i) => (
               <div key={i} className="wa-sv-viewer-row">
                 <AvatarCircle avatar={v.avatar} size={38} />
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="wa-sv-viewer-name">{v.name || v.phone}</div>
                   <div className="wa-sv-viewer-time">
                     {new Date(v.viewedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -103,6 +120,25 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
   const current = statuses[idx];
   const DURATION = current?.type === 'video' ? 15000 : 5000;
   const paused = showReply || showViewers || showReactions;
+
+  const [liveViewCount, setLiveViewCount] = useState(current?.viewCount || 0);
+
+  useEffect(() => {
+    setLiveViewCount(current?.viewCount || 0);
+  }, [current?.id, current?.viewCount]);
+
+  useEffect(() => {
+    if (!isOwn || !current?.id) return;
+    const handleViewUpdate = (data) => {
+      if (String(data?.statusId) === String(current.id)) {
+        setLiveViewCount(prev => (typeof prev === 'number' ? prev + 1 : 1));
+      }
+    };
+    socket.on('status_view_updated', handleViewUpdate);
+    return () => {
+      socket.off('status_view_updated', handleViewUpdate);
+    };
+  }, [isOwn, current?.id]);
 
   /* record view */
   useEffect(() => {
@@ -164,121 +200,128 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
   };
 
   return (
-    <div className="wa-sv-backdrop" onClick={onClose}>
-      <div className="wa-sv-container" onClick={e => e.stopPropagation()}
-        style={{ background: current.type === 'text' ? (current.bgColor || '#075e54') : '#000' }}>
-
+    <div className="wa-sv-overlay" onClick={onClose}>
+      <div
+        className="wa-sv-card"
+        onClick={e => e.stopPropagation()}
+        style={{ background: current.type === 'text' ? (current.bgColor || '#075e54') : '#000' }}
+      >
         {/* Progress bars */}
-        <div className="wa-sv-progress-row">
+        <div className="wa-sv-bars">
           {statuses.map((s, i) => (
-            <div key={i} className="wa-sv-prog-track">
-              <div className="wa-sv-prog-fill" style={{
-                width: i < idx ? '100%' : i === idx ? `${progress}%` : '0%'
-              }} />
+            <div key={i} className="wa-sv-bar-track">
+              <div
+                className="wa-sv-bar-fill"
+                style={{
+                  width: i < idx ? '100%' : i === idx ? `${progress}%` : '0%'
+                }}
+              />
             </div>
           ))}
         </div>
 
         {/* Header */}
         <div className="wa-sv-header">
-          <div className="wa-sv-user-info">
-            <AvatarCircle avatar={userAvatar} size={38} />
-            <div>
-              <div className="wa-sv-user-name">{userName}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <div className="wa-sv-avatar">
+              <AvatarCircle avatar={userAvatar} size={42} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div className="wa-sv-username" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {userName}
+              </div>
               <div className="wa-sv-time">
                 {new Date(current.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
           </div>
-          <div className="wa-sv-header-actions">
-            {isOwn && (
-              <button className="wa-sv-icon-btn" onClick={() => setShowViewers(v => !v)}>
-                <i className="fa-solid fa-eye"></i> {current.viewCount || 0}
-              </button>
-            )}
-            <button className="wa-sv-icon-btn" onClick={onClose}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <button className="wa-sv-close-btn" onClick={onClose} title="Close">✕</button>
           </div>
         </div>
 
-        {/* Content */}
-        <div className="wa-sv-content">
+        {/* Body Content */}
+        <div className="wa-sv-body">
           {current.type === 'text' && (
-            <p className="wa-sv-text" style={{ fontFamily, fontWeight: isBold ? 'bold' : 'normal' }}>
+            <div
+              className="wa-sv-text-content"
+              style={{ fontFamily, fontWeight: isBold ? 'bold' : 'normal' }}
+            >
               {current.content}
-            </p>
+            </div>
           )}
           {current.type === 'link' && (
-            <div className="wa-sv-link-box">
-              <a href={current.content} target="_blank" rel="noreferrer" className="wa-sv-link-text">
+            <div className="wa-sv-text-content">
+              <a href={current.content} target="_blank" rel="noreferrer" className="wa-sv-link">
                 🔗 {current.content}
               </a>
             </div>
           )}
           {current.type === 'image' && (
-            <div className="wa-sv-media-wrap">
-              <img src={resolveMediaUrl(current.content)} alt="Status" className="wa-sv-img" />
-              {current.caption && <div className="wa-sv-caption">{current.caption}</div>}
-            </div>
+            <img src={resolveMediaUrl(current.content)} alt="Status" className="wa-sv-media" />
           )}
           {current.type === 'video' && (
-            <div className="wa-sv-media-wrap">
-              <video src={resolveMediaUrl(current.content)} autoPlay playsInline className="wa-sv-img" />
-              {current.caption && <div className="wa-sv-caption">{current.caption}</div>}
-            </div>
+            <video src={resolveMediaUrl(current.content)} autoPlay playsInline className="wa-sv-media" />
+          )}
+          {current.caption && (
+            <div className="wa-sv-caption">{current.caption}</div>
           )}
         </div>
 
-        {/* Navigation tap targets */}
-        <div className="wa-sv-tap-left" onClick={() => setIdx(p => Math.max(0, p - 1))} />
-        <div className="wa-sv-tap-right" onClick={() => {
+        {/* Tap zones for Next/Prev */}
+        <div className="wa-sv-tap-prev" onClick={() => setIdx(p => Math.max(0, p - 1))} />
+        <div className="wa-sv-tap-next" onClick={() => {
           if (idx < statuses.length - 1) setIdx(p => p + 1);
           else onClose();
         }} />
 
-        {/* Footer controls */}
-        {!isOwn && (
-          <div className="wa-sv-footer">
-            {!showReply && (
-              <div className="wa-sv-footer-bar">
-                <button className="wa-sv-reply-btn" onClick={() => setShowReply(true)}>
-                  <i className="fa-solid fa-reply"></i> Reply
-                </button>
-                <div className="wa-sv-quick-emojis">
-                  {REACTION_EMOJIS.slice(0, 5).map(em => (
-                    <button key={em} className={`wa-sv-emoji-btn ${myReaction === em ? 'active' : ''}`}
-                      onClick={() => handleReact(em)}>{em}</button>
+        {/* Bottom bar */}
+        <div className="wa-sv-bottom">
+          {isOwn ? (
+            <button className="wa-sv-views-btn" onClick={() => setShowViewers(v => !v)}>
+              <i className="fa-solid fa-eye"></i>
+              <span>{liveViewCount} {liveViewCount === 1 ? 'view' : 'views'}</span>
+            </button>
+          ) : (
+            <div className="wa-sv-actions" style={{ position: 'relative' }}>
+              {!showReply && (
+                <>
+                  <button className="wa-sv-react-btn" onClick={() => setShowReactions(r => !r)} title="React">
+                    {myReaction ? <span style={{ fontSize: 20 }}>{myReaction}</span> : <i className="fa-regular fa-face-smile" style={{ color: '#fff', fontSize: 18 }}></i>}
+                  </button>
+                  <button className="wa-sv-reply-btn" onClick={() => setShowReply(true)}>
+                    <i className="fa-solid fa-reply"></i> Reply
+                  </button>
+                </>
+              )}
+
+              {showReactions && !showReply && (
+                <div className="wa-sv-emoji-tray">
+                  {REACTION_EMOJIS.map(em => (
+                    <button key={em} className="wa-sv-emoji-btn" onClick={() => handleReact(em)}>{em}</button>
                   ))}
-                  <button className="wa-sv-emoji-btn" onClick={() => setShowReactions(r => !r)}>➕</button>
                 </div>
-              </div>
-            )}
+              )}
 
-            {showReactions && (
-              <div className="wa-sv-reaction-picker">
-                {REACTION_EMOJIS.map(em => (
-                  <button key={em} className="wa-sv-emoji-btn-lg" onClick={() => handleReact(em)}>{em}</button>
-                ))}
-              </div>
-            )}
-
-            {showReply && (
-              <div className="wa-sv-reply-box">
-                <input
-                  ref={replyRef}
-                  className="wa-sv-reply-input"
-                  placeholder="Type a reply..."
-                  value={replyText}
-                  onChange={e => setReplyText(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleSendReply(); }}
-                />
-                <button className="wa-sv-send-btn" disabled={!replyText.trim() || sending} onClick={handleSendReply}>
-                  <i className="fa-solid fa-paper-plane"></i>
-                </button>
-                <button className="wa-sv-close-small" onClick={() => setShowReply(false)}>✕</button>
-              </div>
-            )}
-          </div>
-        )}
+              {showReply && (
+                <div className="wa-sv-reply-box">
+                  <input
+                    ref={replyRef}
+                    className="wa-sv-reply-input"
+                    placeholder="Type a reply..."
+                    value={replyText}
+                    onChange={e => setReplyText(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSendReply(); }}
+                  />
+                  <button className="wa-sv-reply-send" disabled={!replyText.trim() || sending} onClick={handleSendReply}>
+                    <i className="fa-solid fa-paper-plane"></i>
+                  </button>
+                  <button className="wa-sv-reply-cancel" onClick={() => setShowReply(false)}>✕</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Viewers panel (for own status) */}
         {showViewers && (
@@ -308,17 +351,31 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
   const fileRef = useRef(null);
   const videoRef = useRef(null);
 
-  const load = async () => {
+  const load = async (showSpinner = true) => {
     if (!userId) return;
     try {
-      setLoading(true);
+      if (showSpinner) setLoading(true);
       const d = await statusApi.getStatuses(userId);
       if (d?.success) { setMine(d.mine || []); setContacts(d.contacts || []); }
     } catch (_) { }
-    finally { setLoading(false); }
+    finally { if (showSpinner) setLoading(false); }
   };
 
-  useEffect(() => { load(); }, [userId]);
+  useEffect(() => {
+    load(true);
+
+    const handleRealtimeStatus = () => {
+      load(false);
+    };
+
+    socket.on('status_updated', handleRealtimeStatus);
+    socket.on('status_view_updated', handleRealtimeStatus);
+
+    return () => {
+      socket.off('status_updated', handleRealtimeStatus);
+      socket.off('status_view_updated', handleRealtimeStatus);
+    };
+  }, [userId]);
 
   const handleStatusViewed = (statusId) => {
     setContacts(prev => prev.map(s => s.id === statusId ? { ...s, isViewed: true } : s));
@@ -352,6 +409,11 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
       await statusApi.createStatus({ userId, type: compType, content, caption: compCaption.trim() || null, bgColor: compBg, fontStyle: compFont });
       socket.emit('status_posted', { userId });
       setShowComposer(false); resetComposer(); load();
+      const res = await statusApi.createStatus({ userId, type: compType, content, caption: compCaption.trim() || null, bgColor: compBg, fontStyle: compFont });
+      socket.emit('status_posted', { userId, status: res?.status });
+      setShowComposer(false);
+      resetComposer();
+      load(false);
     } catch (_) { alert('Failed to post status'); }
     finally { setPosting(false); }
   };
@@ -384,8 +446,14 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
   };
 
   const handleDeleteMine = async (id) => {
-    try { await statusApi.deleteStatus(id, userId); setMine(p => p.filter(s => s.id !== id)); }
-    catch (_) { alert('Failed to delete'); }
+    try {
+      await statusApi.deleteStatus(id, userId);
+      socket.emit('status_deleted', { userId, statusId: id });
+      setMine(p => p.filter(s => s.id !== id));
+      load(false);
+    } catch (_) {
+      alert('Failed to delete');
+    }
   };
 
   /* reply/reaction opens chat with that user */
