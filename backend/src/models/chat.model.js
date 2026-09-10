@@ -485,30 +485,31 @@ const listUserContacts = async (userId) => {
     // Only return explicitly saved contacts (contacts table), exclude groups and self
     const [rows] = await pool.execute(
         `SELECT
-            c.contact_id AS id,
-            c.custom_name AS customName,
-            COALESCE(u.name, c.custom_name, c.contact_id) AS profileName,
-            COALESCE(u.full_phone, c.contact_id) AS fullPhone,
-            u.phone AS phone,
-            u.avatar AS avatar,
-            u.about AS about,
-            u.last_seen AS lastSeen
+            MAX(c.contact_id) AS id,
+            MAX(c.custom_name) AS customName,
+            COALESCE(MAX(u.name), MAX(c.custom_name), MAX(c.contact_id)) AS profileName,
+            COALESCE(MAX(u.full_phone), MAX(c.contact_id)) AS fullPhone,
+            MAX(u.phone) AS phone,
+            MAX(u.avatar) AS avatar,
+            MAX(u.about) AS about,
+            MAX(u.last_seen) AS lastSeen
          FROM contacts c
          LEFT JOIN users u ON (
              u.full_phone = c.contact_id
              OR u.phone = c.contact_id
              OR CAST(u.id AS CHAR) = c.contact_id
+             OR c.contact_id LIKE CONCAT('%', u.phone)
          )
          WHERE c.user_id IN (${placeholders})
            AND c.contact_id NOT IN (${placeholders})
            AND c.contact_id NOT LIKE 'group:%'
-         GROUP BY c.contact_id
-         ORDER BY c.custom_name ASC`,
+         GROUP BY COALESCE(u.full_phone, c.contact_id)
+         ORDER BY customName ASC`,
         [...userVars, ...userVars]
     );
 
     return rows.map((r) => ({
-        id: r.id,
+        id: r.fullPhone || r.id,
         name: r.customName || r.profileName || r.fullPhone || r.id,
         customName: r.customName || null,
         profileName: r.profileName || null,
