@@ -1111,14 +1111,6 @@ export default function ChatList({
           <button
             type="button"
             className="wa-inbox-icon"
-            title="Start New Chat"
-            onClick={() => setShowNewChatModal(true)}
-          >
-            <i className="fa-solid fa-message"></i>
-          </button>
-          <button
-            type="button"
-            className="wa-inbox-icon"
             title="Create Group"
             onClick={() => setShowGroupModal(true)}
           >
@@ -1206,16 +1198,6 @@ export default function ChatList({
                   }}
                 >
                   <i className="fa-solid fa-address-book"></i> Contacts Log
-                </button>
-                <button
-                  type="button"
-                  className="wa-menu-item"
-                  onClick={() => {
-                    setShowMenu(false);
-                    setShowNewChatModal(true);
-                  }}
-                >
-                  <i className="fa-solid fa-user-plus"></i> New Chat
                 </button>
                 <div className="wa-theme-picker">
                   <div className="wa-theme-picker-label">Theme</div>
