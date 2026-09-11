@@ -11209,3 +11209,123 @@ body {
     max-height: 220px;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   EXIT CONFIRMATION DIALOG (Mobile / Browser Back Interceptor)
+   ───────────────────────────────────────────────────────────── */
+.wa-exit-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: waFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.wa-exit-dialog-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--theme-surface, #ffffff);
+  border-radius: 18px;
+  padding: 24px 20px 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  text-align: center;
+  animation: waModalPop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark .wa-exit-dialog-card,
+[data-theme="dark"] .wa-exit-dialog-card {
+  background: #1f2c34;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.wa-exit-dialog-icon-wrap {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+.wa-exit-dialog-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--theme-text, #111827);
+}
+
+.dark .wa-exit-dialog-title,
+[data-theme="dark"] .wa-exit-dialog-title {
+  color: #f3f4f6;
+}
+
+.wa-exit-dialog-desc {
+  margin: 0 0 22px;
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--theme-text-secondary, #6b7280);
+}
+
+.dark .wa-exit-dialog-desc,
+[data-theme="dark"] .wa-exit-dialog-desc {
+  color: #9ca3af;
+}
+
+.wa-exit-dialog-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.wa-exit-dialog-btn {
+  flex: 1;
+  padding: 11px 16px;
+  border-radius: 12px;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+}
+
+.wa-exit-dialog-btn.cancel {
+  background: var(--theme-surface-secondary, #f0f2f5);
+  color: var(--theme-text, #111827);
+}
+
+.dark .wa-exit-dialog-btn.cancel,
+[data-theme="dark"] .wa-exit-dialog-btn.cancel {
+  background: #2a3942;
+  color: #e9edef;
+}
+
+.wa-exit-dialog-btn.cancel:hover {
+  background: #e4e6eb;
+}
+
+.dark .wa-exit-dialog-btn.cancel:hover,
+[data-theme="dark"] .wa-exit-dialog-btn.cancel:hover {
+  background: #374751;
+}
+
+.wa-exit-dialog-btn.confirm {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.wa-exit-dialog-btn.confirm:hover {
+  background: #dc2626;
+}
+
+.wa-exit-dialog-btn:active {
+  transform: scale(0.97);
+}

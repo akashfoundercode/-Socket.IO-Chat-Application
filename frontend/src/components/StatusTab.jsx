@@ -3,6 +3,7 @@ import { chatApi, statusApi, resolveMediaUrl } from '../services/api';
 import { socket } from '../socket/socket';
 import Avatar from './Avatar';
 import StatusComposer from './StatusComposer';
+import { useRegisterBackHandler } from '../hooks/useBackButtonHandler';
 
 const BG_COLORS = [
   '#c2410c', '#ea580c', '#f97316', '#1a1a2e', '#16213e',
@@ -351,6 +352,12 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
   const [savedContacts, setSavedContacts] = useState([]);
   const [privacyMode, setPrivacyMode] = useState('contacts');
   const [privacyAudienceIds, setPrivacyAudienceIds] = useState([]);
+
+  // Register StatusTab back handlers
+  useRegisterBackHandler(Boolean(viewer), () => setViewer(null), 100);
+  useRegisterBackHandler(showComposer, () => setShowComposer(false), 100);
+  useRegisterBackHandler(showPrivacyContacts, () => setShowPrivacyContacts(false), 90);
+  useRegisterBackHandler(showPrivacyMenu, () => setShowPrivacyMenu(false), 90);
 
   const load = async (showSpinner = true) => {
     if (!userId) return;
