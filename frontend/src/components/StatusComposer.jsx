@@ -200,8 +200,6 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
   };
 
   /* ── 3. Video Recording ── */
-  const handleStartRecording = () => {
-    if (!streamRef.current || isRecording) return;
   const handleStartRecording = async () => {
     if (isRecording) return;
 
@@ -209,31 +207,13 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
       await startCameraStream();
     }
     if (!streamRef.current) {
-      startCameraStream();
       alert("Camera is not accessible. Please ensure permissions are granted.");
       return;
     }
-    if (isRecording) return;
 
     try {
       recordedChunksRef.current = [];
-      const options = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-        ? { mimeType: 'video/webm;codecs=vp8,opus' }
-        : MediaRecorder.isTypeSupported('video/mp4')
-          ? { mimeType: 'video/mp4' }
-          : {};
 
-      // Check supported MIME types in order of best device compatibility
-      const candidateTypes = [
-        'video/mp4;codecs=avc1,mp4a.40.2',
-        'video/mp4',
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm;codecs=h264,opus',
-        'video/webm'
-      ];
-      let selectedMimeType = '';
-      if (typeof MediaRecorder.isTypeSupported === 'function') {
       const getBestSupportedVideoMimeType = () => {
         if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
         const candidateTypes = [
@@ -246,8 +226,6 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
         ];
         for (const type of candidateTypes) {
           if (MediaRecorder.isTypeSupported(type)) {
-            selectedMimeType = type;
-            break;
             return type;
           }
         }
@@ -265,8 +243,6 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
         recorder = new MediaRecorder(streamRef.current);
       }
 
-      const options = selectedMimeType ? { mimeType: selectedMimeType } : {};
-      const recorder = new MediaRecorder(streamRef.current, options);
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (e) => {
@@ -276,8 +252,6 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
       };
 
       recorder.onstop = () => {
-        const mimeType = recorder.mimeType || 'video/webm';
-        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
         const actualMimeType = recorder.mimeType || selectedMimeType || 'video/webm';
         const blob = new Blob(recordedChunksRef.current, { type: actualMimeType });
 
@@ -299,26 +273,21 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
           dataUrl: null
         });
 
-        // Convert blob to base64 DataURL for backend upload
         // Convert blob to base64 DataURL for backend upload (stored in .dataUrl only, preview keeps blobUrl)
         const reader = new FileReader();
         reader.onloadend = () => {
-          stopCameraStream();
-          setCapturedMedia({ type: 'video', url: reader.result });
           setCapturedMedia(prev => (prev && prev.url === blobUrl ? { ...prev, dataUrl: reader.result } : prev));
         };
         reader.readAsDataURL(blob);
 
         setIsRecording(false);
         setRecordDuration(0);
-        if (recordTimerRef.current) clearInterval(recordTimerRef.current);
         if (recordTimerRef.current) {
           clearInterval(recordTimerRef.current);
           recordTimerRef.current = null;
         }
       };
 
-      recorder.start(250);
       recorder.start(200);
       setIsRecording(true);
       setRecordDuration(0);
@@ -349,7 +318,6 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
       try {
         mediaRecorderRef.current.requestData();
       } catch (_) { }
-      mediaRecorderRef.current.stop();
       try {
         mediaRecorderRef.current.stop();
       } catch (_) { }
@@ -401,8 +369,6 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
 
     const reader = new FileReader();
     reader.onload = (ev) => {
-      stopCameraStream();
-      setCapturedMedia({ type: 'video', url: ev.target.result });
       setCapturedMedia(prev => (prev && prev.url === objectUrl ? { ...prev, dataUrl: ev.target.result } : prev));
     };
     reader.readAsDataURL(file);
@@ -474,7 +440,6 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
       payload = {
         userId,
         type: capturedMedia.type,
-        content: capturedMedia.url,
         content: finalContent,
         caption: caption.trim() || null,
         bgColor: '#075e54',
@@ -484,7 +449,6 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
       };
     }
 
-    if (!payload) return;
     if (!payload || !payload.content) return;
 
     setPosting(true);
@@ -568,7 +532,6 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
               {capturedMedia.type === 'image' ? (
                 <img src={capturedMedia.url} alt="Status Preview" className="wa-composer-media-fit" />
               ) : (
-                <video src={capturedMedia.url} controls autoPlay playsInline loop className="wa-composer-media-fit" />
                 <video
                   src={capturedMedia.url}
                   controls

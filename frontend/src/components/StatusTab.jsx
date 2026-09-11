@@ -340,7 +340,6 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
             <img src={resolveMediaUrl(current.content)} alt="Status" className="wa-sv-media" />
           )}
           {current.type === 'video' && (
-            <video src={resolveMediaUrl(current.content)} autoPlay playsInline className="wa-sv-media" />
             <video
               src={resolveMediaUrl(current.content)}
               autoPlay
@@ -382,60 +381,111 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
                     {myReaction ? <span style={{ fontSize: 20 }}>{myReaction}</span> : <i className="fa-regular fa-face-smile" style={{ color: '#fff', fontSize: 18 }}></i>}
                   </button>
                   <button className="wa-sv-reply-btn" onClick={() => setShowReply(true)}>
-                    <i className="fa-solid fa-reply"></i> Reply
+                    <i className="fa-solid fa-chevron-up"></i>
+                    <span>Reply</span>
                   </button>
                 </>
-              )}
-
-              {showReactions && !showReply && (
-                <div className="wa-sv-emoji-tray">
-                  {REACTION_EMOJIS.map(em => (
-                    <button key={em} className="wa-sv-emoji-btn" onClick={() => handleReact(em)}>{em}</button>
-                  ))}
-                </div>
-              )}
-
-              {showReply && (
-                <div className="wa-sv-reply-box">
-                  <input
-                    ref={replyRef}
-                    className="wa-sv-reply-input"
-                    placeholder="Type a reply..."
-                    value={replyText}
-                    onChange={e => setReplyText(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleSendReply(); }}
-                  />
-                  <button className="wa-sv-reply-send" disabled={!replyText.trim() || sending} onClick={handleSendReply}>
-                    <i className="fa-solid fa-paper-plane"></i>
-                  </button>
-                  <button className="wa-sv-reply-cancel" onClick={() => setShowReply(false)}>✕</button>
-                </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Viewers panel (for own status) */}
-        {showViewers && (
-          <ViewersPanel statusId={current.id} ownerId={ownerId} onClose={() => setShowViewers(false)} />
+        {/* Floating reply input bar */}
+        {!isOwn && showReply && (
+          <div className="wa-sv-reply-bar" onClick={e => e.stopPropagation()}>
+            <input
+              type="text"
+              className="wa-sv-reply-input"
+              placeholder="Type a reply..."
+              value={replyText}
+              onChange={e => setReplyText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSendReply(); }}
+              autoFocus
+            />
+            <button
+              className="wa-sv-reply-send"
+              onClick={handleSendReply}
+              disabled={!replyText.trim() || sending}
+            >
+              <i className="fa-solid fa-paper-plane"></i>
+            </button>
+            <button className="wa-sv-reply-close" onClick={() => setShowReply(false)}>✕</button>
+          </div>
+        )}
+
+        {/* Floating emoji reactions picker */}
+        {!isOwn && showReactions && (
+          <div className="wa-sv-reactions-panel" onClick={e => e.stopPropagation()}>
+            {REACTION_EMOJIS.map(em => (
+              <button
+                key={em}
+                className={`wa-sv-reaction-emoji ${myReaction === em ? 'active' : ''}`}
+                onClick={() => handleSendReaction(em)}
+              >
+                {em}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Viewers modal for own status */}
+        {isOwn && showViewers && (
+          <div className="wa-sv-viewers-modal" onClick={e => e.stopPropagation()}>
+            <div className="wa-sv-viewers-header">
+              <span className="wa-sv-viewers-title">
+                Viewed by {liveViewCount} {liveViewCount === 1 ? 'person' : 'people'}
+              </span>
+              <button className="wa-sv-viewers-close" onClick={() => setShowViewers(false)}>✕</button>
+            </div>
+            <div className="wa-sv-viewers-list">
+              {loadingViewers ? (
+                <div className="wa-sv-viewers-loading">Loading viewers...</div>
+              ) : viewers.length === 0 ? (
+                <div className="wa-sv-viewers-empty">No views yet</div>
+              ) : (
+                viewers.map(v => (
+                  <div key={v.viewerId} className="wa-sv-viewer-row">
+                    <AvatarCircle avatar={v.avatar} size={36} />
+                    <div className="wa-sv-viewer-info">
+                      <span className="wa-sv-viewer-name">{v.name}</span>
+                      <span className="wa-sv-viewer-time">
+                        {v.viewedAt ? new Date(v.viewedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-/* ── My Status List Panel (Shows all my posted status updates on click) ── */
-function MyStatusListPanel({ mine, myName, myAvatar, onClose, onAddStatus, onDeleteStatus, onOpenViewer, onOpenViewers }) {
+/* ── My Status List Panel (Dedicated WhatsApp-style full list of my updates) ── */
+function MyStatusListPanel({
+  statuses = [],
+  mine: propMine,
+  onClose,
+  onOpenViewer,
+  onOpenViewers,
+  onDeleteStatus,
+  onAddStatus
+}) {
+  const mine = Array.isArray(statuses) && statuses.length > 0 ? statuses : (Array.isArray(propMine) ? propMine : []);
+
   return (
     <div className="wa-my-status-panel-overlay" onClick={onClose}>
       <div className="wa-my-status-panel" onClick={e => e.stopPropagation()}>
-        <div className="wa-my-status-panel-head">
-          <button type="button" className="wa-my-status-back-btn" onClick={onClose} title="Back">
+        {/* Panel Header */}
+        <div className="wa-my-status-panel-header">
+          <button type="button" className="wa-my-status-panel-back-btn" onClick={onClose} title="Back">
             <i className="fa-solid fa-arrow-left"></i>
           </button>
-          <div className="wa-my-status-head-info">
-            <h3 className="wa-my-status-title">My status</h3>
-            <span className="wa-my-status-subtitle">{mine.length} status update{mine.length !== 1 ? 's' : ''}</span>
+          <div className="wa-my-status-panel-title-wrap">
+            <h2>My Status Updates</h2>
+            <span>{mine.length} {mine.length === 1 ? 'update' : 'updates'}</span>
           </div>
           <button type="button" className="wa-my-status-add-btn" onClick={onAddStatus} title="Add status update">
             <i className="fa-solid fa-camera"></i>
@@ -468,10 +518,10 @@ function MyStatusListPanel({ mine, myName, myAvatar, onClose, onAddStatus, onDel
                   {/* Thumbnail */}
                   <div className="wa-my-status-thumb-wrap">
                     {isImage ? (
-                      <img src={st.content} alt="Status" className="wa-my-status-thumb-img" />
+                      <img src={resolveMediaUrl(st.content)} alt="Status" className="wa-my-status-thumb-img" />
                     ) : isVideo ? (
                       <div className="wa-my-status-video-thumb">
-                        <video src={st.content} className="wa-my-status-thumb-img" />
+                        <video src={resolveMediaUrl(st.content)} className="wa-my-status-thumb-img" />
                         <span className="wa-my-status-video-play"><i className="fa-solid fa-play"></i></span>
                       </div>
                     ) : (
