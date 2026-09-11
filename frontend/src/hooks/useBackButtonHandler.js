@@ -1,102 +1,129 @@
-import React, { useEffect, useRef, useState, useCallback, createContext, useContext } from 'react';
-
-/**
- * BackHandler Stack & Context
- */
-const BackHandlerContext = createContext({
-  register: () => () => { },
-  unregister: () => { },
-  triggerBack: () => false,
-  markProgrammaticPop: () => { }
-});
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 /**
  * useBackButtonHandler
  * 
- * Top-level hook to manage browser History API popstate events,
- * layer back stack, and root exit confirmation dialog.
+ * Centralized, isolated hook to manage device/browser back-button behavior:
+ * 1. Inside a 1-to-1 or group chat -> Device back button closes the conversation and returns to the chat list (No exit popup).
+ * 2. In Profile Settings / Call -> Device back button returns to inbox / minimizes call (No exit popup).
+ * 3. At root screen (Chat list with no chat open) -> Device back button opens the Exit confirmation dialog.
+ * 4. Normal in-app clicks (switching tabs, opening chats, closing via on-screen buttons) NEVER trigger the exit dialog.
+ * 5. In Exit dialog, "Exit" performs real exit/back navigation, and "Cancel" keeps the user on the root screen.
  */
 export function useBackButtonHandler({
   isLoggedIn = true,
+  activeChat = null,
+  currentView = 'inbox',
+  callState = null,
+  isCallMinimized = false,
+  onCloseChat,
+  onCloseProfile,
+  onMinimizeCall,
   enabled = true
 } = {}) {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const isExitingRef = useRef(false);
-  const ignoreProgrammaticPopsCountRef = useRef(0);
-  const handlersStackRef = useRef([]);
+  const isProgrammaticBackRef = useRef(false);
+  const hasSubscreenHistoryRef = useRef(false);
 
-  // Register a back action to the stack
-  const register = useCallback((handlerObj) => {
-    handlersStackRef.current.push(handlerObj);
-    // Sort descending by priority (higher priority runs first)
-    handlersStackRef.current.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+  // Keep references to current state and callbacks
+  const isInsideSubscreen = Boolean(activeChat || currentView === 'profile' || (callState && !isCallMinimized));
+  const isInsideSubscreenRef = useRef(isInsideSubscreen);
+  isInsideSubscreenRef.current = isInsideSubscreen;
 
-    // Return unregister cleanup function
-    return () => {
-      handlersStackRef.current = handlersStackRef.current.filter((h) => h !== handlerObj);
-    };
-  }, []);
+  const activeChatRef = useRef(activeChat);
+  activeChatRef.current = activeChat;
 
-  const unregister = useCallback((handlerObj) => {
-    handlersStackRef.current = handlersStackRef.current.filter((h) => h !== handlerObj);
-  }, []);
+  const currentViewRef = useRef(currentView);
+  currentViewRef.current = currentView;
 
-  const markProgrammaticPop = useCallback(() => {
-    ignoreProgrammaticPopsCountRef.current += 1;
-  }, []);
+  const callStateRef = useRef(callState);
+  callStateRef.current = callState;
 
-  const triggerBack = useCallback(() => {
-    // Find highest priority active handler
-    for (let i = 0; i < handlersStackRef.current.length; i++) {
-      const item = handlersStackRef.current[i];
-      if (item && item.isOpen && typeof item.onClose === 'function') {
-        try {
-          item.onClose();
-          return true;
-        } catch (err) {
-          console.error('[BackButton] Error executing close handler:', err);
-        }
-      }
-    }
-    return false;
-  }, []);
+  const isCallMinimizedRef = useRef(isCallMinimized);
+  isCallMinimizedRef.current = isCallMinimized;
 
-  // Initialize and handle window.history and popstate
+  const onCloseChatRef = useRef(onCloseChat);
+  onCloseChatRef.current = onCloseChat;
+
+  const onCloseProfileRef = useRef(onCloseProfile);
+  onCloseProfileRef.current = onCloseProfile;
+
+  const onMinimizeCallRef = useRef(onMinimizeCall);
+  onMinimizeCallRef.current = onMinimizeCall;
+
+  const showExitConfirmRef = useRef(showExitConfirm);
+  showExitConfirmRef.current = showExitConfirm;
+
+  // 1. Synchronize history state when entering/leaving sub-screens
   useEffect(() => {
     if (!enabled || !isLoggedIn || typeof window === 'undefined') return;
 
-    // Push initial baseline state if not already set
-    if (!window.history.state || !window.history.state.wa_app_root) {
-      window.history.replaceState({ wa_app_root: true, depth: 0 }, '');
+    if (isInsideSubscreen) {
+      if (!hasSubscreenHistoryRef.current) {
+        window.history.pushState({ wa_view: 'subscreen' }, '');
+        hasSubscreenHistoryRef.current = true;
+      }
+    } else {
+      // Subscreen was closed via on-screen UI button
+      if (hasSubscreenHistoryRef.current) {
+        hasSubscreenHistoryRef.current = false;
+        // Clean up the pushed history entry without triggering back-interceptor
+        isProgrammaticBackRef.current = true;
+        try {
+          window.history.back();
+        } catch { }
+      }
+    }
+  }, [enabled, isLoggedIn, isInsideSubscreen]);
+
+  // 2. Global popstate listener for device/browser back button
+  useEffect(() => {
+    if (!enabled || !isLoggedIn || typeof window === 'undefined') return;
+
+    // Set initial root state if needed
+    if (!window.history.state || window.history.state.wa_view !== 'root') {
+      window.history.replaceState({ wa_view: 'root' }, '');
     }
 
     const handlePopState = (event) => {
-      // 1. If user confirmed exit, allow normal browser navigation
+      // If user confirmed exit, allow the browser to naturally exit
       if (isExitingRef.current) {
         return;
       }
 
-      // 2. If this popstate was caused by programmatic window.history.back(), ignore it completely
-      if (ignoreProgrammaticPopsCountRef.current > 0) {
-        ignoreProgrammaticPopsCountRef.current -= 1;
+      // If triggered programmatically (e.g. UI close button cleanup), ignore it
+      if (isProgrammaticBackRef.current) {
+        isProgrammaticBackRef.current = false;
         return;
       }
 
-      // 3. If Exit Dialog is already showing, a back press simply dismisses it
-      if (showExitConfirm) {
+      // CASE A: User is inside a sub-screen / chat / profile / call
+      if (isInsideSubscreenRef.current) {
+        hasSubscreenHistoryRef.current = false;
+
+        if (callStateRef.current && !isCallMinimizedRef.current) {
+          onMinimizeCallRef.current?.();
+        } else if (currentViewRef.current === 'profile') {
+          onCloseProfileRef.current?.();
+        } else if (activeChatRef.current) {
+          onCloseChatRef.current?.();
+        }
+        // Important: DO NOT show exit confirm when leaving a chat!
+        return;
+      }
+
+      // CASE B: User is at ROOT screen (Chat list with no chat open)
+      // If exit dialog is already open, pressing back simply closes it
+      if (showExitConfirmRef.current) {
         setShowExitConfirm(false);
-        window.history.pushState({ wa_app_root: true }, '');
+        window.history.pushState({ wa_view: 'root' }, '');
         return;
       }
 
-      // 4. Try closing any open sub-layer/modal/screen
-      const handled = triggerBack();
-
-      if (!handled) {
-        // 5. User is at the root screen (no modals/chats open) -> Intercept exit & show confirmation dialog
-        window.history.pushState({ wa_app_root: true }, '');
-        setShowExitConfirm(true);
-      }
+      // Intercept exit at root: re-push root state to prevent immediate close, and open dialog
+      window.history.pushState({ wa_view: 'root' }, '');
+      setShowExitConfirm(true);
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -104,22 +131,33 @@ export function useBackButtonHandler({
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [enabled, isLoggedIn, showExitConfirm, triggerBack]);
+  }, [enabled, isLoggedIn]);
 
-  // Handle "Yes / Exit" action
+  // 3. User clicked "Exit" button in confirmation dialog
   const handleConfirmExit = useCallback(() => {
     isExitingRef.current = true;
     setShowExitConfirm(false);
 
-    // Navigate back to truly exit
+    // Perform actual exit navigation
     try {
-      window.history.go(-2);
+      if (window.history.length > 1) {
+        window.history.go(-2);
+      } else {
+        window.close();
+      }
     } catch {
       window.history.back();
     }
+
+    // Safety fallback to go back if go(-2) didn't exit the page
+    setTimeout(() => {
+      try {
+        window.history.back();
+      } catch { }
+    }, 150);
   }, []);
 
-  // Handle "No / Cancel" action
+  // 4. User clicked "Cancel" button in confirmation dialog
   const handleCancelExit = useCallback(() => {
     setShowExitConfirm(false);
   }, []);
@@ -128,64 +166,8 @@ export function useBackButtonHandler({
     showExitConfirm,
     handleConfirmExit,
     handleCancelExit,
-    setShowExitConfirm,
-    contextValue: { register, unregister, triggerBack, markProgrammaticPop }
+    setShowExitConfirm
   };
 }
 
-/**
- * useRegisterBackHandler
- * 
- * Reusable hook for any component to register a back action when open.
- * Pushes a history state when opening so a single back press immediately closes it.
- * 
- * @param {boolean} isOpen - Whether this screen/modal/tab is currently active
- * @param {() => void} onClose - Function to execute when back button is pressed
- * @param {number} priority - Higher priority handlers execute first (Default: 50, Modals: 100, Tabs: 10)
- */
-export function useRegisterBackHandler(isOpen, onClose, priority = 50) {
-  const context = useContext(BackHandlerContext);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const pushedStateRef = useRef(false);
-
-  useEffect(() => {
-    if (!context?.register) return;
-
-    if (isOpen) {
-      // Push history state entry if not already pushed for this open session
-      if (!pushedStateRef.current && typeof window !== 'undefined') {
-        window.history.pushState({ wa_layer: true, priority }, '');
-        pushedStateRef.current = true;
-      }
-
-      const handlerObj = {
-        isOpen: true,
-        priority,
-        onClose: () => {
-          pushedStateRef.current = false;
-          onCloseRef.current?.();
-        }
-      };
-
-      const unregister = context.register(handlerObj);
-
-      return () => {
-        unregister();
-        // If closed via UI (and not by browser popstate), clean up pushed history state safely
-        if (pushedStateRef.current && typeof window !== 'undefined') {
-          pushedStateRef.current = false;
-          context.markProgrammaticPop?.();
-          try {
-            window.history.back();
-          } catch { }
-        }
-      };
-    } else {
-      pushedStateRef.current = false;
-    }
-  }, [context, isOpen, priority]);
-}
-
-export { BackHandlerContext };
 export default useBackButtonHandler;

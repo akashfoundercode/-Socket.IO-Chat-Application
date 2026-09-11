@@ -6,7 +6,6 @@ import QrScanner from 'qr-scanner';
 import Avatar from './Avatar';
 import MetaAiModal from './MetaAiModal';
 import ContactLogModal from './ContactLogModal';
-import { useRegisterBackHandler } from '../hooks/useBackButtonHandler';
 
 const COUNTRY_OPTIONS = [
   { code: '+91', name: 'India', flag: '🇮🇳', digits: 10 },
@@ -160,14 +159,6 @@ export default function ChatList({
   const [searchResults, setSearchResults] = useState([]);
   const [isSearchingDb, setIsSearchingDb] = useState(false);
   const [activeTab, setActiveTab] = useState('chats');
-
-  // Register back button handlers for modals and sub-views in ChatList
-  useRegisterBackHandler(showQrScanner, () => setShowQrScanner(false), 100);
-  useRegisterBackHandler(showContactLog, () => setShowContactLog(false), 100);
-  useRegisterBackHandler(showGroupModal, () => setShowGroupModal(false), 100);
-  useRegisterBackHandler(showNewChatModal, () => setShowNewChatModal(false), 100);
-  useRegisterBackHandler(showMetaAi, () => setShowMetaAi(false), 100);
-  useRegisterBackHandler(showMenu, () => setShowMenu(false), 90);
 
   const selectedCountry = COUNTRY_OPTIONS.find((c) => c.code === newCountryCode) || COUNTRY_OPTIONS[0];
 

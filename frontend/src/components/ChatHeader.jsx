@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import ContactInfoModal from './ContactInfoModal';
 import Avatar from './Avatar';
-import { useRegisterBackHandler } from '../hooks/useBackButtonHandler';
 
 export default function ChatHeader({
   userId,
@@ -35,12 +34,6 @@ export default function ChatHeader({
   const [customNameInput, setCustomNameInput] = useState('');
   const [isSavingRename, setIsSavingRename] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
-
-  // Register back button handlers for ChatHeader overlays/drawers
-  useRegisterBackHandler(showContactInfo, () => setShowContactInfo(false), 100);
-  useRegisterBackHandler(showRenameModal, () => setShowRenameModal(false), 100);
-  useRegisterBackHandler(Boolean(confirmDialog), () => setConfirmDialog(null), 100);
-  useRegisterBackHandler(showMenu, () => setShowMenu(false), 90);
 
   const displayPhone = recipientProfile?.fullPhone || recipientProfile?.phone || recipientId || '';
   const customName = recipientProfile?.customName;

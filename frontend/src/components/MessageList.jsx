@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import VoiceNotePlayer from './VoiceNotePlayer';
 import { resolveMediaUrl } from '../services/api';
 import Avatar from './Avatar';
-import { useRegisterBackHandler } from '../hooks/useBackButtonHandler';
 
 function MessageAvatar({ avatar, label }) {
   return (
@@ -128,14 +127,6 @@ export default function MessageList({
   const [editText, setEditText] = useState('');
   const [activeMenuMessageId, setActiveMenuMessageId] = useState(null);
   const [activeReactionMsgId, setActiveReactionMsgId] = useState(null);
-
-  // Register back button handlers for MessageList dialogs & lightboxes
-  useRegisterBackHandler(Boolean(lightboxImage), () => setLightboxImage(null), 100);
-  useRegisterBackHandler(Boolean(selectedMessageForDelete), () => setSelectedMessageForDelete(null), 100);
-  useRegisterBackHandler(Boolean(selectedMessageForEdit), () => setSelectedMessageForEdit(null), 100);
-  useRegisterBackHandler(Boolean(selectedMessageForHistory), () => setSelectedMessageForHistory(null), 100);
-  useRegisterBackHandler(Boolean(activeMenuMessageId), () => setActiveMenuMessageId(null), 90);
-  useRegisterBackHandler(Boolean(activeReactionMsgId), () => setActiveReactionMsgId(null), 90);
 
   const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 

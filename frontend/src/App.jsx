@@ -10,7 +10,7 @@ import MessageInput from './components/MessageInput';
 import ProfileSettings from './components/ProfileSettings';
 import CallModal from './components/CallModal';
 import ExitConfirmModal from './components/ExitConfirmModal';
-import { useBackButtonHandler, useRegisterBackHandler, BackHandlerContext } from './hooks/useBackButtonHandler';
+import useBackButtonHandler from './hooks/useBackButtonHandler';
 import { startIncomingRingtone, startOutgoingDialTone, stopCallSounds, playMessageNotification } from './utils/callSounds';
 import './App.css';
 
@@ -1746,17 +1746,18 @@ export default function App() {
   const {
     showExitConfirm,
     handleConfirmExit,
-    handleCancelExit,
-    contextValue
+    handleCancelExit
   } = useBackButtonHandler({
     isLoggedIn: Boolean(currentUser),
+    activeChat,
+    currentView,
+    callState,
+    isCallMinimized,
+    onCloseChat: handleBackToChatList,
+    onCloseProfile: handleBackFromProfile,
+    onMinimizeCall: () => setIsCallMinimized(true),
     enabled: true
   });
-
-  // Register main view layers for back button interception
-  useRegisterBackHandler(Boolean(callState && !isCallMinimized), () => setIsCallMinimized(true), 90);
-  useRegisterBackHandler(currentView === 'profile', handleBackFromProfile, 60);
-  useRegisterBackHandler(Boolean(activeChat), handleBackToChatList, 40);
 
   // Block & Unblock Contact Actions
   const handleBlockUser = async (targetId) => {
@@ -1903,211 +1904,209 @@ export default function App() {
   }, [activeChat]);
 
   return (
-    <BackHandlerContext.Provider value={contextValue}>
-      <div className={`wa-app-root ${currentUser ? 'is-logged-in' : 'is-logged-out'}`} style={themes[theme]}>
-        {/* Background Top Strip for Desktop/Web */}
-        <div className="wa-web-top-strip"></div>
+    <div className={`wa-app-root ${currentUser ? 'is-logged-in' : 'is-logged-out'}`} style={themes[theme]}>
+      {/* Background Top Strip for Desktop/Web */}
+      <div className="wa-web-top-strip"></div>
 
-        {/* Mobile Browser Back Interceptor: Root Exit Confirmation Dialog */}
-        <ExitConfirmModal
-          isOpen={showExitConfirm}
-          onConfirm={handleConfirmExit}
-          onCancel={handleCancelExit}
-        />
+      {/* Mobile Browser Back Interceptor: Root Exit Confirmation Dialog */}
+      <ExitConfirmModal
+        isOpen={showExitConfirm}
+        onConfirm={handleConfirmExit}
+        onCancel={handleCancelExit}
+      />
 
-        {/* Minimized Floating Call Bar/Pill (Active in background) */}
-        {callState && isCallMinimized && (
-          <div
-            className="wa-floating-call-pill"
-            onClick={() => setIsCallMinimized(false)}
-            title="Click to return to call"
-          >
-            <div className="wa-call-pill-pulse" />
-            <div className="wa-call-pill-icon">
-              <i className={`fa-solid ${callState.callType === 'video' ? 'fa-video' : 'fa-phone'}`} />
-            </div>
-            <div className="wa-call-pill-info">
-              <span className="wa-call-pill-title">{callState.peerName || callState.peerId || 'In Call'}</span>
-              <span className="wa-call-pill-sub">Tap to open call</span>
-            </div>
-            <button
-              type="button"
-              className="wa-call-pill-btn expand"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsCallMinimized(false);
-              }}
-              title="Expand call screen"
-            >
-              <i className="fa-solid fa-up-right-and-down-left-from-center" />
-            </button>
-            <button
-              type="button"
-              className="wa-call-pill-btn hangup"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleEndCall();
-              }}
-              title="End call"
-            >
-              <i className="fa-solid fa-phone-slash" />
-            </button>
+      {/* Minimized Floating Call Bar/Pill (Active in background) */}
+      {callState && isCallMinimized && (
+        <div
+          className="wa-floating-call-pill"
+          onClick={() => setIsCallMinimized(false)}
+          title="Click to return to call"
+        >
+          <div className="wa-call-pill-pulse" />
+          <div className="wa-call-pill-icon">
+            <i className={`fa-solid ${callState.callType === 'video' ? 'fa-video' : 'fa-phone'}`} />
           </div>
-        )}
-
-        {/* Call Modal / Overlay (Active, Incoming, Video, Voice - Agora RTC) */}
-        {callState && !isCallMinimized && (
-          <CallModal
-            callState={callState}
-            onAcceptCall={handleAcceptCall}
-            onRejectCall={handleRejectCall}
-            onEndCall={handleEndCall}
-            onMinimize={() => setIsCallMinimized(true)}
-            localVideoTrack={localVideoTrack}
-            remoteVideoTrack={remoteVideoTrack}
-            remoteVideoTracks={remoteVideoTracks}
-            onToggleMute={handleToggleMute}
-            onToggleVideo={handleToggleVideo}
-            participants={callParticipants}
-            speakingVolumes={speakingVolumes}
-            currentUserId={userId}
-            currentUser={currentUser}
-          />
-        )}
-
-        {/* 1. SCREEN 1: LOGIN / OTP (If not logged in) */}
-        {!currentUser ? (
-          <JoinModal onJoin={handleLoginSuccess} isConnected={isConnected} theme={theme} themeVars={themes[theme]} onThemeChange={handleThemeChange} />
-        ) : (
-          /* 2. AUTHENTICATED RESPONSIVE CONTAINER (Desktop / Tablet / Mobile) */
-          <div
-            className={`wa-main-container ${activeChat ? 'has-active-chat' : 'no-active-chat'
-              } ${currentView === 'profile' ? 'is-profile-view' : ''}`}
+          <div className="wa-call-pill-info">
+            <span className="wa-call-pill-title">{callState.peerName || callState.peerId || 'In Call'}</span>
+            <span className="wa-call-pill-sub">Tap to open call</span>
+          </div>
+          <button
+            type="button"
+            className="wa-call-pill-btn expand"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsCallMinimized(false);
+            }}
+            title="Expand call screen"
           >
-            {/* A. LEFT SIDEBAR PANE (Profile Settings OR Chat List) */}
-            <aside className="wa-sidebar-pane">
-              {currentView === 'profile' ? (
-                <ProfileSettings
+            <i className="fa-solid fa-up-right-and-down-left-from-center" />
+          </button>
+          <button
+            type="button"
+            className="wa-call-pill-btn hangup"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEndCall();
+            }}
+            title="End call"
+          >
+            <i className="fa-solid fa-phone-slash" />
+          </button>
+        </div>
+      )}
+
+      {/* Call Modal / Overlay (Active, Incoming, Video, Voice - Agora RTC) */}
+      {callState && !isCallMinimized && (
+        <CallModal
+          callState={callState}
+          onAcceptCall={handleAcceptCall}
+          onRejectCall={handleRejectCall}
+          onEndCall={handleEndCall}
+          onMinimize={() => setIsCallMinimized(true)}
+          localVideoTrack={localVideoTrack}
+          remoteVideoTrack={remoteVideoTrack}
+          remoteVideoTracks={remoteVideoTracks}
+          onToggleMute={handleToggleMute}
+          onToggleVideo={handleToggleVideo}
+          participants={callParticipants}
+          speakingVolumes={speakingVolumes}
+          currentUserId={userId}
+          currentUser={currentUser}
+        />
+      )}
+
+      {/* 1. SCREEN 1: LOGIN / OTP (If not logged in) */}
+      {!currentUser ? (
+        <JoinModal onJoin={handleLoginSuccess} isConnected={isConnected} theme={theme} themeVars={themes[theme]} onThemeChange={handleThemeChange} />
+      ) : (
+        /* 2. AUTHENTICATED RESPONSIVE CONTAINER (Desktop / Tablet / Mobile) */
+        <div
+          className={`wa-main-container ${activeChat ? 'has-active-chat' : 'no-active-chat'
+            } ${currentView === 'profile' ? 'is-profile-view' : ''}`}
+        >
+          {/* A. LEFT SIDEBAR PANE (Profile Settings OR Chat List) */}
+          <aside className="wa-sidebar-pane">
+            {currentView === 'profile' ? (
+              <ProfileSettings
+                userId={userId}
+                onBack={handleBackFromProfile}
+                onProfileUpdated={(updated) => {
+                  const merged = { ...currentUser, ...updated };
+                  setCurrentUser(merged);
+                  localStorage.setItem('wa_session', JSON.stringify(merged));
+                }}
+              />
+            ) : (
+              <ChatList
+                userId={userId}
+                currentUser={currentUser}
+                activeChat={activeChat}
+                onlineUsers={onlineUsers}
+                typingUsers={typingUsers}
+                onSelectChat={handleSelectChat}
+                onDeleteChat={handleBackToChatList}
+                onOpenProfile={handleOpenProfile}
+                onLogout={handleLogout}
+                onStartCall={handleStartCall}
+                callLogsTrigger={callLogsTrigger}
+                recentMessages={recentMessageEvent}
+                drafts={drafts}
+                theme={theme}
+                onThemeChange={handleThemeChange}
+                onJoinGroupInvite={handleJoinGroupInvite}
+              />
+            )}
+          </aside>
+
+          {/* B. RIGHT MAIN CHAT PANE (Active Conversation OR WhatsApp Web Welcome) */}
+          <main className="wa-chat-pane">
+            {activeChat ? (
+              <div className="wa-active-chat-wrapper">
+                <ChatHeader
                   userId={userId}
-                  onBack={handleBackFromProfile}
-                  onProfileUpdated={(updated) => {
-                    const merged = { ...currentUser, ...updated };
-                    setCurrentUser(merged);
-                    localStorage.setItem('wa_session', JSON.stringify(merged));
-                  }}
-                />
-              ) : (
-                <ChatList
-                  userId={userId}
-                  currentUser={currentUser}
-                  activeChat={activeChat}
+                  recipientId={activeChat}
+                  recipientName={recipientProfile?.name}
+                  recipientProfile={recipientProfile}
+                  recipientAvatar={recipientProfile?.avatar}
+                  recipientAbout={recipientProfile?.about}
+                  isRecipientOnline={isRecipientOnline}
+                  isConnected={isConnected}
+                  isTyping={isRecipientTyping}
                   onlineUsers={onlineUsers}
-                  typingUsers={typingUsers}
-                  onSelectChat={handleSelectChat}
-                  onDeleteChat={handleBackToChatList}
-                  onOpenProfile={handleOpenProfile}
-                  onLogout={handleLogout}
+                  isBlockedByMe={isBlockedByMe}
+                  isBlockedByThem={isBlockedByThem}
                   onStartCall={handleStartCall}
-                  callLogsTrigger={callLogsTrigger}
-                  recentMessages={recentMessageEvent}
-                  drafts={drafts}
-                  theme={theme}
-                  onThemeChange={handleThemeChange}
-                  onJoinGroupInvite={handleJoinGroupInvite}
+                  onBack={handleBackToChatList}
+                  onBlock={handleBlockUser}
+                  onUnblock={handleUnblockUser}
+                  onRenameContact={handleRenameContact}
+                  isGroup={String(activeChat).startsWith('group:')}
+                  groupDetails={groupDetails}
+                  onUpdateGroup={handleUpdateGroup}
+                  onAddGroupMember={handleAddGroupMember}
+                  onUpdateGroupMemberRole={handleUpdateGroupMemberRole}
+                  onRemoveGroupMember={handleRemoveGroupMember}
+                  onLeaveGroup={handleLeaveGroup}
                 />
-              )}
-            </aside>
 
-            {/* B. RIGHT MAIN CHAT PANE (Active Conversation OR WhatsApp Web Welcome) */}
-            <main className="wa-chat-pane">
-              {activeChat ? (
-                <div className="wa-active-chat-wrapper">
-                  <ChatHeader
-                    userId={userId}
-                    recipientId={activeChat}
-                    recipientName={recipientProfile?.name}
-                    recipientProfile={recipientProfile}
-                    recipientAvatar={recipientProfile?.avatar}
-                    recipientAbout={recipientProfile?.about}
-                    isRecipientOnline={isRecipientOnline}
-                    isConnected={isConnected}
-                    isTyping={isRecipientTyping}
-                    onlineUsers={onlineUsers}
-                    isBlockedByMe={isBlockedByMe}
-                    isBlockedByThem={isBlockedByThem}
-                    onStartCall={handleStartCall}
-                    onBack={handleBackToChatList}
-                    onBlock={handleBlockUser}
-                    onUnblock={handleUnblockUser}
-                    onRenameContact={handleRenameContact}
-                    isGroup={String(activeChat).startsWith('group:')}
-                    groupDetails={groupDetails}
-                    onUpdateGroup={handleUpdateGroup}
-                    onAddGroupMember={handleAddGroupMember}
-                    onUpdateGroupMemberRole={handleUpdateGroupMemberRole}
-                    onRemoveGroupMember={handleRemoveGroupMember}
-                    onLeaveGroup={handleLeaveGroup}
-                  />
+                <MessageList
+                  messages={messages}
+                  currentUserId={userId}
+                  currentUserAvatar={currentUser?.avatar}
+                  recipientAvatar={recipientProfile?.avatar}
+                  recipientId={activeChat}
+                  onDeleteMessage={handleDeleteMessage}
+                  onEditMessage={handleEditMessage}
+                  onPinMessage={handlePinMessage}
+                  isGroup={String(activeChat).startsWith('group:')}
+                  groupDetails={groupDetails}
+                  onReactMessage={handleReactMessage}
+                  onReplyMessage={setReplyingTo}
+                />
 
-                  <MessageList
-                    messages={messages}
-                    currentUserId={userId}
-                    currentUserAvatar={currentUser?.avatar}
-                    recipientAvatar={recipientProfile?.avatar}
-                    recipientId={activeChat}
-                    onDeleteMessage={handleDeleteMessage}
-                    onEditMessage={handleEditMessage}
-                    onPinMessage={handlePinMessage}
-                    isGroup={String(activeChat).startsWith('group:')}
-                    groupDetails={groupDetails}
-                    onReactMessage={handleReactMessage}
-                    onReplyMessage={setReplyingTo}
-                  />
-
-                  <MessageInput
-                    recipientId={activeChat}
-                    onRecipientChange={setActiveChat}
-                    onSendMessage={handleSendMessage}
-                    onTyping={handleTyping}
-                    isBlockedByMe={isBlockedByMe}
-                    isBlockedByThem={isBlockedByThem}
-                    onUnblock={handleUnblockUser}
-                    groupId={String(activeChat).startsWith('group:') ? activeChat : null}
-                    groupMembers={groupDetails?.members || []}
-                    canSendMessages={canSendGroupMessages}
-                    replyTo={replyingTo}
-                    onClearReply={() => setReplyingTo(null)}
-                    onDraftChange={handleDraftChange}
-                    draftValue={drafts[normalizeChatKey(activeChat)] || ''}
-                  />
-                </div>
-              ) : (
-                /* WhatsApp Web Welcome / Empty Screen */
-                <div className="wa-web-welcome-screen">
-                  <div className="wa-welcome-content">
-                    <div className="wa-welcome-illustration">
-                      <div className="wa-welcome-icon-circle">
-                        <i className="fa-brands fa-whatsapp"></i>
-                      </div>
-                    </div>
-                    <h2 className="wa-welcome-title">WhatsApp Web</h2>
-                    <p className="wa-welcome-text">
-                      Send and receive messages without keeping your phone online.
-                      <br />
-                      Use WhatsApp on up to 4 linked devices and 1 phone at the same time.
-                    </p>
-                    <div className="wa-welcome-divider"></div>
-                    <div className="wa-welcome-encryption">
-                      <i className="fa-solid fa-lock"></i>
-                      <span>End-to-end encrypted</span>
+                <MessageInput
+                  recipientId={activeChat}
+                  onRecipientChange={setActiveChat}
+                  onSendMessage={handleSendMessage}
+                  onTyping={handleTyping}
+                  isBlockedByMe={isBlockedByMe}
+                  isBlockedByThem={isBlockedByThem}
+                  onUnblock={handleUnblockUser}
+                  groupId={String(activeChat).startsWith('group:') ? activeChat : null}
+                  groupMembers={groupDetails?.members || []}
+                  canSendMessages={canSendGroupMessages}
+                  replyTo={replyingTo}
+                  onClearReply={() => setReplyingTo(null)}
+                  onDraftChange={handleDraftChange}
+                  draftValue={drafts[normalizeChatKey(activeChat)] || ''}
+                />
+              </div>
+            ) : (
+              /* WhatsApp Web Welcome / Empty Screen */
+              <div className="wa-web-welcome-screen">
+                <div className="wa-welcome-content">
+                  <div className="wa-welcome-illustration">
+                    <div className="wa-welcome-icon-circle">
+                      <i className="fa-brands fa-whatsapp"></i>
                     </div>
                   </div>
+                  <h2 className="wa-welcome-title">WhatsApp Web</h2>
+                  <p className="wa-welcome-text">
+                    Send and receive messages without keeping your phone online.
+                    <br />
+                    Use WhatsApp on up to 4 linked devices and 1 phone at the same time.
+                  </p>
+                  <div className="wa-welcome-divider"></div>
+                  <div className="wa-welcome-encryption">
+                    <i className="fa-solid fa-lock"></i>
+                    <span>End-to-end encrypted</span>
+                  </div>
                 </div>
-              )}
-            </main>
-          </div>
-        )}
-      </div>
-    </BackHandlerContext.Provider>
+              </div>
+            )}
+          </main>
+        </div>
+      )}
+    </div>
   );
 }
