@@ -202,8 +202,15 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
   /* ── 3. Video Recording ── */
   const handleStartRecording = () => {
     if (!streamRef.current || isRecording) return;
+  const handleStartRecording = async () => {
+    if (isRecording) return;
+
+    if (!streamRef.current || !streamRef.current.active) {
+      await startCameraStream();
+    }
     if (!streamRef.current) {
       startCameraStream();
+      alert("Camera is not accessible. Please ensure permissions are granted.");
       return;
     }
     if (isRecording) return;
@@ -227,12 +234,35 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
       ];
       let selectedMimeType = '';
       if (typeof MediaRecorder.isTypeSupported === 'function') {
+      const getBestSupportedVideoMimeType = () => {
+        if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+        const candidateTypes = [
+          'video/webm;codecs=vp8,opus',
+          'video/webm;codecs=vp9,opus',
+          'video/webm;codecs=h264,opus',
+          'video/webm',
+          'video/mp4;codecs=avc1,mp4a.40.2',
+          'video/mp4'
+        ];
         for (const type of candidateTypes) {
           if (MediaRecorder.isTypeSupported(type)) {
             selectedMimeType = type;
             break;
+            return type;
           }
         }
+        return '';
+      };
+
+      const selectedMimeType = getBestSupportedVideoMimeType();
+      const options = selectedMimeType ? { mimeType: selectedMimeType } : {};
+
+      let recorder;
+      try {
+        recorder = new MediaRecorder(streamRef.current, options);
+      } catch (e) {
+        console.warn("Could not create MediaRecorder with options, falling back to default:", e);
+        recorder = new MediaRecorder(streamRef.current);
       }
 
       const options = selectedMimeType ? { mimeType: selectedMimeType } : {};
@@ -281,6 +311,10 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
         setIsRecording(false);
         setRecordDuration(0);
         if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+        if (recordTimerRef.current) {
+          clearInterval(recordTimerRef.current);
+          recordTimerRef.current = null;
+        }
       };
 
       recorder.start(250);
@@ -289,6 +323,7 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
       setRecordDuration(0);
 
       const startTime = Date.now();
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
       recordTimerRef.current = setInterval(() => {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         setRecordDuration(elapsed);
@@ -305,11 +340,18 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
   };
 
   const handleStopRecording = () => {
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
         mediaRecorderRef.current.requestData();
       } catch (_) { }
       mediaRecorderRef.current.stop();
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (_) { }
     }
   };
 
