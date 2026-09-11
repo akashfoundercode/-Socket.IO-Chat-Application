@@ -21,6 +21,9 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
   const [activeTab, setActiveTab] = useState('photo'); // 'video' | 'photo' | 'text'
   const [facingMode, setFacingMode] = useState('user'); // 'user' | 'environment'
   const [cameraError, setCameraError] = useState(null);
+  const [micWarning, setMicWarning] = useState(false);
+  const [showPermissionGuide, setShowPermissionGuide] = useState(false);
+  const [isRequestingPermission, setIsRequestingPermission] = useState(false);
 
   // Captured / Selected Media State
   const [capturedMedia, setCapturedMedia] = useState(null); // { type: 'image' | 'video', url: string }
@@ -46,7 +49,7 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
   const videoInputRef = useRef(null);
   const textareaRef = useRef(null);
 
-  /* ── 1. Camera Lifecycle Management ── */
+  /* ── 1. Camera Lifecycle & Permission Management ── */
   const stopCameraStream = () => {
     if (streamRef.current) {
       try {
@@ -63,44 +66,92 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
     stopCameraStream();
     if (activeTab === 'text' || capturedMedia) return;
 
+    setIsRequestingPermission(true);
+    setCameraError(null);
+    setMicWarning(false);
+
+    const isVideo = activeTab === 'video';
+    const videoConstraints = {
+      video: {
+        facingMode: facingMode,
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    };
+
     try {
-      setCameraError(null);
-      const isVideo = activeTab === 'video';
-      const videoConstraints = {
-        video: {
-          facingMode: facingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      };
-      const constraints = { ...videoConstraints, audio: isVideo };
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('NOT_SUPPORTED');
+      }
 
       let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-      } catch (err) {
-        // Keep the camera usable for video/photo when only microphone access is blocked.
-        if (isVideo && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
-          stream = await navigator.mediaDevices.getUserMedia({ ...videoConstraints, audio: false });
-        } else {
-          throw err;
+      let micBlocked = false;
+
+      if (isVideo) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ ...videoConstraints, audio: true });
+        } catch (err) {
+          // If microphone is blocked or not available, fallback to video only so user can still record
+          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.name === 'NotFoundError') {
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({ ...videoConstraints, audio: false });
+              micBlocked = true;
+            } catch (videoErr) {
+              throw videoErr;
+            }
+          } else {
+            throw err;
+          }
         }
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({ ...videoConstraints, audio: false });
       }
+
       streamRef.current = stream;
+      setMicWarning(micBlocked);
+      setCameraError(null);
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play().catch(() => { });
       }
     } catch (err) {
-      console.warn("Camera access warning:", err.message);
+      console.warn("Camera/Mic access error:", err);
       if (!window.isSecureContext) {
-        setCameraError('Camera needs a secure HTTPS connection.');
+        setCameraError({
+          type: 'insecure',
+          title: 'HTTPS Connection Required',
+          message: 'Camera and microphone require a secure HTTPS connection.'
+        });
       } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraError('Camera permission is blocked. Tap Allow camera in browser settings, then retry.');
+        setCameraError({
+          type: 'denied',
+          title: isVideo ? 'Camera & Mic Permission Blocked' : 'Camera Permission Blocked',
+          message: isVideo
+            ? 'Camera or microphone access is blocked. Turn on permissions to take photos or record videos.'
+            : 'Camera access is blocked. Turn on camera permission to take photos for your status.'
+        });
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setCameraError({
+          type: 'not_found',
+          title: 'No Camera Device Found',
+          message: 'No camera was detected on this device. You can choose a photo or video from your gallery.'
+        });
+      } else if (err.message === 'NOT_SUPPORTED') {
+        setCameraError({
+          type: 'unsupported',
+          title: 'Camera Not Supported',
+          message: 'Camera capture is not supported on this browser.'
+        });
       } else {
-        setCameraError('Camera is not available on this device.');
+        setCameraError({
+          type: 'unknown',
+          title: 'Camera Unavailable',
+          message: err.message || 'Unable to access camera. Please check permissions and try again.'
+        });
       }
+    } finally {
+      setIsRequestingPermission(false);
     }
   };
 
@@ -122,6 +173,10 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
   /* ── 2. Photo Capture ── */
   const handleCapturePhoto = () => {
     if (!videoRef.current || !streamRef.current) return;
+    if (!videoRef.current || !streamRef.current) {
+      startCameraStream();
+      return;
+    }
     try {
       const video = videoRef.current;
       const canvas = document.createElement('canvas');
@@ -147,6 +202,11 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
   /* ── 3. Video Recording ── */
   const handleStartRecording = () => {
     if (!streamRef.current || isRecording) return;
+    if (!streamRef.current) {
+      startCameraStream();
+      return;
+    }
+    if (isRecording) return;
 
     try {
       recordedChunksRef.current = [];
@@ -418,6 +478,25 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
                 className={`wa-composer-camera-feed ${facingMode === 'user' ? 'mirrored' : ''}`}
               />
 
+              {/* Microphone warning banner (when camera works but mic is blocked) */}
+              {micWarning && !cameraError && (
+                <div className="wa-composer-mic-warning-banner">
+                  <div className="wa-composer-mic-warning-text">
+                    <i className="fa-solid fa-microphone-slash"></i>
+                    <span>Microphone blocked (recording without sound)</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="wa-composer-mic-retry-btn"
+                    onClick={startCameraStream}
+                    title="Allow microphone access"
+                  >
+                    Turn on Mic
+                  </button>
+                </div>
+              )}
+
+              {/* Full Camera / Mic Permission & Error Card */}
               {cameraError && (
                 <div className="wa-composer-camera-err-box">
                   <i className="fa-solid fa-video-slash" style={{ fontSize: 32, marginBottom: 10, color: '#f87171' }}></i>
@@ -425,6 +504,87 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
                   <button type="button" className="wa-composer-permission-retry" onClick={startCameraStream}>
                     <i className="fa-solid fa-rotate-right"></i> Retry camera
                   </button>
+                  <div className="wa-composer-perm-icon-wrap">
+                    <div className="wa-composer-perm-icon-badge">
+                      <i className="fa-solid fa-camera"></i>
+                    </div>
+                    {activeTab === 'video' && (
+                      <div className="wa-composer-perm-icon-badge mic">
+                        <i className="fa-solid fa-microphone"></i>
+                      </div>
+                    )}
+                  </div>
+
+                  <h3 className="wa-composer-perm-title">{cameraError.title}</h3>
+                  <p className="wa-composer-perm-desc">{cameraError.message}</p>
+
+                  <div className="wa-composer-perm-actions">
+                    <button
+                      type="button"
+                      className="wa-composer-perm-primary-btn"
+                      onClick={startCameraStream}
+                      disabled={isRequestingPermission}
+                    >
+                      {isRequestingPermission ? (
+                        <>
+                          <i className="fa-solid fa-circle-notch fa-spin"></i>
+                          <span>Requesting...</span>
+                        </>
+                      ) : (
+                        <>
+                          <i className="fa-solid fa-shield-halved"></i>
+                          <span>Turn on Permissions</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="wa-composer-perm-secondary-btn"
+                      onClick={() => {
+                        if (activeTab === 'video') videoInputRef.current?.click();
+                        else photoInputRef.current?.click();
+                      }}
+                    >
+                      <i className={`fa-solid ${activeTab === 'video' ? 'fa-film' : 'fa-image'}`}></i>
+                      <span>Upload from Gallery</span>
+                    </button>
+                  </div>
+
+                  {cameraError.type === 'denied' && (
+                    <div className="wa-composer-perm-guide">
+                      <button
+                        type="button"
+                        className="wa-composer-perm-guide-toggle"
+                        onClick={() => setShowPermissionGuide(prev => !prev)}
+                      >
+                        <i className="fa-solid fa-circle-info"></i>
+                        <span>{showPermissionGuide ? 'Hide settings guide' : 'How to allow in browser settings'}</span>
+                        <i className={`fa-solid fa-chevron-${showPermissionGuide ? 'up' : 'down'}`}></i>
+                      </button>
+
+                      {showPermissionGuide && (
+                        <div className="wa-composer-perm-steps">
+                          <div className="wa-composer-perm-step">
+                            <span className="wa-step-num">1</span>
+                            <span>Tap the <strong>🔒 Lock / ⚙️ Tune</strong> icon next to the URL in browser bar.</span>
+                          </div>
+                          <div className="wa-composer-perm-step">
+                            <span className="wa-step-num">2</span>
+                            <span>Select <strong>Permissions / Site settings</strong>.</span>
+                          </div>
+                          <div className="wa-composer-perm-step">
+                            <span className="wa-step-num">3</span>
+                            <span>Set <strong>Camera</strong> {activeTab === 'video' ? '& Microphone' : ''} to <strong>Allow</strong>.</span>
+                          </div>
+                          <div className="wa-composer-perm-step">
+                            <span className="wa-step-num">4</span>
+                            <span>Tap <strong>"Turn on Permissions"</strong> button above.</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

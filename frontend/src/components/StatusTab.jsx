@@ -29,18 +29,87 @@ function AvatarCircle({ avatar, size = 46 }) {
   return <Avatar src={avatar} size={size} />;
 }
 
-function StatusRing({ avatar, hasNew, size = 52 }) {
+/* ── Divided / Segmented WhatsApp Status Ring ── */
+function StatusRing({ avatar, statuses = [], hasNew = false, size = 52, strokeWidth = 2.5 }) {
+  const total = Array.isArray(statuses) && statuses.length > 0
+    ? statuses.length
+    : (hasNew ? 1 : 0);
+
+  const isSingle = total <= 1;
+  const radius = (size - strokeWidth) / 2;
+  const center = size / 2;
+  const circumference = 2 * Math.PI * radius;
+
+  // Gap between divided ring segments
+  const gap = total > 1 ? (total >= 10 ? 2.5 : (total >= 5 ? 3.5 : 4.5)) : 0;
+  const totalGap = gap * total;
+  const arcLength = total > 0 ? (circumference - totalGap) / total : circumference;
+
+  // Segment colors: unviewed -> #00a884 (green), viewed -> #8696a0 (gray)
+  const segments = Array.isArray(statuses) && statuses.length > 0
+    ? statuses.map((st) => {
+      const isUnviewed = typeof st.isViewed === 'boolean' ? !st.isViewed : hasNew;
+      return {
+        color: isUnviewed ? '#00a884' : '#8696a0'
+      };
+    })
+    : [{ color: hasNew ? '#00a884' : '#8696a0' }];
+
+  const avatarSize = size - (strokeWidth + 2) * 2;
+
   return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: hasNew
-        ? 'linear-gradient(135deg, #25D366 0%, #00a884 100%)'
-        : '#8696a0',
-      padding: '2.5px',
-      transition: 'background 0.3s ease'
-    }}>
-      <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: '#fff', overflow: 'hidden' }}>
-        <AvatarCircle avatar={avatar} size={size - 7} />
+    <div className="wa-status-ring-container" style={{ width: size, height: size, position: 'relative', flexShrink: 0 }}>
+      {total > 0 && (
+        <svg
+          width={size}
+          height={size}
+          viewBox={`0 0 ${size} ${size}`}
+          style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}
+        >
+          {isSingle ? (
+            <circle
+              cx={center}
+              cy={center}
+              r={radius}
+              fill="none"
+              stroke={segments[0]?.color || (hasNew ? '#00a884' : '#8696a0')}
+              strokeWidth={strokeWidth}
+            />
+          ) : (
+            segments.map((seg, i) => {
+              const offset = -i * (arcLength + gap);
+              return (
+                <circle
+                  key={i}
+                  cx={center}
+                  cy={center}
+                  r={radius}
+                  fill="none"
+                  stroke={seg.color}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={`${arcLength} ${circumference - arcLength}`}
+                  strokeDashoffset={offset}
+                  strokeLinecap="round"
+                />
+              );
+            })
+          )}
+        </svg>
+      )}
+      <div style={{
+        position: 'absolute',
+        top: strokeWidth + 2,
+        left: strokeWidth + 2,
+        width: avatarSize,
+        height: avatarSize,
+        borderRadius: '50%',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#ffffff'
+      }}>
+        <AvatarCircle avatar={avatar} size={avatarSize} />
       </div>
     </div>
   );
@@ -107,8 +176,11 @@ function ViewersPanel({ statusId, ownerId, onClose }) {
 }
 
 /* ── Full-screen Status Viewer ── */
-function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId, onClose, onReply, onStatusViewed }) {
+function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId, onClose, onReply, onStatusViewed, startIndex = null }) {
   const initialIndex = (() => {
+    if (typeof startIndex === 'number' && startIndex >= 0 && startIndex < statuses.length) {
+      return startIndex;
+    }
     if (isOwn) return 0;
     const firstUnviewed = statuses.findIndex(s => !s.isViewed);
     return firstUnviewed !== -1 ? firstUnviewed : 0;
@@ -339,12 +411,133 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
   );
 }
 
+/* ── My Status List Panel (Shows all my posted status updates on click) ── */
+function MyStatusListPanel({ mine, myName, myAvatar, onClose, onAddStatus, onDeleteStatus, onOpenViewer, onOpenViewers }) {
+  return (
+    <div className="wa-my-status-panel-overlay" onClick={onClose}>
+      <div className="wa-my-status-panel" onClick={e => e.stopPropagation()}>
+        <div className="wa-my-status-panel-head">
+          <button type="button" className="wa-my-status-back-btn" onClick={onClose} title="Back">
+            <i className="fa-solid fa-arrow-left"></i>
+          </button>
+          <div className="wa-my-status-head-info">
+            <h3 className="wa-my-status-title">My status</h3>
+            <span className="wa-my-status-subtitle">{mine.length} status update{mine.length !== 1 ? 's' : ''}</span>
+          </div>
+          <button type="button" className="wa-my-status-add-btn" onClick={onAddStatus} title="Add status update">
+            <i className="fa-solid fa-camera"></i>
+          </button>
+        </div>
+
+        <div className="wa-my-status-list">
+          {mine.length === 0 ? (
+            <div className="wa-my-status-empty">
+              <i className="fa-regular fa-clock"></i>
+              <p>No active status updates.</p>
+              <button type="button" className="wa-my-status-add-empty-btn" onClick={onAddStatus}>
+                <i className="fa-solid fa-plus"></i> Add status
+              </button>
+            </div>
+          ) : (
+            mine.map((st, index) => {
+              const isVideo = st.type === 'video';
+              const isImage = st.type === 'image';
+              const timeStr = st.createdAt
+                ? new Date(st.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : '';
+
+              return (
+                <div
+                  key={st.id || index}
+                  className="wa-my-status-item"
+                  onClick={() => onOpenViewer(index)}
+                >
+                  {/* Thumbnail */}
+                  <div className="wa-my-status-thumb-wrap">
+                    {isImage ? (
+                      <img src={st.content} alt="Status" className="wa-my-status-thumb-img" />
+                    ) : isVideo ? (
+                      <div className="wa-my-status-video-thumb">
+                        <video src={st.content} className="wa-my-status-thumb-img" />
+                        <span className="wa-my-status-video-play"><i className="fa-solid fa-play"></i></span>
+                      </div>
+                    ) : (
+                      <div
+                        className="wa-my-status-text-thumb"
+                        style={{ backgroundColor: st.bgColor || '#075e54' }}
+                      >
+                        <span>{st.content}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info */}
+                  <div className="wa-my-status-item-info">
+                    <div className="wa-my-status-item-top">
+                      <button
+                        type="button"
+                        className="wa-my-status-views-pill"
+                        title="View list of viewers"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenViewers(st.id);
+                        }}
+                      >
+                        <i className="fa-solid fa-eye"></i>
+                        <span>{st.viewCount || 0} {st.viewCount === 1 ? 'view' : 'views'}</span>
+                      </button>
+                    </div>
+                    <div className="wa-my-status-item-time">
+                      <span>{timeStr}</span>
+                      {st.caption && <span className="wa-my-status-caption-preview">• {st.caption}</span>}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="wa-my-status-item-actions">
+                    <button
+                      type="button"
+                      className="wa-my-status-action-btn view"
+                      title="Play status"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenViewer(index);
+                      }}
+                    >
+                      <i className="fa-solid fa-play"></i>
+                    </button>
+                    <button
+                      type="button"
+                      className="wa-my-status-action-btn delete"
+                      title="Delete status"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm('Delete this status update?')) {
+                          onDeleteStatus(st.id);
+                        }
+                      }}
+                    >
+                      <i className="fa-solid fa-trash-can"></i>
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── StatusTab main ── */
 export default function StatusTab({ userId, currentUser, onSelectChat }) {
   const [mine, setMine] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showComposer, setShowComposer] = useState(false);
+  const [showMyStatusList, setShowMyStatusList] = useState(false);
+  const [selectedViewerStatusId, setSelectedViewerStatusId] = useState(null);
   const [viewer, setViewer] = useState(null);
   const [showPrivacyMenu, setShowPrivacyMenu] = useState(false);
   const [showPrivacyContacts, setShowPrivacyContacts] = useState(false);
@@ -460,33 +653,71 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
     <div className="wa-status-screen">
 
       {/* ── My Status row ── */}
-      <div className="wa-status-my-item wa-status-own-row"
-        onClick={() => mine.length > 0
-          ? setViewer({ statuses: mine, userName: myName, userAvatar: myAvatar, isOwn: true })
-          : openComposer()}>
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <StatusRing avatar={myAvatar} hasNew={mine.length > 0} />
-          <span className="wa-status-add-badge"
-            onClick={e => { e.stopPropagation(); openComposer(); }}>+</span>
+      <div
+        className="wa-status-my-item wa-status-own-row"
+        onClick={() => {
+          if (mine.length > 0) {
+            setShowMyStatusList(true);
+          } else {
+            openComposer();
+          }
+        }}
+      >
+        <div
+          style={{ position: 'relative', flexShrink: 0 }}
+          onClick={(e) => {
+            if (mine.length > 0) {
+              e.stopPropagation();
+              setViewer({ statuses: mine, userName: myName, userAvatar: myAvatar, isOwn: true, startIndex: 0 });
+            }
+          }}
+          title={mine.length > 0 ? "Play all statuses" : "Add status"}
+        >
+          <StatusRing avatar={myAvatar} statuses={mine} hasNew={mine.length > 0} />
+          <span
+            className="wa-status-add-badge"
+            onClick={e => { e.stopPropagation(); openComposer(); }}
+            title="Add new status"
+          >+</span>
         </div>
         <div className="wa-item-center">
-          <div className="wa-item-top"><span className="wa-item-name">My Status</span></div>
+          <div className="wa-item-top">
+            <span className="wa-item-name">My Status</span>
+          </div>
           <div className="wa-item-bottom">
             <span className="wa-item-msg">
               {mine.length > 0
-                ? `${mine.length} update${mine.length > 1 ? 's' : ''} • Tap to view`
+                ? `${mine.length} update${mine.length > 1 ? 's' : ''} • Tap to view list`
                 : 'Tap to add status update'}
             </span>
           </div>
         </div>
         <div className="wa-status-own-actions">
-          <button className="wa-status-privacy-menu-btn" title="Status privacy"
-            onClick={e => { e.stopPropagation(); setShowPrivacyMenu(previous => !previous); }}>
-            <i className="fa-solid fa-ellipsis-vertical"></i>
+          {mine.length > 0 && (
+            <button
+              className="wa-status-list-trigger-btn"
+              title="View my status list"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMyStatusList(true);
+              }}
+            >
+              <i className="fa-solid fa-ellipsis"></i>
+            </button>
+          )}
+          <button
+            className="wa-status-privacy-menu-btn"
+            title="Status privacy"
+            onClick={e => { e.stopPropagation(); setShowPrivacyMenu(previous => !previous); }}
+          >
+            <i className="fa-solid fa-lock"></i>
           </button>
           {mine.length > 0 && (
-            <button className="wa-status-delete-all-btn"
-              onClick={e => { e.stopPropagation(); if (window.confirm('Delete all your statuses?')) mine.forEach(s => handleDeleteMine(s.id)); }}>
+            <button
+              className="wa-status-delete-all-btn"
+              title="Delete all statuses"
+              onClick={e => { e.stopPropagation(); if (window.confirm('Delete all your statuses?')) mine.forEach(s => handleDeleteMine(s.id)); }}
+            >
               <i className="fa-solid fa-trash-can"></i>
             </button>
           )}
@@ -537,9 +768,12 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
         <>
           <div className="wa-section-title">Recent Updates</div>
           {recentUpdates.map(([uid, { statuses: sts, userName, userAvatar }]) => (
-            <div key={uid} className="wa-status-my-item"
-              onClick={() => setViewer({ statuses: sts, userName, userAvatar, isOwn: false, ownerId: uid })}>
-              <StatusRing avatar={userAvatar} hasNew={true} />
+            <div
+              key={uid}
+              className="wa-status-my-item"
+              onClick={() => setViewer({ statuses: sts, userName, userAvatar, isOwn: false, ownerId: uid })}
+            >
+              <StatusRing avatar={userAvatar} statuses={sts} hasNew={true} />
               <div className="wa-item-center">
                 <div className="wa-item-top">
                   <span className="wa-item-name">{userName}</span>
@@ -561,10 +795,13 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
         <>
           <div className="wa-section-title" style={{ marginTop: '14px', opacity: 0.85 }}>Viewed Updates</div>
           {viewedUpdates.map(([uid, { statuses: sts, userName, userAvatar }]) => (
-            <div key={uid} className="wa-status-my-item viewed"
+            <div
+              key={uid}
+              className="wa-status-my-item viewed"
               style={{ opacity: 0.82 }}
-              onClick={() => setViewer({ statuses: sts, userName, userAvatar, isOwn: false, ownerId: uid })}>
-              <StatusRing avatar={userAvatar} hasNew={false} />
+              onClick={() => setViewer({ statuses: sts, userName, userAvatar, isOwn: false, ownerId: uid })}
+            >
+              <StatusRing avatar={userAvatar} statuses={sts} hasNew={false} />
               <div className="wa-item-center">
                 <div className="wa-item-top">
                   <span className="wa-item-name">{userName}</span>
@@ -581,7 +818,7 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
         </>
       )}
 
-      {/* ── Viewer ── */}
+      {/* ── Full Status Viewer ── */}
       {viewer && (
         <StatusViewer
           statuses={viewer.statuses}
@@ -590,12 +827,41 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
           isOwn={viewer.isOwn}
           ownerId={viewer.isOwn ? userId : (viewer.ownerId || viewer.statuses[0]?.userId || userId)}
           viewerId={userId}
+          startIndex={viewer.startIndex}
           onClose={() => {
             setViewer(null);
             load();
           }}
           onReply={handleReply}
           onStatusViewed={handleStatusViewed}
+        />
+      )}
+
+      {/* ── My Status List View (Tapping on My Status opens all status items) ── */}
+      {showMyStatusList && (
+        <MyStatusListPanel
+          mine={mine}
+          myName={myName}
+          myAvatar={myAvatar}
+          onClose={() => setShowMyStatusList(false)}
+          onAddStatus={() => {
+            setShowMyStatusList(false);
+            openComposer();
+          }}
+          onDeleteStatus={(id) => handleDeleteMine(id)}
+          onOpenViewer={(idx) => {
+            setViewer({ statuses: mine, userName: myName, userAvatar: myAvatar, isOwn: true, startIndex: idx });
+          }}
+          onOpenViewers={(statusId) => setSelectedViewerStatusId(statusId)}
+        />
+      )}
+
+      {/* ── Individual Status Viewers List ── */}
+      {selectedViewerStatusId && (
+        <ViewersPanel
+          statusId={selectedViewerStatusId}
+          ownerId={userId}
+          onClose={() => setSelectedViewerStatusId(null)}
         />
       )}
 
