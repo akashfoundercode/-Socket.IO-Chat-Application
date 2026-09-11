@@ -6,7 +6,8 @@ import React, { useEffect, useRef, useState, useCallback, createContext, useCont
 const BackHandlerContext = createContext({
   register: () => () => { },
   unregister: () => { },
-  triggerBack: () => false
+  triggerBack: () => false,
+  markProgrammaticPop: () => { }
 });
 
 /**
@@ -21,7 +22,7 @@ export function useBackButtonHandler({
 } = {}) {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const isExitingRef = useRef(false);
-  const isPoppingByBrowserRef = useRef(false);
+  const ignoreProgrammaticPopsCountRef = useRef(0);
   const handlersStackRef = useRef([]);
 
   // Register a back action to the stack
@@ -38,6 +39,10 @@ export function useBackButtonHandler({
 
   const unregister = useCallback((handlerObj) => {
     handlersStackRef.current = handlersStackRef.current.filter((h) => h !== handlerObj);
+  }, []);
+
+  const markProgrammaticPop = useCallback(() => {
+    ignoreProgrammaticPopsCountRef.current += 1;
   }, []);
 
   const triggerBack = useCallback(() => {
@@ -66,33 +71,32 @@ export function useBackButtonHandler({
     }
 
     const handlePopState = (event) => {
-      // If user confirmed exit, allow browser navigation
+      // 1. If user confirmed exit, allow normal browser navigation
       if (isExitingRef.current) {
         return;
       }
 
-      isPoppingByBrowserRef.current = true;
-
-      // 1. If Exit Dialog is already showing, a back press dismisses it
-      if (showExitConfirm) {
-        setShowExitConfirm(false);
-        window.history.pushState({ wa_app_root: true }, '');
-        setTimeout(() => { isPoppingByBrowserRef.current = false; }, 50);
+      // 2. If this popstate was caused by programmatic window.history.back(), ignore it completely
+      if (ignoreProgrammaticPopsCountRef.current > 0) {
+        ignoreProgrammaticPopsCountRef.current -= 1;
         return;
       }
 
-      // 2. Try closing any open sub-layer/modal/screen
+      // 3. If Exit Dialog is already showing, a back press simply dismisses it
+      if (showExitConfirm) {
+        setShowExitConfirm(false);
+        window.history.pushState({ wa_app_root: true }, '');
+        return;
+      }
+
+      // 4. Try closing any open sub-layer/modal/screen
       const handled = triggerBack();
 
       if (!handled) {
-        // 3. User is at the root screen -> Intercept exit & show confirmation dialog
+        // 5. User is at the root screen (no modals/chats open) -> Intercept exit & show confirmation dialog
         window.history.pushState({ wa_app_root: true }, '');
         setShowExitConfirm(true);
       }
-
-      setTimeout(() => {
-        isPoppingByBrowserRef.current = false;
-      }, 50);
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -125,7 +129,7 @@ export function useBackButtonHandler({
     handleConfirmExit,
     handleCancelExit,
     setShowExitConfirm,
-    contextValue: { register, unregister, triggerBack, isPoppingByBrowserRef }
+    contextValue: { register, unregister, triggerBack, markProgrammaticPop }
   };
 }
 
@@ -168,9 +172,10 @@ export function useRegisterBackHandler(isOpen, onClose, priority = 50) {
 
       return () => {
         unregister();
-        // If closed via UI (and not by browser popstate), clean up pushed history state
-        if (pushedStateRef.current && !context.isPoppingByBrowserRef?.current && typeof window !== 'undefined') {
+        // If closed via UI (and not by browser popstate), clean up pushed history state safely
+        if (pushedStateRef.current && typeof window !== 'undefined') {
           pushedStateRef.current = false;
+          context.markProgrammaticPop?.();
           try {
             window.history.back();
           } catch { }

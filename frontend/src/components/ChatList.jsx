@@ -168,8 +168,6 @@ export default function ChatList({
   useRegisterBackHandler(showNewChatModal, () => setShowNewChatModal(false), 100);
   useRegisterBackHandler(showMetaAi, () => setShowMetaAi(false), 100);
   useRegisterBackHandler(showMenu, () => setShowMenu(false), 90);
-  useRegisterBackHandler(Boolean(searchQuery), () => setSearchQuery(''), 30);
-  useRegisterBackHandler(activeTab !== 'chats', () => setActiveTab('chats'), 20);
 
   const selectedCountry = COUNTRY_OPTIONS.find((c) => c.code === newCountryCode) || COUNTRY_OPTIONS[0];
 
