@@ -341,6 +341,19 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
           )}
           {current.type === 'video' && (
             <video src={resolveMediaUrl(current.content)} autoPlay playsInline className="wa-sv-media" />
+            <video
+              src={resolveMediaUrl(current.content)}
+              autoPlay
+              playsInline
+              controls
+              className="wa-sv-media"
+              onLoadedMetadata={(e) => {
+                e.target.play().catch(() => {
+                  e.target.muted = true;
+                  e.target.play().catch(() => { });
+                });
+              }}
+            />
           )}
           {current.caption && (
             <div className="wa-sv-caption">{current.caption}</div>

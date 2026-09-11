@@ -300,6 +300,7 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
         });
 
         // Convert blob to base64 DataURL for backend upload
+        // Convert blob to base64 DataURL for backend upload (stored in .dataUrl only, preview keeps blobUrl)
         const reader = new FileReader();
         reader.onloadend = () => {
           stopCameraStream();
@@ -568,6 +569,20 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
                 <img src={capturedMedia.url} alt="Status Preview" className="wa-composer-media-fit" />
               ) : (
                 <video src={capturedMedia.url} controls autoPlay playsInline loop className="wa-composer-media-fit" />
+                <video
+                  src={capturedMedia.url}
+                  controls
+                  autoPlay
+                  playsInline
+                  loop
+                  className="wa-composer-media-fit"
+                  onLoadedMetadata={(e) => {
+                    e.target.play().catch(() => {
+                      e.target.muted = true;
+                      e.target.play().catch(() => { });
+                    });
+                  }}
+                />
               )}
             </div>
           )}
