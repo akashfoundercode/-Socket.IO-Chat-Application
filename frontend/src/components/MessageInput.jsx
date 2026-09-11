@@ -78,8 +78,10 @@ export default function MessageInput({
   }, []);
 
   const formatRecordTime = (secs) => {
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
+    if (!secs || isNaN(secs) || secs < 0) return '0:00';
+    const total = Math.floor(secs);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
@@ -118,11 +120,16 @@ export default function MessageInput({
   };
 
   const startRecording = async (forceLock = false) => {
-    if (isBlocked || !canSendMessages || !recipientId?.trim()) return;
+    if (isBlocked || !canSendMessages || !recipientId?.trim() || isRecording || isInitializingMicRef.current) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       alert('Voice recording is not supported in this browser.');
       cleanupRecordingResources();
       return;
+    }
+
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
     }
 
     isInitializingMicRef.current = true;
@@ -266,10 +273,16 @@ export default function MessageInput({
       }
 
       const startTimestamp = Date.now();
+      recordingStartTimeRef.current = startTimestamp;
+      setRecordDuration(0);
+
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
       timerIntervalRef.current = setInterval(() => {
-        const secs = Math.floor((Date.now() - startTimestamp) / 1000);
+        const secs = Math.max(0, Math.floor((Date.now() - startTimestamp) / 1000));
         setRecordDuration(secs);
-      }, 500);
+      }, 250);
 
     } catch (error) {
       isInitializingMicRef.current = false;
