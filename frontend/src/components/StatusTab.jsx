@@ -194,13 +194,31 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
   const [replyText, setReplyText] = useState('');
   const [myReaction, setMyReaction] = useState(null);
   const [sending, setSending] = useState(false);
+  const [isVideoMuted, setIsVideoMuted] = useState(false);
   const timerRef = useRef(null);
   const replyRef = useRef(null);
+  const videoRef = useRef(null);
   const current = statuses[idx];
-  const DURATION = current?.type === 'video' ? 15000 : 5000;
+  const DURATION = 5000;
   const paused = showReply || showViewers || showReactions;
 
   const [liveViewCount, setLiveViewCount] = useState(current?.viewCount || 0);
+
+  useEffect(() => {
+    if (current?.type === 'video') {
+      console.log('resolved video url:', resolveMediaUrl(current.content));
+    }
+  }, [current?.id, current?.content, current?.type]);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      if (paused) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play().catch(() => { });
+      }
+    }
+  }, [paused]);
 
   useEffect(() => {
     setLiveViewCount(current?.viewCount || 0);
@@ -228,10 +246,14 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
     }
   }, [idx, current?.id]);
 
-  /* progress timer */
+  /* progress timer for text / image */
   useEffect(() => {
     setProgress(0);
     if (paused) return;
+    if (current?.type === 'video') {
+      // Video progress is handled directly via video onTimeUpdate and onEnded
+      return;
+    }
     const start = Date.now();
     timerRef.current = setInterval(() => {
       const pct = Math.min(((Date.now() - start) / DURATION) * 100, 100);
@@ -243,7 +265,7 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
       }
     }, 50);
     return () => clearInterval(timerRef.current);
-  }, [idx, paused]);
+  }, [idx, paused, current?.type]);
 
   useEffect(() => {
     if (showReply) replyRef.current?.focus();
@@ -340,19 +362,67 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
             <img src={resolveMediaUrl(current.content)} alt="Status" className="wa-sv-media" />
           )}
           {current.type === 'video' && (
-            <video
-              src={resolveMediaUrl(current.content)}
-              autoPlay
-              playsInline
-              controls
-              className="wa-sv-media"
-              onLoadedMetadata={(e) => {
-                e.target.play().catch(() => {
-                  e.target.muted = true;
-                  e.target.play().catch(() => { });
-                });
-              }}
-            />
+            <div className="wa-sv-video-container" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <video
+                ref={videoRef}
+                key={current.id || idx}
+                src={resolveMediaUrl(current.content)}
+                autoPlay
+                playsInline
+                preload="auto"
+                muted={isVideoMuted}
+                className="wa-sv-media"
+                onLoadedMetadata={(e) => {
+                  e.target.currentTime = 0;
+                  e.target.play().catch((err) => {
+                    console.warn("Unmuted autoplay failed, falling back to muted play:", err);
+                    setIsVideoMuted(true);
+                    e.target.muted = true;
+                    e.target.play().catch(() => { });
+                  });
+                }}
+                onTimeUpdate={(e) => {
+                  if (e.target.duration && !paused) {
+                    const pct = Math.min((e.target.currentTime / e.target.duration) * 100, 100);
+                    setProgress(pct);
+                  }
+                }}
+                onEnded={() => {
+                  if (idx < statuses.length - 1) setIdx(p => p + 1);
+                  else onClose();
+                }}
+                onError={(e) => {
+                  console.error("Status video playback error:", e.target.error, "URL:", resolveMediaUrl(current.content));
+                }}
+              />
+              <button
+                type="button"
+                className="wa-sv-mute-toggle-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsVideoMuted(prev => !prev);
+                }}
+                style={{
+                  position: 'absolute',
+                  bottom: 20,
+                  right: 20,
+                  background: 'rgba(0,0,0,0.65)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: 36,
+                  height: 36,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  zIndex: 20
+                }}
+                title={isVideoMuted ? "Unmute" : "Mute"}
+              >
+                <i className={`fa-solid ${isVideoMuted ? 'fa-volume-xmark' : 'fa-volume-high'}`} style={{ fontSize: 16 }}></i>
+              </button>
+            </div>
           )}
           {current.caption && (
             <div className="wa-sv-caption">{current.caption}</div>

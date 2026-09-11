@@ -484,6 +484,8 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
 
     if (!payload || !payload.content) return;
 
+    console.log('content length:', payload.content?.length, 'starts with:', payload.content?.substring(0, 30));
+
     setPosting(true);
     try {
       const res = await statusApi.createStatus(payload);

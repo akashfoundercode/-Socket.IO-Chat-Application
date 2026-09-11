@@ -21,10 +21,16 @@ export const getApiBaseUrl = () => {
 
 export const resolveMediaUrl = (url) => {
   if (!url || typeof url !== 'string') return '';
-  if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
+  const trimmed = url.trim();
+  if (
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://')
+  ) {
+    return trimmed;
   }
-  let cleanPath = url;
+  let cleanPath = trimmed;
   if (cleanPath.startsWith('/uploads/')) {
     cleanPath = cleanPath.replace('/uploads/', '/api/chat/media/');
   } else if (cleanPath.startsWith('/api/chat/uploads/')) {
