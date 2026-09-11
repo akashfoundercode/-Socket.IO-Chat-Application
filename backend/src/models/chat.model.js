@@ -1774,13 +1774,18 @@ const createStatus = async ({ userId, type, content, caption, bgColor, fontStyle
     const cleanUserId = String(userId || '').trim();
     if (!cleanUserId || !content) return null;
 
+    let savedContent = content;
+    if (type === 'image' || type === 'video' || (typeof content === 'string' && content.startsWith('data:'))) {
+        savedContent = await saveMediaBase64(content, type || 'media');
+    }
+
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
     const allowedPrivacyModes = ['everyone', 'contacts', 'contacts_except', 'only_share'];
     const cleanPrivacyMode = allowedPrivacyModes.includes(privacyMode) ? privacyMode : 'contacts';
     const [result] = await pool.execute(
         `INSERT INTO user_statuses (user_id, type, content, caption, bg_color, font_style, privacy_mode, expires_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [cleanUserId, type || 'text', content, caption || null, bgColor || '#075e54', fontStyle || 'normal', cleanPrivacyMode, expiresAt]
+        [cleanUserId, type || 'text', savedContent, caption || null, bgColor || '#075e54', fontStyle || 'normal', cleanPrivacyMode, expiresAt]
     );
 
     if ((cleanPrivacyMode === 'contacts_except' || cleanPrivacyMode === 'only_share') && Array.isArray(audienceUserIds)) {

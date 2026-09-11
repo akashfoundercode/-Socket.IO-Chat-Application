@@ -74,11 +74,15 @@ const fs = require("fs");
 const path = require("path");
 
 const MIME_MAP = {
-    ".webm": "audio/webm",
-    ".mp4": "audio/mp4",
+    ".webm": "video/webm",
+    ".mp4": "video/mp4",
+    ".ogv": "video/ogg",
+    ".mov": "video/quicktime",
+    ".m4v": "video/mp4",
     ".ogg": "audio/ogg",
     ".wav": "audio/wav",
     ".aac": "audio/aac",
+    ".mp3": "audio/mpeg",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png": "image/png",
@@ -97,7 +101,10 @@ const handleServeMedia = (req, res) => {
     }
 
     const ext = path.extname(safeFilename).toLowerCase();
-    const contentType = MIME_MAP[ext] || "application/octet-stream";
+    let contentType = MIME_MAP[ext] || "application/octet-stream";
+    if (safeSubDir === "voice" && (ext === ".webm" || ext === ".mp4")) {
+        contentType = ext === ".webm" ? "audio/webm" : "audio/mp4";
+    }
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
     const rangeHeader = req.headers.range;
