@@ -1834,7 +1834,12 @@ const getMyStatuses = async (userId) => {
     const placeholders = userVars.map(() => '?').join(',');
     const [rows] = await pool.execute(
         `SELECT s.*, 
-                (SELECT COUNT(*) FROM status_views sv WHERE sv.status_id = s.id) AS view_count
+                (
+                    SELECT COUNT(DISTINCT COALESCE(u.id, u.full_phone, u.phone, sv.viewer_id)) 
+                    FROM status_views sv 
+                    LEFT JOIN users u ON (u.full_phone = sv.viewer_id OR u.phone = sv.viewer_id OR CAST(u.id AS CHAR) = sv.viewer_id)
+                    WHERE sv.status_id = s.id
+                ) AS view_count
          FROM user_statuses s 
          WHERE user_id IN (${placeholders}) 
            AND expires_at > NOW() 
@@ -1868,7 +1873,12 @@ const getContactStatuses = async (userId) => {
                 u.full_phone AS fullPhone,
                 u.avatar,
                 u.about,
-                (SELECT COUNT(*) FROM status_views sv WHERE sv.status_id = s.id) AS view_count,
+                (
+                    SELECT COUNT(DISTINCT COALESCE(u_v.id, u_v.full_phone, u_v.phone, sv.viewer_id)) 
+                    FROM status_views sv 
+                    LEFT JOIN users u_v ON (u_v.full_phone = sv.viewer_id OR u_v.phone = sv.viewer_id OR CAST(u_v.id AS CHAR) = sv.viewer_id)
+                    WHERE sv.status_id = s.id
+                ) AS view_count,
                 EXISTS(SELECT 1 FROM status_views sv WHERE sv.status_id = s.id AND sv.viewer_id IN (${placeholders})) AS is_viewed
          FROM user_statuses s
          LEFT JOIN users u ON (u.full_phone = s.user_id OR u.phone = s.user_id OR CAST(u.id AS CHAR) = s.user_id OR s.user_id LIKE CONCAT('%', u.phone))
@@ -1945,12 +1955,33 @@ const deleteStatus = async (statusId, userId) => {
 
 const recordStatusView = async (statusId, viewerId) => {
     const pool = getPool();
-    const viewerVars = getPhoneVariants(viewerId);
-    for (const v of viewerVars) {
-        await pool.execute(
-            `INSERT IGNORE INTO status_views (status_id, viewer_id) VALUES (?, ?)`,
-            [Number(statusId), String(v).trim()]
+    const cleanViewer = normalizeId(viewerId);
+    if (!cleanViewer || !statusId) return;
+
+    try {
+        const user = await getUser(cleanViewer);
+        const primaryId = user?.full_phone || user?.phone || cleanViewer;
+        const viewerVars = getPhoneVariants(primaryId);
+        if (!viewerVars.includes(cleanViewer)) viewerVars.push(cleanViewer);
+        if (user?.id) viewerVars.push(String(user.id));
+
+        const placeholders = viewerVars.map(() => '?').join(',');
+        const [existing] = await pool.execute(
+            `SELECT id FROM status_views WHERE status_id = ? AND viewer_id IN (${placeholders}) LIMIT 1`,
+            [Number(statusId), ...viewerVars]
         );
+
+        if (existing.length > 0) {
+            // Already viewed once; do NOT insert duplicate entry
+            return;
+        }
+
+        await pool.execute(
+            `INSERT IGNORE INTO status_views (status_id, viewer_id, viewed_at) VALUES (?, ?, NOW())`,
+            [Number(statusId), primaryId]
+        );
+    } catch (e) {
+        console.warn('recordStatusView warning:', e.message);
     }
 };
 
@@ -1958,25 +1989,46 @@ const getStatusViews = async (statusId, ownerId) => {
     const pool = getPool();
     const ownerVars = getPhoneVariants(ownerId);
     const placeholders = ownerVars.map(() => '?').join(',');
-    // Group by viewer to guarantee absolutely unique viewers per status
+
     const [rows] = await pool.execute(
-        `SELECT sv.viewer_id AS viewerId, 
-                MAX(sv.viewed_at) AS viewedAt,
-                COALESCE(MAX(u.full_phone), sv.viewer_id) AS phone,
-                MAX(u.avatar) AS avatar,
-                COALESCE(MAX(c.custom_name), MAX(u.full_phone), sv.viewer_id) AS name,
-                COALESCE(MAX(c.custom_name), MAX(u.name), MAX(u.full_phone), sv.viewer_id) AS name,
-                MAX(sr.emoji) AS reaction
+        `SELECT sv.viewer_id AS rawViewerId, 
+                MIN(sv.viewed_at) AS viewedAt,
+                COALESCE(u.full_phone, u.phone, sv.viewer_id) AS phone,
+                COALESCE(u.id, sv.viewer_id) AS uniqueUserKey,
+                u.avatar AS avatar,
+                COALESCE(c.custom_name, u.name, u.full_phone, u.phone, sv.viewer_id) AS name,
+                (
+                    SELECT sr.emoji FROM status_reactions sr 
+                    WHERE sr.status_id = sv.status_id 
+                      AND (sr.reactor_id = sv.viewer_id OR sr.reactor_id = u.full_phone OR sr.reactor_id = u.phone OR sr.reactor_id = CAST(u.id AS CHAR))
+                    ORDER BY sr.created_at DESC LIMIT 1
+                ) AS reaction
          FROM status_views sv
-         LEFT JOIN users u ON (u.full_phone = sv.viewer_id OR u.phone = sv.viewer_id OR CAST(u.id AS CHAR) = sv.viewer_id)
-         LEFT JOIN contacts c ON (c.user_id IN (${placeholders}) AND (c.contact_id = sv.viewer_id OR c.contact_id = u.full_phone OR c.contact_id = u.phone))
-         LEFT JOIN status_reactions sr ON (sr.status_id = sv.status_id AND (sr.reactor_id = sv.viewer_id OR sr.reactor_id = u.full_phone OR sr.reactor_id = u.phone))
+         LEFT JOIN users u ON (u.full_phone = sv.viewer_id OR u.phone = sv.viewer_id OR CAST(u.id AS CHAR) = sv.viewer_id OR sv.viewer_id LIKE CONCAT('%', u.phone))
+         LEFT JOIN contacts c ON (c.user_id IN (${placeholders}) AND (c.contact_id = sv.viewer_id OR c.contact_id = u.full_phone OR c.contact_id = u.phone OR c.contact_id = CAST(u.id AS CHAR)))
          WHERE sv.status_id = ?
-         GROUP BY sv.viewer_id
-         ORDER BY viewedAt DESC`,
+         GROUP BY COALESCE(u.id, u.full_phone, u.phone, sv.viewer_id)
+         ORDER BY viewedAt ASC`,
         [...ownerVars, Number(statusId)]
     );
-    return rows;
+
+    const seenMap = new Map();
+    const uniqueViewers = [];
+    for (const r of rows) {
+        const key = String(r.phone || r.uniqueUserKey || r.rawViewerId).trim();
+        if (!seenMap.has(key)) {
+            seenMap.set(key, true);
+            uniqueViewers.push({
+                viewerId: r.phone || r.rawViewerId,
+                name: r.name,
+                phone: r.phone,
+                avatar: r.avatar,
+                viewedAt: r.viewedAt,
+                reaction: r.reaction || null
+            });
+        }
+    }
+    return uniqueViewers;
 };
 
 const addStatusReaction = async (statusId, reactorId, emoji) => {

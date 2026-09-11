@@ -216,6 +216,26 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
           ? { mimeType: 'video/mp4' }
           : {};
 
+      // Check supported MIME types in order of best device compatibility
+      const candidateTypes = [
+        'video/mp4;codecs=avc1,mp4a.40.2',
+        'video/mp4',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=h264,opus',
+        'video/webm'
+      ];
+      let selectedMimeType = '';
+      if (typeof MediaRecorder.isTypeSupported === 'function') {
+        for (const type of candidateTypes) {
+          if (MediaRecorder.isTypeSupported(type)) {
+            selectedMimeType = type;
+            break;
+          }
+        }
+      }
+
+      const options = selectedMimeType ? { mimeType: selectedMimeType } : {};
       const recorder = new MediaRecorder(streamRef.current, options);
       mediaRecorderRef.current = recorder;
 
@@ -228,18 +248,43 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
       recorder.onstop = () => {
         const mimeType = recorder.mimeType || 'video/webm';
         const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+        const actualMimeType = recorder.mimeType || selectedMimeType || 'video/webm';
+        const blob = new Blob(recordedChunksRef.current, { type: actualMimeType });
+
+        if (!blob || blob.size === 0) {
+          console.warn("Recorded video blob has size 0!");
+          setIsRecording(false);
+          setRecordDuration(0);
+          return;
+        }
+
+        // Create Object URL for instant, high-performance playback in preview
+        const blobUrl = URL.createObjectURL(blob);
+        stopCameraStream();
+
+        setCapturedMedia({
+          type: 'video',
+          url: blobUrl,
+          blob: blob,
+          dataUrl: null
+        });
+
+        // Convert blob to base64 DataURL for backend upload
         const reader = new FileReader();
         reader.onloadend = () => {
           stopCameraStream();
           setCapturedMedia({ type: 'video', url: reader.result });
+          setCapturedMedia(prev => (prev && prev.url === blobUrl ? { ...prev, dataUrl: reader.result } : prev));
         };
         reader.readAsDataURL(blob);
+
         setIsRecording(false);
         setRecordDuration(0);
         if (recordTimerRef.current) clearInterval(recordTimerRef.current);
       };
 
       recorder.start(250);
+      recorder.start(200);
       setIsRecording(true);
       setRecordDuration(0);
 
@@ -254,11 +299,16 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
       }, 500);
     } catch (err) {
       console.error("Video recording error:", err);
+      alert("Could not start video recording: " + (err.message || err));
+      setIsRecording(false);
     }
   };
 
   const handleStopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.requestData();
+      } catch (_) { }
       mediaRecorderRef.current.stop();
     }
   };
@@ -297,10 +347,20 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
       return;
     }
 
+    const objectUrl = URL.createObjectURL(file);
+    stopCameraStream();
+    setCapturedMedia({
+      type: 'video',
+      url: objectUrl,
+      blob: file,
+      dataUrl: null
+    });
+
     const reader = new FileReader();
     reader.onload = (ev) => {
       stopCameraStream();
       setCapturedMedia({ type: 'video', url: ev.target.result });
+      setCapturedMedia(prev => (prev && prev.url === objectUrl ? { ...prev, dataUrl: ev.target.result } : prev));
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -320,6 +380,11 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
   };
 
   const handleRetakeOrDiscard = () => {
+    if (capturedMedia?.url && capturedMedia.url.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(capturedMedia.url);
+      } catch (_) { }
+    }
     setCapturedMedia(null);
     setCaption('');
   };
@@ -348,10 +413,26 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
         audienceUserIds
       };
     } else if (capturedMedia) {
+      let finalContent = capturedMedia.dataUrl || capturedMedia.url;
+      // If dataUrl is not ready yet, read from blob synchronously before posting
+      if ((!finalContent || finalContent.startsWith('blob:')) && capturedMedia.blob) {
+        try {
+          finalContent = await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onloadend = () => resolve(r.result);
+            r.onerror = reject;
+            r.readAsDataURL(capturedMedia.blob);
+          });
+        } catch (err) {
+          console.error("Failed to read video blob:", err);
+        }
+      }
+
       payload = {
         userId,
         type: capturedMedia.type,
         content: capturedMedia.url,
+        content: finalContent,
         caption: caption.trim() || null,
         bgColor: '#075e54',
         fontStyle: 'normal',
@@ -361,11 +442,15 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
     }
 
     if (!payload) return;
+    if (!payload || !payload.content) return;
 
     setPosting(true);
     try {
       const res = await statusApi.createStatus(payload);
       socket.emit('status_posted', { userId, status: res?.status });
+      if (capturedMedia?.url && capturedMedia.url.startsWith('blob:')) {
+        try { URL.revokeObjectURL(capturedMedia.url); } catch (_) { }
+      }
       onPosted?.();
       onClose();
     } catch (err) {

@@ -657,7 +657,7 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
         className="wa-status-my-item wa-status-own-row"
         onClick={() => {
           if (mine.length > 0) {
-            setShowMyStatusList(true);
+            setViewer({ statuses: mine, userName: myName, userAvatar: myAvatar, isOwn: true, startIndex: 0 });
           } else {
             openComposer();
           }
@@ -687,7 +687,7 @@ export default function StatusTab({ userId, currentUser, onSelectChat }) {
           <div className="wa-item-bottom">
             <span className="wa-item-msg">
               {mine.length > 0
-                ? `${mine.length} update${mine.length > 1 ? 's' : ''} • Tap to view list`
+                ? `${mine.length} status update${mine.length > 1 ? 's' : ''} • Tap to view`
                 : 'Tap to add status update'}
             </span>
           </div>
