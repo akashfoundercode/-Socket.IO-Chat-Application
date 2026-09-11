@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { resolveMediaUrl } from '../services/api';
 
 // Generates consistent waveform pattern based on mediaUrl string or random seed
 const generateWaveformData = (seedString, count = 26) => {
@@ -27,34 +28,25 @@ export default function VoiceNotePlayer({
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(initialDuration || 0);
+  const [duration, setDuration] = useState(() => Number(initialDuration) || 0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const isRetriedRef = useRef(false);
 
-  const normalizedMediaUrl = React.useMemo(() => {
-    if (!mediaUrl) return '';
-    if (typeof mediaUrl === 'string') {
-      // Already a full URL
-      if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) return mediaUrl;
-      // data: URL (base64) - use as-is
-      if (mediaUrl.startsWith('data:')) return mediaUrl;
-      // /uploads/voice/... -> /api/chat/media/voice/...
-      if (mediaUrl.startsWith('/uploads/')) {
-        return mediaUrl.replace('/uploads/', '/api/chat/media/');
-      }
-      // /api/chat/media/... -> already correct
-      if (mediaUrl.startsWith('/api/chat/media/')) return mediaUrl;
-      // /api/chat/uploads/... -> fix
-      if (mediaUrl.startsWith('/api/chat/uploads/')) {
-        return mediaUrl.replace('/api/chat/uploads/', '/api/chat/media/');
-      }
+  // Sync initialDuration prop whenever it updates or is provided from message payload
+  useEffect(() => {
+    if (initialDuration && Number(initialDuration) > 0) {
+      setDuration(Number(initialDuration));
     }
-    return mediaUrl;
+  }, [initialDuration]);
+
+  const normalizedMediaUrl = useMemo(() => {
+    if (!mediaUrl) return '';
+    return resolveMediaUrl(mediaUrl);
   }, [mediaUrl]);
 
   const waveformBars = useRef(generateWaveformData(mediaUrl, 26)).current;
 
-  // Use Web Audio API to decode true audio duration if HTMLAudioElement reports 0 or Infinity
+  // Use Web Audio API to decode true audio duration if duration is not yet known
   useEffect(() => {
     if (!normalizedMediaUrl) return;
 
@@ -65,6 +57,7 @@ export default function VoiceNotePlayer({
         let arrayBuffer;
         if (normalizedMediaUrl.startsWith('data:')) {
           const base64Data = normalizedMediaUrl.split(',')[1];
+          if (!base64Data) return;
           const binaryString = window.atob(base64Data);
           const len = binaryString.length;
           const bytes = new Uint8Array(len);
@@ -85,7 +78,7 @@ export default function VoiceNotePlayer({
             try {
               const decoded = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
               if (decoded && decoded.duration > 0 && !isCancelled) {
-                setDuration(decoded.duration);
+                setDuration((prev) => (prev > 0 ? prev : decoded.duration));
               }
             } catch (e) {
               // Ignore decoding error
@@ -115,22 +108,33 @@ export default function VoiceNotePlayer({
     setCurrentTime(0);
     isRetriedRef.current = false;
 
-    const onLoadedMetadata = () => {
+    const updateDurationFromAudio = () => {
       if (audio.duration && isFinite(audio.duration) && audio.duration > 0) {
         setDuration((prev) => (prev > 0 ? prev : audio.duration));
+      } else if (audio.duration === Infinity) {
+        // Fix for WebM audio where browser reports Infinity until seeking to the end
+        audio.currentTime = 1e101;
+        const onSeeked = () => {
+          audio.removeEventListener('seeked', onSeeked);
+          if (isFinite(audio.duration) && audio.duration > 0) {
+            setDuration((prev) => (prev > 0 ? prev : audio.duration));
+          }
+          audio.currentTime = 0;
+        };
+        audio.addEventListener('seeked', onSeeked);
       }
+    };
+
+    const onLoadedMetadata = () => {
+      updateDurationFromAudio();
     };
 
     const onCanPlay = () => {
-      if (audio.duration && isFinite(audio.duration) && audio.duration > 0) {
-        setDuration((prev) => (prev > 0 ? prev : audio.duration));
-      }
+      updateDurationFromAudio();
     };
 
     const onDurationChange = () => {
-      if (audio.duration && isFinite(audio.duration) && audio.duration > 0) {
-        setDuration((prev) => (prev > 0 ? prev : audio.duration));
-      }
+      updateDurationFromAudio();
     };
 
     const onTimeUpdate = () => {
@@ -155,13 +159,8 @@ export default function VoiceNotePlayer({
       console.warn('Audio playback error:', audio.error?.message || e);
       if (typeof normalizedMediaUrl === 'string' && normalizedMediaUrl.startsWith('/') && !isRetriedRef.current) {
         isRetriedRef.current = true;
-        const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL;
-        const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-        // Keep full path including /api/chat prefix
-        const fallbackBase = backendUrl || (typeof window !== 'undefined' && window.location.port !== '5173'
-          ? window.location.origin
-          : `http://${host}:5000`);
-        const fallbackUrl = `${fallbackBase.replace(/\/$/, '')}${normalizedMediaUrl}`;
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'https://whatsapp.siberiancrane.tech';
+        const fallbackUrl = `${backendUrl.replace(/\/$/, '')}${normalizedMediaUrl}`;
         audio.src = fallbackUrl;
         audio.load();
       }
@@ -199,28 +198,28 @@ export default function VoiceNotePlayer({
         if (audio.readyState === 0) {
           audio.load();
         }
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          await playPromise;
-        }
+        audio.playbackRate = playbackRate;
+        await audio.play();
       } catch (err) {
         console.error('Audio play error:', err);
+        setIsPlaying(false);
       }
     }
   };
 
   const handleSeek = (e) => {
     const audio = audioRef.current;
-    if (!audio || !mediaUrl) return;
+    if (!audio) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
-    const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+    const clickPercent = Math.max(0, Math.min(1, clickX / rect.width));
     const totalDuration = (duration > 0 && isFinite(duration))
       ? duration
       : ((audio.duration > 0 && isFinite(audio.duration)) ? audio.duration : 1);
-    const targetTime = ratio * totalDuration;
-    audio.currentTime = targetTime;
-    setCurrentTime(targetTime);
+    const newTime = clickPercent * totalDuration;
+
+    audio.currentTime = newTime;
+    setCurrentTime(newTime);
   };
 
   const cyclePlaybackRate = (e) => {
@@ -236,8 +235,9 @@ export default function VoiceNotePlayer({
 
   const formatAudioTime = (secs) => {
     if (!secs || isNaN(secs) || !isFinite(secs) || secs < 0) return '0:00';
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
+    const totalSecs = Math.round(secs);
+    const m = Math.floor(totalSecs / 60);
+    const s = Math.floor(totalSecs % 60);
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
@@ -250,7 +250,7 @@ export default function VoiceNotePlayer({
       <audio
         ref={audioRef}
         src={normalizedMediaUrl}
-        preload="auto"
+        preload="metadata"
         playsInline
       />
 
@@ -328,5 +328,3 @@ export default function VoiceNotePlayer({
     </div>
   );
 }
-
-

@@ -217,6 +217,11 @@ export default function MessageInput({
           return;
         }
 
+        // Calculate accurate recorded duration in seconds inside onstop
+        const stopTimestamp = Date.now();
+        const startTimestamp = recordingStartTimeRef.current || (stopTimestamp - 1000);
+        const recordedDurationSec = Math.max(1, Math.round((stopTimestamp - startTimestamp) / 1000));
+
         const mime = recorder.mimeType || supportedType || 'audio/webm';
         const blob = new Blob(chunksRef.current, { type: mime });
         if (blob.size >= 150) {
@@ -229,10 +234,16 @@ export default function MessageInput({
                     (replyTo.text || '')
             ) : null;
 
-            onSendMessage(recipientId.trim(), 'Voice message', 'voice', reader.result, {
+            const voicePayload = JSON.stringify({
+              type: 'voice',
+              duration: recordedDurationSec
+            });
+
+            onSendMessage(recipientId.trim(), voicePayload, 'voice', reader.result, {
               replyToId: replyTo?.id || null,
               replyToText: replySnippet,
-              replyToSender: replyTo ? (replyTo.from || '') : null
+              replyToSender: replyTo ? (replyTo.from || '') : null,
+              duration: recordedDurationSec
             });
             onClearReply?.();
           };

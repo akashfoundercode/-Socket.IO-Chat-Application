@@ -14,6 +14,20 @@ function MessageAvatar({ avatar, label }) {
   );
 }
 
+function extractVoiceDuration(msg) {
+  if (!msg) return 0;
+  if (typeof msg.duration === 'number' && msg.duration > 0) return msg.duration;
+  if (typeof msg.text === 'string' && msg.text.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(msg.text);
+      if (parsed.duration && Number(parsed.duration) > 0) {
+        return Number(parsed.duration);
+      }
+    } catch (e) { }
+  }
+  return 0;
+}
+
 function formatSystemMessage(msg, currentUserId) {
   let sysPayload = null;
   if (typeof msg.text === 'string' && (msg.text.startsWith('{') || msg.text.startsWith('['))) {
@@ -786,6 +800,7 @@ export default function MessageList({
                         isSent={isSent}
                         senderAvatar={messageAvatar}
                         senderName={messageAvatarLabel}
+                        initialDuration={extractVoiceDuration(msg)}
                       />
                     </div>
                   )}
