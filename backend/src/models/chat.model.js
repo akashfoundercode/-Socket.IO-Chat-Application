@@ -22,13 +22,14 @@ const saveMediaBase64 = async (mediaUrl, type = "media") => {
     }
 
     try {
-        const matches = mediaUrl.match(/^data:([A-Za-z-+\/0-9;=_-]+);base64,([\s\S]+)$/);
-        if (!matches || matches.length !== 3) {
+        const marker = ";base64,";
+        const markerIdx = mediaUrl.indexOf(marker);
+        if (markerIdx === -1) {
             return mediaUrl;
         }
 
-        const mimeType = matches[1].toLowerCase();
-        const base64Data = matches[2].replace(/\s/g, "");
+        const mimeType = mediaUrl.substring(5, markerIdx).toLowerCase();
+        const base64Data = mediaUrl.substring(markerIdx + marker.length).replace(/\s/g, "");
         const buffer = Buffer.from(base64Data, "base64");
 
         // Discard recordings that are completely empty / zero bytes (< 150 bytes header only)

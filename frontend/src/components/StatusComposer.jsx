@@ -214,16 +214,26 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
     try {
       recordedChunksRef.current = [];
 
+      const hasAudio = streamRef.current.getAudioTracks().length > 0;
       const getBestSupportedVideoMimeType = () => {
         if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
-        const candidateTypes = [
-          'video/webm;codecs=vp8,opus',
-          'video/webm;codecs=vp9,opus',
-          'video/webm;codecs=h264,opus',
-          'video/webm',
-          'video/mp4;codecs=avc1,mp4a.40.2',
-          'video/mp4'
-        ];
+        const candidateTypes = hasAudio
+          ? [
+            'video/webm;codecs=vp8,opus',
+            'video/webm;codecs=vp9,opus',
+            'video/webm;codecs=h264,opus',
+            'video/webm',
+            'video/mp4;codecs=avc1,mp4a.40.2',
+            'video/mp4'
+          ]
+          : [
+            'video/webm;codecs=vp8',
+            'video/webm;codecs=vp9',
+            'video/webm;codecs=h264',
+            'video/webm',
+            'video/mp4;codecs=avc1',
+            'video/mp4'
+          ];
         for (const type of candidateTypes) {
           if (MediaRecorder.isTypeSupported(type)) {
             return type;
