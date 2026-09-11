@@ -44,6 +44,7 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
   const streamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
+  const recordingStartTimeRef = useRef(0);
   const recordTimerRef = useRef(null);
   const photoInputRef = useRef(null);
   const videoInputRef = useRef(null);
@@ -261,12 +262,17 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
         }
       };
 
+      recorder.onerror = (event) => {
+        console.error("MediaRecorder error:", event.error || event);
+      };
+
       recorder.onstop = () => {
-        const actualMimeType = recorder.mimeType || selectedMimeType || 'video/webm';
+        const actualMimeType = recorder.mimeType || selectedMimeType || (hasAudio ? 'video/webm' : 'video/webm');
         const blob = new Blob(recordedChunksRef.current, { type: actualMimeType });
 
         if (!blob || blob.size === 0) {
-          console.warn("Recorded video blob has size 0!");
+          console.warn("Recorded video blob has size 0!", { chunks: recordedChunksRef.current.length });
+          alert("Recording too short or no video data was captured. Please record for at least 1-2 seconds.");
           setIsRecording(false);
           setRecordDuration(0);
           return;
@@ -298,7 +304,8 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
         }
       };
 
-      recorder.start(200);
+      recorder.start(500);
+      recordingStartTimeRef.current = Date.now();
       setIsRecording(true);
       setRecordDuration(0);
 
@@ -324,13 +331,29 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
       clearInterval(recordTimerRef.current);
       recordTimerRef.current = null;
     }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
-        mediaRecorderRef.current.requestData();
-      } catch (_) { }
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (_) { }
+
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+      setIsRecording(false);
+      return;
+    }
+
+    const elapsed = Date.now() - recordingStartTimeRef.current;
+    const minRecordMs = 800; // minimum duration to ensure MediaRecorder produces keyframe data
+
+    const executeStop = () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (e) {
+          console.warn("Error stopping MediaRecorder:", e);
+        }
+      }
+    };
+
+    if (elapsed < minRecordMs) {
+      setTimeout(executeStop, minRecordMs - elapsed);
+    } else {
+      executeStop();
     }
   };
 
