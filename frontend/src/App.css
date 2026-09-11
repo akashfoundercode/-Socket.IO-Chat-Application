@@ -5002,23 +5002,15 @@ body {
 /* Dropdown Menu */
 .wa-bubble-dropdown-menu {
   position: absolute;
-  top: 28px;
-  top: 24px;
-  right: 0;
-  left: auto;
+  top: 26px;
   background: #ffffff;
   border: 1px solid rgba(84, 101, 111, 0.14);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(11, 20, 26, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 4px 18px rgba(11, 20, 26, 0.18);
   width: 174px;
   max-width: calc(100vw - 32px);
-  padding: 5px;
-  z-index: 40;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-  min-width: 140px;
   padding: 4px 0;
-  z-index: 30;
+  z-index: 120;
   animation: fadeIn 0.12s ease-out;
 }
 
@@ -8665,7 +8657,13 @@ body {
 .wa-message-row .wa-bubble-wrap {
   min-width: 0;
   max-width: 80%;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.wa-message-row.has-active-popup,
+.wa-bubble-wrap.has-active-popup {
+  z-index: 100;
+  position: relative;
 }
 
 .wa-message-row.group-message-row .wa-bubble-wrap {
@@ -8820,20 +8818,34 @@ body {
 /* Quick Reaction Bar Popup (Floating Emoji Picker) */
 .wa-quick-reaction-bar {
   position: absolute;
-  top: -48px;
-  top: -42px;
-  right: 0;
+  top: -44px;
   display: flex;
   align-items: center;
   gap: 4px;
   background: #ffffff;
   border-radius: 24px;
   padding: 4px 8px;
-  box-shadow: 0 4px 16px rgba(11, 20, 26, 0.2);
-  z-index: 45;
-  z-index: 30;
+  box-shadow: 0 4px 18px rgba(11, 20, 26, 0.22);
+  z-index: 120;
   animation: reactionPopupAnim 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  border: 1px solid rgba(11, 20, 26, 0.06);
+  border: 1px solid rgba(11, 20, 26, 0.08);
+  white-space: nowrap;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  touch-action: manipulation;
+  pointer-events: auto;
+}
+
+.wa-bubble.sent .wa-quick-reaction-bar,
+.wa-bubble-wrap.sent .wa-quick-reaction-bar {
+  right: 0;
+  left: auto;
+}
+
+.wa-bubble.received .wa-quick-reaction-bar,
+.wa-bubble-wrap.received .wa-quick-reaction-bar {
+  left: 0;
+  right: auto;
 }
 
 @keyframes reactionPopupAnim {
@@ -8860,6 +8872,7 @@ body {
   font-size: 20px;
   cursor: pointer;
   transition: transform 0.12s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  flex-shrink: 0;
 }
 
 .wa-quick-reaction-btn:hover {
@@ -8870,6 +8883,21 @@ body {
 .wa-quick-reaction-btn.active {
   background: rgba(0, 168, 132, 0.15);
   transform: scale(1.15);
+}
+
+@media (max-width: 480px) {
+  .wa-quick-reaction-bar {
+    top: -40px;
+    padding: 3px 6px;
+    gap: 2px;
+    max-width: calc(100vw - 20px);
+  }
+
+  .wa-quick-reaction-btn {
+    width: 29px;
+    height: 29px;
+    font-size: 18px;
+  }
 }
 
 /* Floating Reaction Badges at Bottom Corner of Bubble */

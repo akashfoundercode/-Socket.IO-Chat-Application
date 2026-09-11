@@ -548,16 +548,18 @@ export default function MessageList({
             }
           }
 
+          const hasActivePopup = activeReactionMsgId === msg.id || activeMenuMessageId === msg.id;
+
           return (
-            <div key={msg.id || index} className={`wa-message-row ${isGroup ? 'group-message-row' : ''} ${isSent ? 'sent' : 'received'}`}>
+            <div key={msg.id || index} className={`wa-message-row ${isGroup ? 'group-message-row' : ''} ${isSent ? 'sent' : 'received'} ${hasActivePopup ? 'has-active-popup' : ''}`}>
               {isGroup && !isSent && (
                 <MessageAvatar avatar={messageAvatar} label={messageAvatarLabel} />
               )}
 
-              <div className={`wa-bubble-wrap ${isSent ? 'sent' : 'received'} ${msg.isPinned ? 'pinned-message-wrap' : ''}`}>
+              <div className={`wa-bubble-wrap ${isSent ? 'sent' : 'received'} ${msg.isPinned ? 'pinned-message-wrap' : ''} ${hasActivePopup ? 'has-active-popup' : ''}`}>
                 <div
                   id={`msg-${msg.id}`}
-                  className={`wa-bubble ${isSent ? 'sent' : 'received'} ${isVoice ? 'voice-bubble' : ''} ${isLocation ? 'location-bubble' : ''} ${isStatusTag ? 'status-tag-bubble' : ''} ${isDeleted ? 'deleted-bubble' : ''} ${msg.isPinned ? 'pinned-bubble' : ''} ${activeMenuMessageId === msg.id ? 'menu-open' : ''}`}
+                  className={`wa-bubble ${isSent ? 'sent' : 'received'} ${isVoice ? 'voice-bubble' : ''} ${isLocation ? 'location-bubble' : ''} ${isStatusTag ? 'status-tag-bubble' : ''} ${isDeleted ? 'deleted-bubble' : ''} ${msg.isPinned ? 'pinned-bubble' : ''} ${hasActivePopup ? 'menu-open' : ''}`}
                   onDoubleClick={() => !isDeleted && onReplyMessage?.(msg)}
                 >
                   {isGroup && !isSent && (
