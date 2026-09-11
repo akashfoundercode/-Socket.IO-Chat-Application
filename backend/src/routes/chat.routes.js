@@ -61,7 +61,37 @@ router.post("/calls/batch-delete", chatController.deleteCallLogsBatch);
 router.delete("/calls/batch", chatController.deleteCallLogsBatch);
 router.delete("/calls/:callId", chatController.deleteCallLog);
 
-router.post("/status", chatController.createStatus);
+const multer = require("multer");
+
+const statusMediaStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const isImage = file.mimetype.startsWith("image");
+        const subDir = isImage ? "images" : "media";
+        const uploadDir = path.join(__dirname, "../../uploads", subDir);
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        let ext = path.extname(file.originalname || "").toLowerCase();
+        if (!ext) {
+            if (file.mimetype.includes("webm")) ext = ".webm";
+            else if (file.mimetype.includes("mp4")) ext = ".mp4";
+            else if (file.mimetype.includes("png")) ext = ".png";
+            else if (file.mimetype.includes("webp")) ext = ".webp";
+            else if (file.mimetype.includes("jpeg") || file.mimetype.includes("jpg")) ext = ".jpg";
+            else ext = ".bin";
+        }
+        const isImage = file.mimetype.startsWith("image");
+        const subDir = isImage ? "images" : "media";
+        const filename = `${subDir}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}${ext}`;
+        cb(null, filename);
+    }
+});
+const uploadStatusMedia = multer({ storage: statusMediaStorage, limits: { fileSize: 50 * 1024 * 1024 } });
+
+router.post("/status", uploadStatusMedia.single("file"), chatController.createStatus);
 router.get("/status/:userId", chatController.getStatuses);
 router.delete("/status/:statusId", chatController.deleteStatus);
 router.post("/status/:statusId/view", chatController.viewStatus);

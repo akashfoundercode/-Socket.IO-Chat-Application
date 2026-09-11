@@ -49,9 +49,10 @@ const API_BASE_URL = getApiBaseUrl();
  */
 async function request(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
 
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers || {})
   };
 
@@ -414,11 +415,19 @@ export const callApi = {
 export const statusApi = {
   getStatuses: (userId) => request(`/api/chat/status/${encodeURIComponent(userId)}`),
 
-  createStatus: ({ userId, type, content, caption, bgColor, fontStyle, privacyMode, audienceUserIds }) =>
-    request('/api/chat/status', {
+  createStatus: (data) => {
+    if (typeof FormData !== 'undefined' && data instanceof FormData) {
+      return request('/api/chat/status', {
+        method: 'POST',
+        body: data
+      });
+    }
+    const { userId, type, content, caption, bgColor, fontStyle, privacyMode, audienceUserIds } = data || {};
+    return request('/api/chat/status', {
       method: 'POST',
       body: JSON.stringify({ userId, type, content, caption, bgColor, fontStyle, privacyMode, audienceUserIds })
-    }),
+    });
+  },
 
   deleteStatus: (statusId, userId) =>
     request(`/api/chat/status/${statusId}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' }),

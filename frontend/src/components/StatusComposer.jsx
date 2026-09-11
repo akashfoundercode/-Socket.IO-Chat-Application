@@ -193,8 +193,10 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
 
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-      stopCameraStream();
-      setCapturedMedia({ type: 'image', url: dataUrl });
+      canvas.toBlob((blob) => {
+        stopCameraStream();
+        setCapturedMedia({ type: 'image', url: dataUrl, blob: blob || null });
+      }, 'image/jpeg', 0.88);
     } catch (err) {
       console.error("Photo capture failed:", err);
     }
@@ -374,8 +376,10 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-        stopCameraStream();
-        setCapturedMedia({ type: 'image', url: dataUrl });
+        canvas.toBlob((blob) => {
+          stopCameraStream();
+          setCapturedMedia({ type: 'image', url: dataUrl, blob: blob || file });
+        }, 'image/jpeg', 0.88);
       };
       img.src = ev.target.result;
     };
@@ -455,36 +459,42 @@ export default function StatusComposer({ userId, onClose, onPosted, privacyMode 
         audienceUserIds
       };
     } else if (capturedMedia) {
-      let finalContent = capturedMedia.dataUrl || capturedMedia.url;
-      // If dataUrl is not ready yet, read from blob synchronously before posting
-      if ((!finalContent || finalContent.startsWith('blob:')) && capturedMedia.blob) {
-        try {
-          finalContent = await new Promise((resolve, reject) => {
-            const r = new FileReader();
-            r.onloadend = () => resolve(r.result);
-            r.onerror = reject;
-            r.readAsDataURL(capturedMedia.blob);
-          });
-        } catch (err) {
-          console.error("Failed to read video blob:", err);
-        }
+      if (capturedMedia.blob) {
+        const formData = new FormData();
+        formData.append('userId', userId);
+        formData.append('type', capturedMedia.type);
+        const ext = capturedMedia.type === 'video' ? 'webm' : 'jpg';
+        formData.append('file', capturedMedia.blob, `status_${Date.now()}.${ext}`);
+        if (caption.trim()) formData.append('caption', caption.trim());
+        formData.append('bgColor', '#075e54');
+        formData.append('fontStyle', 'normal');
+        formData.append('privacyMode', privacyMode);
+        formData.append('audienceUserIds', JSON.stringify(audienceUserIds || []));
+        payload = formData;
+      } else {
+        payload = {
+          userId,
+          type: capturedMedia.type,
+          content: capturedMedia.dataUrl || capturedMedia.url,
+          caption: caption.trim() || null,
+          bgColor: '#075e54',
+          fontStyle: 'normal',
+          privacyMode,
+          audienceUserIds
+        };
       }
-
-      payload = {
-        userId,
-        type: capturedMedia.type,
-        content: finalContent,
-        caption: caption.trim() || null,
-        bgColor: '#075e54',
-        fontStyle: 'normal',
-        privacyMode,
-        audienceUserIds
-      };
     }
 
-    if (!payload || !payload.content) return;
+    if (!payload) return;
 
-    console.log('content length:', payload.content?.length, 'starts with:', payload.content?.substring(0, 30));
+    if (typeof FormData !== 'undefined' && payload instanceof FormData) {
+      console.log('Posting status via FormData (multipart binary upload):', {
+        type: capturedMedia?.type,
+        blobSize: capturedMedia?.blob?.size
+      });
+    } else {
+      console.log('content length:', payload.content?.length, 'starts with:', payload.content?.substring(0, 30));
+    }
 
     setPosting(true);
     try {

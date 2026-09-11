@@ -383,7 +383,25 @@ const clearCallLogs = async (req, res) => {
 const createStatus = async (req, res) => {
     try {
         const userId = normalizeId(req.body.userId);
-        const { type, content, caption, bgColor, fontStyle, privacyMode, audienceUserIds } = req.body;
+        let { type, content, caption, bgColor, fontStyle, privacyMode, audienceUserIds } = req.body;
+
+        if (req.file) {
+            const isImage = req.file.mimetype.startsWith("image");
+            const subDir = isImage ? "images" : "media";
+            content = `/api/chat/media/${subDir}/${req.file.filename}`;
+            if (!type) {
+                type = isImage ? "image" : "video";
+            }
+        }
+
+        if (typeof audienceUserIds === "string") {
+            try {
+                audienceUserIds = JSON.parse(audienceUserIds);
+            } catch (_) {
+                audienceUserIds = audienceUserIds.split(",").map(s => s.trim()).filter(Boolean);
+            }
+        }
+
         if (!userId || !content) return res.status(400).json({ success: false, message: 'userId and content are required' });
         const status = await chatModel.createStatus({
             userId,
