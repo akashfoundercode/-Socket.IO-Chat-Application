@@ -27,11 +27,11 @@ export default function ExitConfirmModal({ isOpen, onConfirm, onCancel }) {
         </div>
 
         <h3 id="exit-dialog-title" className="wa-exit-dialog-title">
-          Exit WhatsApp?
+          Exit App?
         </h3>
 
         <p className="wa-exit-dialog-desc">
-          Kya aap app se bahar jaana chahte hain?
+          Are you sure you want to exit the application?
         </p>
 
         <div className="wa-exit-dialog-actions">
@@ -41,14 +41,14 @@ export default function ExitConfirmModal({ isOpen, onConfirm, onCancel }) {
             onClick={onCancel}
             autoFocus
           >
-            No / Cancel
+            Cancel
           </button>
           <button
             type="button"
             className="wa-exit-dialog-btn confirm"
             onClick={onConfirm}
           >
-            Yes / Exit
+            Exit
           </button>
         </div>
       </div>
