@@ -420,7 +420,7 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
               <button
                 key={em}
                 className={`wa-sv-reaction-emoji ${myReaction === em ? 'active' : ''}`}
-                onClick={() => handleSendReaction(em)}
+                onClick={() => handleReact(em)}
               >
                 {em}
               </button>
@@ -428,35 +428,9 @@ function StatusViewer({ statuses, userName, userAvatar, isOwn, ownerId, viewerId
           </div>
         )}
 
-        {/* Viewers modal for own status */}
+        {/* Viewers panel (for own status) */}
         {isOwn && showViewers && (
-          <div className="wa-sv-viewers-modal" onClick={e => e.stopPropagation()}>
-            <div className="wa-sv-viewers-header">
-              <span className="wa-sv-viewers-title">
-                Viewed by {liveViewCount} {liveViewCount === 1 ? 'person' : 'people'}
-              </span>
-              <button className="wa-sv-viewers-close" onClick={() => setShowViewers(false)}>✕</button>
-            </div>
-            <div className="wa-sv-viewers-list">
-              {loadingViewers ? (
-                <div className="wa-sv-viewers-loading">Loading viewers...</div>
-              ) : viewers.length === 0 ? (
-                <div className="wa-sv-viewers-empty">No views yet</div>
-              ) : (
-                viewers.map(v => (
-                  <div key={v.viewerId} className="wa-sv-viewer-row">
-                    <AvatarCircle avatar={v.avatar} size={36} />
-                    <div className="wa-sv-viewer-info">
-                      <span className="wa-sv-viewer-name">{v.name}</span>
-                      <span className="wa-sv-viewer-time">
-                        {v.viewedAt ? new Date(v.viewedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+          <ViewersPanel statusId={current.id} ownerId={ownerId} onClose={() => setShowViewers(false)} />
         )}
       </div>
     </div>

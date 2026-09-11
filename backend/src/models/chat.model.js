@@ -1834,16 +1834,11 @@ const getMyStatuses = async (userId) => {
     const placeholders = userVars.map(() => '?').join(',');
     const [rows] = await pool.execute(
         `SELECT s.*, 
-                (
-                    SELECT COUNT(DISTINCT COALESCE(u.id, u.full_phone, u.phone, sv.viewer_id)) 
-                    FROM status_views sv 
-                    LEFT JOIN users u ON (u.full_phone = sv.viewer_id OR u.phone = sv.viewer_id OR CAST(u.id AS CHAR) = sv.viewer_id)
-                    WHERE sv.status_id = s.id
-                ) AS view_count
+                (SELECT COUNT(DISTINCT viewer_id) FROM status_views sv WHERE sv.status_id = s.id) AS view_count
          FROM user_statuses s 
-         WHERE user_id IN (${placeholders}) 
-           AND expires_at > NOW() 
-         ORDER BY id ASC`,
+         WHERE s.user_id IN (${placeholders}) 
+           AND s.expires_at > NOW() 
+         ORDER BY s.id ASC`,
         userVars
     );
     return rows.map(mapStatus);
@@ -1853,93 +1848,127 @@ const getContactStatuses = async (userId) => {
     const pool = getPool();
     const userVars = getPhoneVariants(userId);
     if (!userVars.length) return [];
-    const placeholders = userVars.map(() => '?').join(',');
+    const userPlaceholders = userVars.map(() => '?').join(',');
 
-    const [rows] = await pool.execute(
-        `SELECT s.*, 
-                COALESCE(
-                    (
-                        SELECT c.custom_name FROM contacts c 
-                        WHERE c.user_id IN (${placeholders}) 
-                          AND (c.contact_id = s.user_id OR c.contact_id = u.full_phone OR c.contact_id = u.phone OR c.contact_id = CAST(u.id AS CHAR) OR c.contact_id LIKE CONCAT('%', u.phone)) 
-                        LIMIT 1
-                    ),
-                    u.name,
-                    u.full_phone,
-                    u.phone,
-                    s.user_id
-                ) AS display_name,
+    // 1. Fetch contacts saved by the current user
+    const [savedContactsRows] = await pool.execute(
+        `SELECT contact_id, custom_name 
+         FROM contacts 
+         WHERE user_id IN (${userPlaceholders})`,
+        userVars
+    );
+    if (!savedContactsRows || savedContactsRows.length === 0) return [];
+
+    const customNameMap = new Map();
+    const contactIds = [];
+    for (const r of savedContactsRows) {
+        if (r.contact_id) {
+            contactIds.push(r.contact_id);
+            if (r.custom_name) customNameMap.set(r.contact_id, r.custom_name);
+        }
+    }
+    if (contactIds.length === 0) return [];
+
+    const allContactVars = Array.from(new Set(contactIds.flatMap(id => getPhoneVariants(id))));
+    if (allContactVars.length === 0) return [];
+    const contactVarPlaceholders = allContactVars.map(() => '?').join(',');
+
+    // 2. Fetch mutual contacts (contacts who have also saved the current user)
+    const [mutualRows] = await pool.execute(
+        `SELECT DISTINCT user_id 
+         FROM contacts 
+         WHERE user_id IN (${contactVarPlaceholders}) 
+           AND contact_id IN (${userPlaceholders})`,
+        [...allContactVars, ...userVars]
+    );
+
+    const eligibleOwnerVars = Array.from(new Set(mutualRows.flatMap(r => getPhoneVariants(r.user_id))));
+    if (eligibleOwnerVars.length === 0) return [];
+    const ownerVarPlaceholders = eligibleOwnerVars.map(() => '?').join(',');
+
+    // 3. Fetch active statuses from eligible contact owners
+    const [statusRows] = await pool.execute(
+        `SELECT s.*,
                 u.name AS profile_name,
                 u.full_phone AS fullPhone,
                 u.avatar,
-                u.about,
-                (
-                    SELECT COUNT(DISTINCT COALESCE(u_v.id, u_v.full_phone, u_v.phone, sv.viewer_id)) 
-                    FROM status_views sv 
-                    LEFT JOIN users u_v ON (u_v.full_phone = sv.viewer_id OR u_v.phone = sv.viewer_id OR CAST(u_v.id AS CHAR) = sv.viewer_id)
-                    WHERE sv.status_id = s.id
-                ) AS view_count,
-                EXISTS(SELECT 1 FROM status_views sv WHERE sv.status_id = s.id AND sv.viewer_id IN (${placeholders})) AS is_viewed
+                u.about
          FROM user_statuses s
-         LEFT JOIN users u ON (u.full_phone = s.user_id OR u.phone = s.user_id OR CAST(u.id AS CHAR) = s.user_id OR s.user_id LIKE CONCAT('%', u.phone))
+         LEFT JOIN users u ON (u.full_phone = s.user_id OR u.phone = s.user_id)
          WHERE s.expires_at > NOW()
-           AND s.user_id NOT IN (${placeholders})
-                       AND EXISTS (
-                           SELECT 1 FROM contacts owner_contacts
-                           WHERE (owner_contacts.user_id = s.user_id OR owner_contacts.user_id = u.full_phone OR owner_contacts.user_id = u.phone OR owner_contacts.user_id = CAST(u.id AS CHAR))
-                             AND owner_contacts.contact_id IN (${placeholders})
-                       )
-                       AND EXISTS (
-                           SELECT 1 FROM contacts viewer_contacts
-                           WHERE viewer_contacts.user_id IN (${placeholders})
-                             AND viewer_contacts.contact_id IN (
-                                 s.user_id, u.full_phone, u.phone, CAST(u.id AS CHAR)
-                             )
-                       )
-                       AND (
-                           COALESCE(s.privacy_mode, 'everyone') = 'everyone'
-                           OR (
-                               COALESCE(s.privacy_mode, 'everyone') IN ('contacts', 'contacts_except', 'only_share')
-                               AND (
-                                   COALESCE(s.privacy_mode, 'contacts') = 'contacts'
-                                   OR (
-                                       COALESCE(s.privacy_mode, 'contacts') = 'contacts_except'
-                                       AND NOT EXISTS (
-                                           SELECT 1 FROM status_audience excluded_viewers
-                                           WHERE excluded_viewers.status_id = s.id
-                                             AND excluded_viewers.viewer_id IN (${placeholders})
-                                       )
-                                   )
-                                   OR (
-                                       COALESCE(s.privacy_mode, 'contacts') = 'only_share'
-                                       AND EXISTS (
-                                           SELECT 1 FROM status_audience included_viewers
-                                           WHERE included_viewers.status_id = s.id
-                                             AND included_viewers.viewer_id IN (${placeholders})
-                                       )
-                                   )
-                               )
-                           )
-                       )
-         GROUP BY s.id
+           AND s.user_id IN (${ownerVarPlaceholders})
+           AND s.user_id NOT IN (${userPlaceholders})
          ORDER BY s.user_id, s.id ASC`,
-        [
-            ...userVars, // display_name subquery
-            ...userVars, // is_viewed
-            ...userVars, // NOT IN viewer
-            ...userVars, // owner saved viewer
-            ...userVars, // viewer saved owner
-            ...userVars, // contacts except audience
-            ...userVars  // only share audience
-        ]
+        [...eligibleOwnerVars, ...userVars]
     );
-    return rows.map((r) => ({
-        ...mapStatus(r),
-        userName: r.display_name || r.fullPhone || r.user_id,
-        profileName: r.profile_name || null,
-        userAvatar: r.avatar,
-        userFullPhone: r.fullPhone
-    }));
+
+    if (!statusRows || statusRows.length === 0) return [];
+
+    const statusIds = statusRows.map(r => r.id);
+    const statusIdPlaceholders = statusIds.map(() => '?').join(',');
+
+    // 4. Batch query: Check viewed statuses
+    const [viewedRows] = await pool.execute(
+        `SELECT DISTINCT status_id 
+         FROM status_views 
+         WHERE status_id IN (${statusIdPlaceholders}) 
+           AND viewer_id IN (${userPlaceholders})`,
+        [...statusIds, ...userVars]
+    );
+    const viewedSet = new Set(viewedRows.map(r => Number(r.status_id)));
+
+    // 5. Batch query: Check audience privacy filters
+    const [audienceRows] = await pool.execute(
+        `SELECT status_id, viewer_id 
+         FROM status_audience 
+         WHERE status_id IN (${statusIdPlaceholders})`,
+        statusIds
+    );
+    const audienceMap = new Map();
+    for (const aud of audienceRows) {
+        const sId = Number(aud.status_id);
+        if (!audienceMap.has(sId)) audienceMap.set(sId, new Set());
+        audienceMap.get(sId).add(aud.viewer_id);
+    }
+
+    // 6. Filter by privacy mode in memory
+    const userVarSet = new Set(userVars);
+    const filteredRows = statusRows.filter(r => {
+        const mode = r.privacy_mode || 'everyone';
+        if (mode === 'everyone' || mode === 'contacts') return true;
+
+        const audienceSet = audienceMap.get(Number(r.id)) || new Set();
+        const hasMatch = Array.from(userVarSet).some(v => audienceSet.has(v));
+
+        if (mode === 'contacts_except') {
+            return !hasMatch; // Allowed if NOT in excluded audience
+        }
+        if (mode === 'only_share') {
+            return hasMatch; // Allowed ONLY if in included audience
+        }
+        return true;
+    });
+
+    return filteredRows.map((r) => {
+        let customName = null;
+        const rVars = getPhoneVariants(r.user_id);
+        if (r.fullPhone) rVars.push(...getPhoneVariants(r.fullPhone));
+        for (const v of rVars) {
+            if (customNameMap.has(v) && customNameMap.get(v)) {
+                customName = customNameMap.get(v);
+                break;
+            }
+        }
+
+        return {
+            ...mapStatus(r),
+            isViewed: viewedSet.has(Number(r.id)),
+            userName: customName || r.profile_name || r.fullPhone || r.user_id,
+            profileName: r.profile_name || null,
+            userAvatar: r.avatar,
+            userFullPhone: r.fullPhone
+        };
+    });
 };
 
 const deleteStatus = async (statusId, userId) => {
