@@ -21,6 +21,7 @@ export function useBackButtonHandler({
 } = {}) {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const isExitingRef = useRef(false);
+  const isPoppingByBrowserRef = useRef(false);
   const handlersStackRef = useRef([]);
 
   // Register a back action to the stack
@@ -62,33 +63,36 @@ export function useBackButtonHandler({
     // Push initial baseline state if not already set
     if (!window.history.state || !window.history.state.wa_app_root) {
       window.history.replaceState({ wa_app_root: true, depth: 0 }, '');
-      window.history.pushState({ wa_app_root: true, depth: 1 }, '');
     }
 
-    const handlePopState = () => {
+    const handlePopState = (event) => {
       // If user confirmed exit, allow browser navigation
       if (isExitingRef.current) {
         return;
       }
 
+      isPoppingByBrowserRef.current = true;
+
       // 1. If Exit Dialog is already showing, a back press dismisses it
       if (showExitConfirm) {
         setShowExitConfirm(false);
-        window.history.pushState({ wa_app_root: true, depth: 1 }, '');
+        window.history.pushState({ wa_app_root: true }, '');
+        setTimeout(() => { isPoppingByBrowserRef.current = false; }, 50);
         return;
       }
 
       // 2. Try closing any open sub-layer/modal/screen
       const handled = triggerBack();
 
-      if (handled) {
-        // Re-push history entry so subsequent back presses are captured
-        window.history.pushState({ wa_app_root: true, depth: 1 }, '');
-      } else {
+      if (!handled) {
         // 3. User is at the root screen -> Intercept exit & show confirmation dialog
-        window.history.pushState({ wa_app_root: true, depth: 1 }, '');
+        window.history.pushState({ wa_app_root: true }, '');
         setShowExitConfirm(true);
       }
+
+      setTimeout(() => {
+        isPoppingByBrowserRef.current = false;
+      }, 50);
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -121,7 +125,7 @@ export function useBackButtonHandler({
     handleConfirmExit,
     handleCancelExit,
     setShowExitConfirm,
-    contextValue: { register, unregister, triggerBack }
+    contextValue: { register, unregister, triggerBack, isPoppingByBrowserRef }
   };
 }
 
@@ -129,6 +133,7 @@ export function useBackButtonHandler({
  * useRegisterBackHandler
  * 
  * Reusable hook for any component to register a back action when open.
+ * Pushes a history state when opening so a single back press immediately closes it.
  * 
  * @param {boolean} isOpen - Whether this screen/modal/tab is currently active
  * @param {() => void} onClose - Function to execute when back button is pressed
@@ -138,23 +143,44 @@ export function useRegisterBackHandler(isOpen, onClose, priority = 50) {
   const context = useContext(BackHandlerContext);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const pushedStateRef = useRef(false);
 
   useEffect(() => {
-    if (!context?.register || !isOpen) return;
+    if (!context?.register) return;
 
-    const handlerObj = {
-      isOpen: true,
-      priority,
-      onClose: () => onCloseRef.current?.()
-    };
+    if (isOpen) {
+      // Push history state entry if not already pushed for this open session
+      if (!pushedStateRef.current && typeof window !== 'undefined') {
+        window.history.pushState({ wa_layer: true, priority }, '');
+        pushedStateRef.current = true;
+      }
 
-    const unregister = context.register(handlerObj);
-    return () => {
-      unregister();
-    };
+      const handlerObj = {
+        isOpen: true,
+        priority,
+        onClose: () => {
+          pushedStateRef.current = false;
+          onCloseRef.current?.();
+        }
+      };
+
+      const unregister = context.register(handlerObj);
+
+      return () => {
+        unregister();
+        // If closed via UI (and not by browser popstate), clean up pushed history state
+        if (pushedStateRef.current && !context.isPoppingByBrowserRef?.current && typeof window !== 'undefined') {
+          pushedStateRef.current = false;
+          try {
+            window.history.back();
+          } catch { }
+        }
+      };
+    } else {
+      pushedStateRef.current = false;
+    }
   }, [context, isOpen, priority]);
 }
 
 export { BackHandlerContext };
 export default useBackButtonHandler;
-
